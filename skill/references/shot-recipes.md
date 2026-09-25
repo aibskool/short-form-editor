@@ -67,7 +67,7 @@ For the actual giveaway, `scene.kind: "artifact_preview"` displays filenames and
 
 ## Captions in this reference style
 
-Start from Council v2's caption settings: Arial Black, white text, lilac `#D4A1F7` on a few important words, subtle dark stroke, about 78px at 1080 width. Its small connector phrases use regular mixed-case text; important phrases use heavier uppercase. Scale these values with output size and check the actual face/background. Exact original font identity is not established.
+Start from Council v2's caption geometry with Brandon's green accent: Arial Black, white text, `#49cf26` on a few important words, subtle dark stroke, about 78px at 1080 width. The original Council example used lilac; the preset below is Brandon's adaptation. Its small connector phrases use regular mixed-case text; important phrases use heavier uppercase. Scale these values with output size and check the actual face/background. Exact original font identity is not established.
 
 Use this explicit starting preset at **720×1280** (52px is the scaled equivalent of 78px at 1080). Copy the same values from `<plugin>/templates/council-caption-preset.json`; this is a partial timeline, not a complete edit:
 
@@ -75,7 +75,7 @@ Use this explicit starting preset at **720×1280** (52px is the scaled equivalen
 {
   "output": {"width":720,"height":1280,"fps":30,"split_fraction":0.4648},
   "captions": {
-    "font_size":52,"font_family":"Arial Black","accent":"#D4A1F7",
+    "font_size":52,"font_family":"Arial Black","accent":"#49cf26",
     "uppercase":true,"hold":0.06,"max_words":3,"max_chars":24,
     "omit_terminal_punctuation":true,"background":"rgba(0,0,0,0)",
     "emphasis":[]
@@ -83,7 +83,7 @@ Use this explicit starting preset at **720×1280** (52px is the scaled equivalen
 }
 ```
 
-Fill `emphasis` with a few actual meaningful words from the current script. Setting `accent` without selecting words produces no lilac emphasis. Keep the caption background transparent; opaque black panels were a visible mismatch in the first smaller-model trial. A justified difficult background may need a local treatment, but do not impose a black plate across the whole reel. Start `caption_y` at 44.7 for split shots and 62 for presenter shots; inspect full-screen placement against that asset's focal detail.
+Fill `emphasis` with a few actual meaningful words from the current script. Setting `accent` without selecting words produces no green emphasis. Keep the caption background transparent; opaque black panels were a visible mismatch in the first smaller-model trial. A justified difficult background may need a local treatment, but do not impose a black plate across the whole reel. Start `caption_y` at 44.7 for split shots and 62 for presenter shots; inspect full-screen placement against that asset's focal detail.
 
 Group by spoken meaning, generally two to four words. Avoid splitting “AI agents,” a product name, a negation and its verb, or the CTA keyword. Keep at most two useful lines. `captions.phrases[].word_range` uses zero-based start-inclusive/end-exclusive indices. The complete list must cover each actual word exactly once. `line_breaks` are positions within that phrase; `lead_in:true` softens its first line. Retiming speech requires rebuilding these groups from the updated word map.
 
