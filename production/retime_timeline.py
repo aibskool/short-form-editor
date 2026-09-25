@@ -34,7 +34,7 @@ def retime(spec, decision, source, words):
         return value - sum(max(0, min(value, c['end'])-c['start']) for c in cuts)
 
     duration = t(total)
-    for collection in ('shots', 'labels'):
+    for collection in ('shots', 'labels', 'editorial_graphics'):
         for item in spec.get(collection, []):
             item['start'], item['end'] = t(item['start']), t(item['end'])
             if item['end'] <= item['start']:
@@ -57,7 +57,8 @@ def retime(spec, decision, source, words):
         'removed_seconds': total-duration, 'cut_count': len(cuts),
         'speech_speed': 1, 'baked_visual_actions': 'must recheck against retimed speech',
         'music': 'add continuous bed on final clock',
-        'captions': 'rebuilt from supplied retimed words; phrase word ranges preserved'
+        'spoken_captions': 'rebuilt from supplied retimed words; phrase word ranges preserved',
+        'editorial_graphics': 'outer cue times remapped; recheck claim and animation against encoded speech'
     }
     return spec
 

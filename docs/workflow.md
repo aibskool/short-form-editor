@@ -6,8 +6,8 @@
 4. **Build the resource:** create the promised prompts, checklist or guide before locking the CTA. Check links and the exact keyword.
 5. **Film and index:** transcribe the batch, identify the correct take, preserve the real voice and review any pause cuts.
 6. **Gather assets:** prefer real actions, screenshots, posts, docs and repo evidence. Keep an asset index. Generate only the missing explanatory job, and inspect the result.
-7. **Edit:** make the first frame understandable, start useful motion immediately, vary meaningful views, keep captions readable, add the instrumental bed and purposeful SFX, and synchronize everything to the locked words.
-8. **Review:** inspect the actual encoded output at phone size and normal speed with sound. Log observed source fit, motion, reading holds, speech integrity, music and effects. Repair and recheck failures.
+7. **Edit:** make the first frame understandable, choose presenter, real screen proof, illustrative footage or kinetic graphics by claim, time lower-third spoken captions separately from larger green/white editorial graphics, and synchronize visuals and sound to the locked words. Music and effects serve the speech.
+8. **Review:** inspect the actual encoded output at phone size and normal speed with sound. Log observed source fit, both text systems, motion, reading holds, speech integrity, music and effects. Compare the 20-second original-footage calibration with all three Brandon references and leave style approval pending until Brandon reviews it.
 9. **Package:** retain the timeline, asset provenance, review record, credits and actual giveaway. Prepare matching Skool/ManyChat handoff copy.
 10. **Deliver:** follow the user’s current publication instructions, check the destination, and verify the resulting page/resource/message separately.
 

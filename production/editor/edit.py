@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and render local Samin A-roll edits; no HeyGen cloud-render API jobs.
+"""Build and render local Brandon A-roll edits; no HeyGen cloud-render API jobs.
 
 python3 edit.py build --spec timeline.json --project /path/to/composition
 python3 edit.py render --project /path/to/composition --output /path/to/pilot.mp4
@@ -147,6 +147,43 @@ def phrase_groups(words, phrases):
     return groups
 
 
+def validate_editorial_graphics(graphics, duration):
+    """Check independent, claim-linked graphic timing and normalized placement."""
+    if not isinstance(graphics, list):
+        raise ValueError("editorial_graphics must be a list")
+    for index, item in enumerate(graphics):
+        if not isinstance(item, dict) or not str(item.get("claim_id", "")).strip():
+            raise ValueError(f"editorial graphic {index} needs a claim_id")
+        if not str(item.get("text", "")).strip():
+            raise ValueError(f"editorial graphic {index} needs text")
+        start = finite_number(item.get("start"), f"editorial graphic {index} start")
+        end = finite_number(item.get("end"), f"editorial graphic {index} end")
+        if not 0 <= start < end <= duration + 0.0001:
+            raise ValueError(f"editorial graphic {index} lies outside output timeline")
+        x = finite_number(item.get("x", 6), f"editorial graphic {index} x")
+        y = finite_number(item.get("y", 12), f"editorial graphic {index} y")
+        width = finite_number(item.get("width", 88), f"editorial graphic {index} width")
+        if not 0 <= x <= 100 or not 0 <= y <= 100 or width <= 0 or x + width > 100:
+            raise ValueError(f"editorial graphic {index} exceeds canvas")
+        if item.get("animation", "rise") not in {"rise", "pop", "fade", "none"}:
+            raise ValueError(f"editorial graphic {index} has unknown animation")
+        if item.get("align", "left") not in {"left", "center", "right"}:
+            raise ValueError(f"editorial graphic {index} has unknown alignment")
+        if item.get("font_size") is not None and finite_number(item["font_size"], "font_size") <= 0:
+            raise ValueError(f"editorial graphic {index} font_size must be positive")
+    return graphics
+
+
+def editorial_words(item):
+    """Escape user text and emphasize only literal words present in that text."""
+    accent = {str(w).casefold().strip('.,!?;:') for w in item.get("accent_words", [])}
+    words = []
+    for token in str(item["text"]).split():
+        klass = "editorial-accent" if token.casefold().strip('.,!?;:') in accent else "editorial-white"
+        words.append(f'<span class="{klass}">{escape(token)}</span>')
+    return " ".join(words)
+
+
 def make_pop(path):
     """Original short synthetic accent, not third-party SFX or generated speech."""
     rate, duration = 48000, 0.16
@@ -197,21 +234,29 @@ def build(spec_path, project):
     music_required = bool(spec.get("audio_policy", {}).get("music_required", False))
     if music_required and not music:
         raise ValueError("audio_policy.music_required=true but music is missing")
+    policy = spec.get("audio_policy", {})
+    if policy.get("music_required") is False and not music and not (policy.get("music_free_reason") or policy.get("user_opt_out")):
+        raise ValueError("music-free edit needs audio_policy.music_free_reason (or legacy user_opt_out)")
     output = spec.get("output", {})
     width, height, fps = int(output.get("width", 1080)), int(output.get("height", 1920)), int(output.get("fps", 30))
     split_fraction = float(output.get("split_fraction", 0.5))
     if not 0.25 <= split_fraction <= 0.75:
         raise ValueError("split_fraction must leave room for both visual and presenter")
     split_height = round(height * split_fraction)
-    captions = spec.get("captions", {})
-    font_size = float(captions.get("font_size", width * 0.08))
-    accent = captions.get("accent", "#D4A1F7")
+    if "spoken_captions" in spec and "captions" in spec:
+        raise ValueError("choose spoken_captions or legacy captions, not both")
+    captions = spec.get("spoken_captions", spec.get("captions", {}))
+    if not isinstance(captions, dict):
+        raise ValueError("spoken_captions must be an object")
+    graphics = validate_editorial_graphics(spec.get("editorial_graphics", []), duration)
+    font_size = float(captions.get("font_size", width * 0.048))
+    accent = captions.get("accent", "#49cf26")
     position = spec["source"].get("object_position", "50% 40%")
     font_name = captions.get("font_family", "Arial Black")
     font_css = ""
     if captions.get("font_path"):
-        font_name = "SaminCaption"
-        font_css = f"@font-face{{font-family:'SaminCaption';src:url('{media(captions['font_path'])}');font-weight:900;}}"
+        font_name = "BrandonCaption"
+        font_css = f"@font-face{{font-family:'BrandonCaption';src:url('{media(captions['font_path'])}');font-weight:900;}}"
     gsap = HERE / "node_modules/gsap/dist/gsap.min.js"
     if not gsap.is_file():
         raise ValueError("run npm ci in production/editor before building")
@@ -237,7 +282,7 @@ def build(spec_path, project):
             raise ValueError(f"unknown shot layout: {layout}")
         split = layout == "split"
         animations.append(f'tl.set("#presenter",{{top:{split_height if split else 0},height:{height-split_height if split else height}}},{start});')
-        animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y",44 if split else 60)}%"}},{start});')
+        animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y",64 if split else 77)}%",autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
         backing = captions.get("background", "rgba(0,0,0,0)")
         animations.append(f'tl.set(".caption-text",{{backgroundColor:"{backing}"}},{start});')
         animations.append(f'tl.set("#presenter-camera",{{scale:{shot.get("zoom",1)},xPercent:{shot.get("x_percent",0)},yPercent:{shot.get("y_percent",0)}}},{start});')
@@ -320,10 +365,28 @@ def build(spec_path, project):
         parts.append(f'<div id="caption-{i}" class="caption clip" data-start="{start}" data-duration="{max(.01,end-start)}" data-track-index="5"><div class="caption-text">{"".join(lines)}</div></div>')
         animations.append(f'tl.fromTo("#caption-{i} .caption-text",{{scale:0.97}},{{scale:1,duration:0.07,ease:"power2.out"}},{start});')
     parts.append('</div>')
+    for i, graphic in enumerate(graphics):
+        start, end = float(graphic["start"]), float(graphic["end"])
+        size = finite_number(graphic.get("font_size", width * .105), f"editorial graphic {i} font_size")
+        role = escape(graphic.get("role", "emphasis"))
+        claim_id = escape(graphic["claim_id"])
+        style = (f'left:{float(graphic.get("x",6))}%;top:{float(graphic.get("y",12))}%;'
+                 f'width:{float(graphic.get("width",88))}%;text-align:{graphic.get("align","left")};'
+                 f'font-size:{size}px;')
+        parts.append(f'<div id="editorial-{i}" class="editorial-graphic clip" data-claim-id="{claim_id}" '
+                     f'data-role="{role}" data-start="{start}" data-duration="{end-start}" '
+                     f'data-track-index="7" style="{style}">{editorial_words(graphic)}</div>')
+        animation = graphic.get("animation", "rise")
+        if animation == "rise":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0,y:20}},{{opacity:1,y:0,duration:0.20,ease:"power2.out"}},{start});')
+        elif animation == "pop":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0,scale:0.88}},{{opacity:1,scale:1,duration:0.16,ease:"back.out(1.4)"}},{start});')
+        elif animation == "fade":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0}},{{opacity:1,duration:0.18,ease:"none"}},{start});')
     for i, flash in enumerate(spec.get("flashes", [])):
         at, length = float(flash["at"]), float(flash.get("duration", .16))
         peak = min(.22, max(0, float(flash.get("opacity", .14))))
-        color = escape(flash.get("color", "#D4A1F7"))
+        color = escape(flash.get("color", "#49cf26"))
         parts.append(f'<div id="light-leak-clip-{i}" class="clip" data-start="{at}" data-duration="{length}" data-track-index="7" style="position:absolute;inset:0;z-index:7;pointer-events:none;"><div id="light-leak-{i}" style="position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at 95% 30%,{color},transparent 70%);"></div></div>')
         animations.append(f'tl.fromTo("#light-leak-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.3}}},{at});tl.to("#light-leak-{i}",{{opacity:0,duration:{length*.7}}},{at+length*.3});tl.set("#light-leak-{i}",{{opacity:0}},{at+length});')
     sound_tracks = {}
@@ -353,20 +416,22 @@ def build(spec_path, project):
     #presenter{{position:absolute;inset:0;width:{width}px;height:{height}px;overflow:hidden}} #presenter-camera{{position:relative;width:100%;height:100%;transform-origin:50% 38%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}} .broll,.graphic{{position:absolute;left:0;top:0;z-index:2}}
     .broll-viewport{{position:absolute;left:0;top:0;z-index:2;overflow:hidden}} .broll-camera{{position:relative;width:100%;height:100%;transform-origin:center}}
-    #caption-anchor{{position:absolute;top:62%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
+    #caption-anchor{{position:absolute;top:77%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
     .caption-text{{display:inline-block;max-width:100%;border-radius:.16em;padding:.07em .12em;font-family:"{font_name}",Arial,sans-serif;font-weight:900;font-size:{font_size}px;line-height:1.06;letter-spacing:-0.02em;color:white;-webkit-text-stroke:{width*.0035}px #222;paint-order:stroke fill;text-shadow:0 {width*.003}px {width*.004}px #111;}}
     .caption-line{{display:block}} .caption-line.connector{{font-family:Arial,sans-serif;font-size:.72em;font-weight:500;line-height:1.18;letter-spacing:0;-webkit-text-stroke:{width*.0017}px #222;}}
     .emphasis{{color:{accent}}} .graphic{{background:#efede8;color:#171719;font-family:Arial,sans-serif}}
+    .editorial-graphic{{position:absolute;z-index:9;max-height:75%;overflow:hidden;color:white;font-family:Arial,sans-serif;font-weight:900;line-height:1.02;letter-spacing:-.035em;text-shadow:0 2px 10px #000b;pointer-events:none;}}
+    .editorial-white{{color:#fff}} .editorial-accent{{color:#49cf26;text-shadow:0 0 18px #49cf2666,0 2px 10px #000b}}
     .editor-label{{position:absolute;z-index:8;font:700 30px Arial,sans-serif;letter-spacing:.08em;color:#fff;background:#1d1c20;padding:12px 18px;border-radius:6px;}}
     .graphic-inner{{position:absolute;inset:9% 8%;display:flex;flex-direction:column;justify-content:center;gap:{width*.02}px}} .eyebrow{{font-size:{width*.017}px;letter-spacing:.13em;font-weight:800;color:#706476;margin:0}}
     h1{{font-size:{width*.065}px;line-height:1.04;margin:0;letter-spacing:-.055em;font-weight:900}} .roles{{display:grid;grid-template-columns:1fr 1fr;gap:{width*.025}px}}
     .role{{background:#fff;border:2px solid #d4d0d9;border-radius:{width*.023}px;padding:{width*.022}px;display:flex;flex-direction:column;gap:{width*.012}px}} .role strong{{font-size:{width*.032}px;letter-spacing:-.03em}} .role span{{font-size:{width*.022}px;line-height:1.24;color:#57525e}} .footer{{font-size:{width*.022}px;color:#514757;margin:0;line-height:1.3}}
     '''
-    markup = f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title","Samin reel edit"))}</title><script src="assets/gsap.min.js"></script><style>{css}</style></head><body><div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">{"".join(parts+audio)}</div><script>const tl=gsap.timeline({{paused:true}});{"".join(animations)}window.__timelines.main=tl;</script></body></html>'
+    markup = f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title","Brandon reel edit"))}</title><script src="assets/gsap.min.js"></script><style>{css}</style></head><body><div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">{"".join(parts+audio)}</div><script>const tl=gsap.timeline({{paused:true}});{"".join(animations)}window.__timelines.main=tl;</script></body></html>'
     (project/"index.html").write_text(markup)
     (project/"timeline.json").write_text(json.dumps(spec,indent=2)+"\n")
     (project/"mapped-words.json").write_text(json.dumps(words,indent=2)+"\n")
-    receipt = {"project":str(project),"duration":duration,"width":width,"height":height,"fps":fps,"words":len(words),"caption_groups":len(groups),"shots":len(shots),"original_audio_preserved":has_audio,"music_count":len(music),"music_required":music_required,"media_transfer":"local hardlink or copy; no upload","rendered":False}
+    receipt = {"project":str(project),"duration":duration,"width":width,"height":height,"fps":fps,"words":len(words),"caption_groups":len(groups),"editorial_graphics":len(graphics),"shots":len(shots),"original_audio_preserved":has_audio,"music_count":len(music),"music_required":music_required,"media_transfer":"local hardlink or copy; no upload","rendered":False}
     (project/"build-receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
     return receipt
 

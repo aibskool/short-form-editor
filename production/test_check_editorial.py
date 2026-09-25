@@ -138,6 +138,27 @@ class EditorialChecks(unittest.TestCase):
         self.data['beats'][0]['primary_job'] = 'proof'
         self.assert_error('schema:')
 
+    def test_editorial_graphic_must_join_and_overlap_spoken_claim(self):
+        self.data['schema_version'] = 2
+        self.data['beats'][0]['claim_id'] = 'context-claim'
+        self.timeline['editorial_graphics'] = [{'claim_id':'missing','text':'CONTEXT','start':0,'end':1}]
+        self.assert_error('unknown claim_id')
+        self.timeline['editorial_graphics'][0].update(claim_id='context-claim',start=2.1,end=2.3)
+        self.assert_error('does not overlap')
+        self.timeline['editorial_graphics'][0].update(start=.5,end=1.3)
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_ready_keyword_offer_needs_spoken_displayed_word_and_resource(self):
+        self.data['schema_version'] = 2
+        self.data['cta'] = {'keyword':'DEMO','resource_path':'guide.md','face_to_camera':True,'status':'ready'}
+        self.timeline['editorial_graphics'] = [{'claim_id':'beat1','text':'Comment DEMO','start':1,'end':2}]
+        self.assert_error('keyword not spoken')
+        self.words['words'][2]['word']='DEMO'
+        self.data['beats'][0]['spoken_text']="DON’T skip DEMO"
+        self.assert_error('resource file is missing')
+        (self.root/'guide.md').write_text('Real guide')
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
 
 if __name__ == '__main__':
     unittest.main()

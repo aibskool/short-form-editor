@@ -1,0 +1,26 @@
+# Brandon Reel Engine: observed style and calibration
+
+This profile is based on Brandon's three supplied Instagram reels. It separates what was observed in video/audio from the choices made for this renderer. Do not certify a match until a fresh 20-second render from original Brandon filming has been compared and Brandon has reviewed it.
+
+| Reference | Observed sequence and sound | Limits |
+| --- | --- | --- |
+| [Astra business](https://www.instagram.com/p/DdpOfqtgr8a/) | 0–6 s direct-to-camera hook and green/white editorial claim; ~6–10 s agent prompt screen; ~11–15 s process labels over illustrative typing; ~18–20 s website; ~26–33 s outreach/deployment screens; ~34–44 s presenter and recap graphics; ~45–48 s face-to-camera `ASTRA` offer. Spoken voice over subtle music and occasional UI accents. A visible frame separates a small low white spoken caption (`EVEN`) from a larger green `STOP` with smaller white companion text beside Brandon. | The post description says a domain can be purchased and deployed **once approved**. A screen showing options is not proof of purchase. Exact font, color sampling and all transitions are not established. |
+| [Photographer website](https://www.instagram.com/p/DdsBCNtB6LW/) | Physical action opens; website/agent screen proof, brief presenter pivots, illustrative work footage, animated green/white process text; face-to-camera `WEBSITE` offer near the end. Spoken voice, music and effect accents. | Distinguish generated demo, approved publication, draft/sent outreach and domain purchase. |
+| [GovDeals](https://www.instagram.com/p/DdkZiwiuDPv/) | Curiosity hook with presenter/context imagery; actual listings and answer screens; animated process/number/checklist graphics; illustrative footage; face-to-camera `DEALS` CTA. Spoken voice, music and selected hits. Red sometimes signals a problem. | Recheck counts, auction status, resale comps and calculations; an illustration cannot prove a real bid or result. |
+
+These time windows come from a VidIQ scene-and-audio walkthrough and are *reference navigation*, not exact cut points. Independently sample the source frames and listen to the audio for calibration. `#49cf26` is Brandon's requested output accent, not a color sampled from the uploaded reels.
+
+## Two independent text systems
+
+1. `spoken_captions`: short lower-third phrases from word-timed actual speech; white baseline, selective green emphasis. Review complete word coverage, at most two legible lines, no unspoken claims, and placement against the face, screen evidence and platform controls. Each shot may move the anchor; visibility and animation are independent from editorial graphics.
+2. `editorial_graphics`: large, animated green/white statements, numbers, process labels, comparisons, warnings and exact CTA keywords. Each item has a `claim_id`, timing, role, position and animation. It may paraphrase a supported claim but cannot promote a draft, plan or capability into a completed outcome. Source attribution is a third, small labeling layer and is not a spoken caption.
+
+## Claim-led shot decision
+
+For each spoken beat, write the precise claim, what a viewer must see to understand it, what source could prove it, and whether Brandon's face should be present. Use A-roll for a personal assertion, pivot, judgment or offer. Use real recorded screens when a product, action or result is asserted; crop to the relevant readable detail without deleting qualifications. Use licensed or generated contextual footage for setting or metaphor, plainly distinct from proof. Use authored kinetic graphics to simplify a verified mechanism or quantify a sourced relationship. Choose a full-frame screen when it needs room; split only when both screen and face remain useful. Cut on changes of meaning/action rather than a fixed interval.
+
+Develop at least two different honest hooks before filming or cutting: a face-to-camera proposition, a visible action or a question with relevant proof. The first frame should make the topic and tension understandable. At the close, return to Brandon facing camera for a keyword CTA; verify the word spoken equals the word displayed and the actual resource is ready. Music and effects support the voice, and final audibility is judged from the encoded file.
+
+## Calibration gate
+
+Choose 20 seconds of original Brandon filming with verified speech and a proof opportunity; include a CTA only if it naturally falls in the selection. Render at native output size. Extract every encoded frame and compare it with the relevant intervals of all three reference reels grouped by visual *job*, not a false timestamp or pixel match across unrelated stories. Log text hierarchy/placement, face and proof visibility, cadence of useful changes, animation, sound accents and limitations. Rerender on mismatch, hash the final MP4, and request Brandon's review. Report `pending_review` until he accepts it.

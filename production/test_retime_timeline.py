@@ -7,6 +7,7 @@ class RetimeTests(unittest.TestCase):
         self.spec = {'source': {'segments': [{'start': 0, 'end': 5}]},
                      'shots': [{'start': 0, 'end': 3}, {'start': 3, 'end': 5}],
                      'labels': [{'start': 2, 'end': 4}],
+                     'editorial_graphics': [{'claim_id':'claim-1','text':'PROOF','start':1,'end':4}],
                      'sfx': [{'at': 3.5, 'duration': .4}],
                      'zooms': [{'at': 1.5, 'duration': 2, 'scale': 1.1}]}
         self.cuts = {'source_duration': 5, 'cuts': [{'start': 2, 'end': 3}]}
@@ -15,6 +16,7 @@ class RetimeTests(unittest.TestCase):
         result = retime(self.spec, self.cuts, 'new.mp4', 'words.json')
         self.assertEqual(result['shots'], [{'start': 0, 'end': 2}, {'start': 2, 'end': 4}])
         self.assertEqual(result['labels'], [{'start': 2, 'end': 3}])
+        self.assertEqual(result['editorial_graphics'], [{'claim_id':'claim-1','text':'PROOF','start':1,'end':3}])
         self.assertEqual(result['sfx'], [{'at': 2.5, 'duration': .4}])
         self.assertEqual(result['zooms'][0]['duration'], 1)
         self.assertEqual(self.spec['shots'][0]['end'], 3)

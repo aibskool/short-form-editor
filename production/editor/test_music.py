@@ -73,6 +73,12 @@ class MusicValidationTests(unittest.TestCase):
             missing = self.write_fixture(root, policy={"music_required": True})
             with self.assertRaisesRegex(ValueError, "music is missing"):
                 build(str(missing), str(root / "missing-composition"))
+            silent = self.write_fixture(root, policy={"music_required": False})
+            with self.assertRaisesRegex(ValueError, "music_free_reason"):
+                build(str(silent), str(root / "unexplained-silence"))
+            explained = self.write_fixture(root, policy={"music_required": False,
+                                                        "music_free_reason": "voice-only demonstration"})
+            self.assertEqual(build(str(explained), str(root / "explained-silence"))["music_count"], 0)
             tone = self.tone(root)
             invalid = self.write_fixture(root, music=[{
                 "path": str(tone), "start": 0, "end": 1,

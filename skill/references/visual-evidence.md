@@ -2,7 +2,7 @@
 
 Actual source B-roll is the default. Start with Eden's saved links, then inspect the original post, GitHub repository, README, release, documentation, screenshot, recording or image. Collect useful visuals during research and anchor them during scripting. Abstract graphics and AI concepts explain what a real source cannot show; they must not impersonate evidence.
 
-Use the project's [editorial judgment guide](../../production/editorial-judgment.md) and [editorial map schema](../../production/editorial-map.schema.json) for production decisions and review. These links resolve within the repository. In an installed skill, find the same `production/` files under the project root configured in `project-location.json`.
+Use the project's [editorial judgment guide](../../production/editorial-judgment.md) and [editorial map schema](../../production/editorial-map.schema.json) for production decisions and review. These links resolve within the repository. In an installed skill, find the same `production/` files under the project root configured in `~/.config/brandon-reel-engine/project.json` or by the runner's `context` command.
 
 ## Select by the viewer's question
 
@@ -51,7 +51,7 @@ A source URL without a local capture is still a request. A capture without visua
 
 ## Reference matching and the quality gate
 
-For Council, use the same-script human edit [DcwJ9MymNSv](https://www.instagram.com/p/DcwJ9MymNSv/) and its [measured profile](https://github.com/Samin12/samin-reel-engine-plugin/blob/main/docs/showcase.md) before the older Apple Design reference. Study why each shot explains a line, along with caption grouping, framing and rhythm. Treat the observed 35.9-second duration as evidence about that edit, not a universal duration or shot-count quota.
+For Brandon, use the three supplied reels and [observed style profile](brandon-style-profile.md), then compare the original-footage calibration. For the historical Council example only, the same-script human edit [DcwJ9MymNSv](https://www.instagram.com/p/DcwJ9MymNSv/) and its [measured profile](https://github.com/Samin12/samin-reel-engine-plugin/blob/main/docs/showcase.md) precede the older Apple Design reference. Its 35.9-second duration is evidence about that edit, not a Brandon duration or shot-count quota.
 
 Keep a full reference audio calibration track distinct from reusable isolated effects. An extracted side channel may retain music or speech; inspect and record that limitation. Only label an effect isolated when supported by the extraction and listening evidence. Record newly synthesized approximations as original assets, not ripped stems.
 

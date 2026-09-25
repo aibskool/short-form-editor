@@ -2,13 +2,13 @@
 
 Copy a prompt below into Codex and replace the reference and ClickUp links. Codex needs working computer-use tools and access to your ClickUp account. This page does not install a browser connection or supply credentials.
 
-The reusable [Reel ClickUp skill](../plugins/samin-reel-engine/skills/reel-clickup/SKILL.md) contains the full workflow. Its [card template](../plugins/samin-reel-engine/skills/reel-clickup/references/card-template.md) and [computer-use instructions](../plugins/samin-reel-engine/skills/reel-clickup/references/browser-workflow.md) travel with it.
+The reusable [Reel ClickUp skill](../plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md) contains the full workflow. Its [card template](../plugins/brandon-reel-engine/skills/reel-clickup/references/card-template.md) and [computer-use instructions](../plugins/brandon-reel-engine/skills/reel-clickup/references/browser-workflow.md) travel with it.
 
 ## Repeat the five-script, two-resource batch
 
 ```text
 Read and use this skill, including its two linked references:
-https://github.com/Samin12/samin-reel-engine-plugin/blob/main/plugins/samin-reel-engine/skills/reel-clickup/SKILL.md
+https://github.com/aibskool/short-form-editor/blob/main/plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md
 
 New reference reel: PASTE_REFERENCE_LINK_HERE
 ClickUp List or Board: PASTE_CLICKUP_LINK_HERE
@@ -35,7 +35,7 @@ Match every keyword, resource name and hook count to the giveaway. Reopen the ca
 
 ```text
 Use the Reel ClickUp skill:
-https://github.com/Samin12/samin-reel-engine-plugin/blob/main/plugins/samin-reel-engine/skills/reel-clickup/SKILL.md
+https://github.com/aibskool/short-form-editor/blob/main/plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md
 
 Reference or subject: PASTE_NEW_LINK_HERE
 Destination: PASTE_CLICKUP_LIST_OR_BOARD_LINK_HERE
@@ -47,12 +47,12 @@ Use computer use to create or update one complete reel card. Write the script, r
 
 ```text
 Use the Reel ClickUp skill:
-https://github.com/Samin12/samin-reel-engine-plugin/blob/main/plugins/samin-reel-engine/skills/reel-clickup/SKILL.md
+https://github.com/aibskool/short-form-editor/blob/main/plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md
 
 Existing reel files/project: PASTE_PROJECT_PATH_OR_LINK_HERE
 ClickUp List or Board: PASTE_CLICKUP_LINK_HERE
 
-Use computer use to create or update two cards: Samin (real person) and Avatar. Keep the same existing spoken script in both, add the corresponding tags, link the shared research and resource docs, and attach each version’s own final edited MP4. Put both in Edited only if both edits exist; report any missing version. Preserve the actual recorded script and avoid regenerating completed work. Reopen and verify both cards, then return their links.
+Use computer use to create or update two cards: Brandon (real person) and Avatar. Keep the same existing spoken script in both, add the corresponding tags, link the shared research and resource docs, and attach each version’s own final edited MP4. Put both in Edited only if both edits exist; report any missing version. Preserve the actual recorded script and avoid regenerating completed work. Reopen and verify both cards, then return their links.
 ```
 
 ## What each card looks like
@@ -73,6 +73,6 @@ Use computer use to create or update two cards: Samin (real person) and Avatar. 
 
 ## Optional: install the standalone skill
 
-Copy the entire `plugins/samin-reel-engine/skills/reel-clickup/` folder—including `references/` and `agents/`—into your Codex skills directory, commonly `~/.codex/skills/reel-clickup/`. Start a new task so Codex can discover it, then invoke `$reel-clickup` with your links. An existing installation should be updated deliberately rather than overwritten blindly.
+Copy the entire `plugins/brandon-reel-engine/skills/reel-clickup/` folder—including `references/` and `agents/`—into your Codex skills directory, commonly `~/.codex/skills/reel-clickup/`. Start a new task so Codex can discover it, then invoke `$reel-clickup` with your links. An existing installation should be updated deliberately rather than overwritten blindly.
 
 The link-based prompts work without installing the whole video-rendering environment. Local/API/script checks and an actual computer-use run are different verification levels; the skill does not bundle an authenticated ClickUp connection.

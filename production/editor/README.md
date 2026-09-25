@@ -1,10 +1,10 @@
 # Original-footage reel editor
 
-This local editing foundation preserves Samin's recorded picture and voice. It uses pinned **HyperFrames 0.8.27**, HeyGen's open-source HTML/GSAP video renderer, to assemble source cuts, captions, split screens, full-screen visuals, zooms, instrumental music and sound accents. It does not create an avatar, replace speech, upload footage, or call a paid video API.
+This local editing foundation preserves Brandon's recorded picture and voice. It uses pinned **HyperFrames 0.8.27**, HeyGen's open-source HTML/GSAP video renderer, to assemble source cuts, captions, split screens, full-screen visuals, zooms, instrumental music and sound accents. It does not create an avatar, replace speech, upload footage, or call a paid video API.
 
 ## Run
 
-Requires Python 3.9+, Node 22+, FFmpeg/FFprobe, and a Chrome runtime. From this directory:
+Use the project's pinned Python 3.11 environment, Node 22+, FFmpeg/FFprobe, and a Chrome runtime. From this directory:
 
 ```bash
 npm ci
@@ -20,27 +20,29 @@ Use a 720×1280 proxy for the first visual pass or 1080×1920 for final delivery
 
 ## Timeline contract
 
-`timeline.example.json` is a renderer capability demo, not the Council production template: its generic text cards demonstrate fields, not preferred B-roll. Use the plugin's shot recipes and caption preset for production. All paths resolve relative to that JSON file. `source.segments` is an ordered list of kept source ranges in seconds; picture, original audio, and supplied word timings follow the same cuts. Omit it to use the whole provided clip.
+`timeline.example.json` is a renderer capability demo, not a production template: its generic text cards demonstrate fields, not preferred B-roll. Use the plugin's Brandon style profile and text preset for production. All paths resolve relative to that JSON file. `source.segments` is an ordered list of kept source ranges in seconds; picture, original audio, and supplied word timings follow the same cuts. Omit it to use the whole provided clip.
 
 `words_path` accepts a word array, `{ "words": [...] }`, or Whisper-style `{ "segments": [{ "words": [...] }] }`. Every word needs `word` (or `text`), `start`, and `end`, in source-video seconds. Correct names and transcription errors before rendering. A trimmed proxy should normally have word times rebased to zero.
 
 Shots use output-time seconds and one of three layouts:
 
 - `presenter`: full portrait A-roll, with optional fixed `zoom`, `x_percent`, and `y_percent`.
-- `split`: top-half visual and bottom-half presenter.
-- `full_broll`: full-screen visual while Samin's source audio continues.
+- `split`: top visual and bottom presenter, with the seam set by `output.split_fraction`.
+- `full_broll`: full-screen visual while Brandon's source audio continues.
 
 For visual shots, use `media` for a local image/video or `graphic` for an explicitly labelled conceptual illustration. SVG remains vector artwork in the browser. Image/video `fit`, `source_start`, and `background` are configurable; `media_zoom: 1.04` adds a slow 1×→1.04× zoom over the shot. `caption_y` sets the caption block's top as a percentage per shot. A graphics card can contain an eyebrow, title, label/text cards, and footer. Do not label diagrams as real software outputs.
 
-Caption defaults use heavy white uppercase groups, dark shadow and transparent backing in every layout. Use the plugin's explicit caption preset to match the supplied reference; generic defaults alone do not set its size, phrasing or emphasis. The adapted Council caption preset sets `accent` to green (`#49cf26`), but words receive it only through `captions.emphasis` or a word-level emphasis flag. Explicit `phrases` override automatic `max_words`/`max_chars` grouping, so inspect their lengths independently. A dark `captions.background` is an opt-in for a justified contrast problem. There is no yellow karaoke tracking. Exact font identification remains uncertain: Arial Black is an approximation. Set `font_path` to a licensed local font for a reproducible render.
+`spoken_captions` groups the actual word-timed speech in short lower-third phrases. Legacy `captions` still builds, but a timeline may not contain both keys. `font_size`, `font_family`, `font_path`, `accent`, `emphasis`, `phrases`, `hold`, `max_words`, `max_chars` and transparent `background` remain available. `caption_y` and `spoken_caption_visible` are shot-level adjustments. The default accent is Brandon's requested `#49cf26`; default size is smaller than the older Council example.
 
-`zooms` accepts output-time `{ "at": 5, "scale": 1.1, "duration": 0.16 }` entries. `sfx` accepts a supplied local audio path or the original, synthesized `soft_pop` accent, with `at` and a calibrated `gain`. Samin reels require music; the plugin build entrypoint rejects a missing policy/track unless an explicit user opt-out is recorded. Low-level legacy compositions can still omit music, so use the plugin entrypoint for production.
+`editorial_graphics` is an independent list of `{start,end,claim_id,role,text,accent_words,x,y,width,font_size,align,animation}`. Each graphic is a timed overlay, not transcript coverage. The renderer validates bounds and escapes its words; `accent_words` marks literal tokens in green, while other words are white. `animation` may be `rise`, `pop`, `fade`, or `none`. Put proof attribution in `labels`, not in either text system. The source-backed editorial checker verifies graphic-to-claim joins when an editorial map is supplied. The exact font/geometry are provisional until the 20-second Brandon calibration is reviewed.
+
+`zooms` accepts output-time `{ "at": 5, "scale": 1.1, "duration": 0.16 }` entries. `sfx` accepts a supplied local audio path or the original, synthesized `soft_pop` accent, with `at` and a calibrated `gain`. When `audio_policy.music_required` is true, the build checks for an actual music track. For an intentional music-free edit, set `music_required:false` and explain it in `music_free_reason`. Legacy `user_opt_out` remains accepted.
 
 ## Verification receipt
 
-Run `python3 test_edit.py -v` for four timing/grouping tests. They cover source-cut/reorder mapping, excluded words, invalid timings, and phrase breaks. A synthetic four-second smoke render was verified as H.264 + AAC, 360×640, 30 fps, with 391,729 bytes; an extracted MP4 frame confirmed the captions and split graphic survived encoding. Rendering took 24.3 seconds after the initial browser download. That test is a renderer check, not the filmed pilot.
+Run `python3 test_edit.py -v` for timing/grouping and independent editorial track tests. They cover source-cut/reorder mapping, excluded words, invalid timings, phrase breaks and independent graphic markup. The upstream synthetic four-second smoke render was verified as H.264 + AAC, 360×640, 30 fps, with 391,729 bytes; its extracted MP4 frame confirmed that the earlier captions and split graphic survived encoding. That historical check does not verify this fork's new editorial overlay or a Brandon filmed pilot.
 
-HyperFrames checks passed with zero errors and warnings for both the initial native-graphic composition and a second SVG composition with slow zoom. Informational overflow findings reflect deliberate camera crops. Real footage still needs its own caption, crop, source-claim, and audio review.
+Historical upstream HyperFrames checks passed for its native-graphic and SVG compositions. For this conversion, a synthetic composition builds and the comparison tool processes a 20-second synthetic file; native encoding remains unverified here because the available environment has no Chrome binary. Run a new encoded overlay check and review real footage for caption, crop, source claim and audio quality.
 
 ## Tool choice and current API findings
 
@@ -51,23 +53,23 @@ Checked September 4, 2026 against primary documentation:
 - [HeyGen AI Clipping API](https://developers.heygen.com/ai-clipping) accepts source video and can create captioned highlight clips. It uses HeyGen authentication and account billing; no such job was submitted here.
 - [HeyGen's developer entry point](https://developers.heygen.com/) documents API-key and OAuth CLI routes. No HeyGen CLI was present on PATH during inspection. The local HyperFrames route needs no HeyGen login or subscription purchase.
 
-The current machine has Node 22.23.1, FFmpeg 8.0.1, and cached Chrome. HyperFrames doctor reported optional Docker and local TTS unavailable; neither is required for original-footage local rendering. The installed FFmpeg build lacks `drawtext`/`subtitles`, so captions are rendered in the browser instead.
+The original upstream environment had Node 22.23.1, FFmpeg 8.0.1 and cached Chrome; these are historical measurements, not a guarantee for a new checkout. The local HyperFrames route renders captions in the browser. Confirm the actual installed browser/runtime with `doctor` and a smoke render.
 
 ## Fast motion and semantic captions
 
-`output.split_fraction` controls the measured split seam (pilot 0.4648). `captions.phrases` can define complete, ordered `word_range: [start,endExclusive]` spans, relative `line_breaks`, mixed-case `lead_in` and progressive second-line reveals. The builder rejects omitted or duplicated words. Five tests include phrase coverage. Caption text can omit terminal punctuation while the spoken transcript stays intact.
+`output.split_fraction` controls an optional split seam; the historical pilot used 0.4648. `spoken_captions.phrases` can define complete, ordered `word_range: [start,endExclusive]` spans, relative `line_breaks`, mixed-case `lead_in` and progressive second-line reveals. The builder rejects omitted or duplicated words. Five tests include phrase coverage. Caption text can omit terminal punctuation while the spoken transcript stays intact.
 
 A shot may use `scene` instead of `media`: the original prompt workspace in `motion_scenes.py` animates real giveaway prompt excerpts with typed text, role tabs and scrolling. It is visibly labeled PROMPT DEMO; it is not a screen recording of Claude. `kind: prompt_scroll` and `block_layout: grid` are optional. `flashes` adds brief, low-opacity radial transition light leaks. The pilot's `sfx/` folder contains a deterministic generator, four original WAVs and their measurement/provenance index. Actual product recordings can be substituted through `media` without changing the rest of the pipeline.
 
 ## Evidence-driven inserts
 
-V2 adds `media_crop: [x,y,width,height]` in original source pixels. The builder verifies bounds, preserves aspect ratio, and clips the source nondestructively. Source screenshots retain their original pixels; author/date/repo identity and source limitations belong in the asset index. Use an overview followed by a meaningful close crop when a full README would be illegible on a phone. `labels` carries small timed source labels; `captions.background` overrides the transparent default.
+V2 adds `media_crop: [x,y,width,height]` in original source pixels. The builder verifies bounds, preserves aspect ratio, and clips the source nondestructively. Source screenshots retain their original pixels; author/date/repo identity and source limitations belong in the asset index. Use an overview followed by a meaningful close crop when a full README would be illegible on a phone. `labels` carries small timed source labels; `spoken_captions.background` overrides the transparent default.
 
 `scene.kind: artifact_preview` shows actual filenames and exact giveaway excerpts; it is a resource preview, never a fabricated model response. Its `reveals` are deterministic text states. Use sparingly: real application/source captures take priority. The v2 reference calibration already carries its original sound effects in the A-roll audio; keep `sfx` empty to avoid doubling them.
 
 ## Required music and directed motion
 
-Use `python3 <plugin>/scripts/reel.py run build -- --spec /absolute/timeline.json --project /absolute/composition` for Samin production edits. This gate requires `audio_policy.music_required: true` and an actual `music` entry. The only waiver is an explicit user request documented in `audio_policy.user_opt_out`; do not invent that request to bypass a missing asset. The renderer checks file existence, audio stream, timeline/source bounds and finite volume automation. Nonzero volume proves signal configuration, not perceived audibility.
+Use `python3 <plugin>/scripts/reel.py run build -- --spec /absolute/timeline.json --project /absolute/composition`. The runner rejects a missing track when `audio_policy.music_required:true`. A music-free edit requires `audio_policy.music_free_reason` or a legacy `user_opt_out`; do not silently use it to avoid sourcing audio. The renderer validates supplied file/audio/bounds/volume; listening to the encoded mix remains essential.
 
 A partial timeline example for a **10-second** reel (replace paths and duration):
 

@@ -1,5 +1,5 @@
 import unittest
-from edit import map_words, caption_groups, phrase_groups, escape
+from edit import map_words, caption_groups, phrase_groups, escape, validate_editorial_graphics, editorial_words
 
 
 class TimelineTests(unittest.TestCase):
@@ -34,6 +34,18 @@ class TimelineTests(unittest.TestCase):
         for phrases in ([{"word_range":[0,3]}], [{"word_range":[0,4]}, {"word_range":[3,6]}], [{"word_range":[0,6],"line_breaks":[6]}]):
             with self.assertRaises(ValueError):
                 phrase_groups(words,phrases)
+
+    def test_editorial_graphics_are_independent_claim_linked_and_escaped(self):
+        graphic={'claim_id':'hook','text':'Real <screen> proof','accent_words':['Real'],
+                 'start':0,'end':2,'x':7,'y':14,'width':86,'animation':'rise'}
+        self.assertEqual(validate_editorial_graphics([graphic],3),[graphic])
+        markup=editorial_words(graphic)
+        self.assertIn('editorial-accent',markup)
+        self.assertIn('&lt;screen&gt;',markup)
+        for invalid in ({**graphic,'claim_id':''},{**graphic,'start':3},
+                        {**graphic,'x':90,'width':20},{**graphic,'animation':'blink'}):
+            with self.assertRaises(ValueError):
+                validate_editorial_graphics([invalid],3)
 
 
 if __name__=="__main__":

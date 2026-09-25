@@ -1,13 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Samin Reel Editorial Map",
+  "title": "Brandon Reel Editorial Map",
   "description": "Semantic decisions linked to an existing word transcript, asset index and renderer timeline. This is an internal planning/review format, not renderer input.",
   "$comment": "Structure is validated here. Reviewer checks time/range ordering, full beat coverage, asset/shot ID joins, source truth, score sums, and safe-area intersections. Do not treat schema validation as editorial approval.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "reel_id": {
       "type": "string",
@@ -106,6 +109,67 @@
     },
     "review": {
       "$ref": "#/$defs/review"
+    },
+    "hook_variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "spoken_claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "visual_job": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "spoken_claim",
+          "visual_job"
+        ]
+      }
+    },
+    "cta": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resource_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "face_to_camera": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "ready",
+            "delivered"
+          ]
+        }
+      },
+      "required": [
+        "keyword",
+        "resource_path",
+        "face_to_camera",
+        "status"
+      ]
     }
   },
   "required": [
@@ -548,6 +612,17 @@
             "hard_failures",
             "revision"
           ]
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "editorial_graphic_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": [
