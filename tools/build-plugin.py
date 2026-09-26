@@ -6,13 +6,13 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / 'plugins/samin-reel-engine'
+PLUGIN = ROOT / 'plugins/brandon-reel-engine'
 
 
 def main():
     target = PLUGIN / 'references'
     target.mkdir(parents=True, exist_ok=True)
-    receipt = {'source': 'skill/references', 'target': 'plugins/samin-reel-engine/references',
+    receipt = {'source': 'skill/references', 'target': 'plugins/brandon-reel-engine/references',
                'runtime': 'Configured local project; resolve with plugin scripts/reel.py context', 'files': []}
     for source in sorted((ROOT / 'skill/references').glob('*.md')):
         content = source.read_text()

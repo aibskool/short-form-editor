@@ -1,0 +1,28 @@
+{
+  "name": "brandon-reel-engine",
+  "version": "0.5.0-beta.1",
+  "description": "Brandon Reel Engine: source-backed reels from Brandon footage, real proof, independent captions and editorial graphics.",
+  "author": {
+    "name": "Brandon Meaux (fork maintainer)"
+  },
+  "repository": "https://github.com/aibskool/short-form-editor",
+  "license": "UNLICENSED",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Brandon Reel Engine",
+    "shortDescription": "Research, edit and review source-backed reels in Brandon’s calibrated style.",
+    "longDescription": "Eleven focused skills and a local rendering runtime for source-backed creator reels. Includes research, scripting, editing, giveaways and computer-use ClickUp board population. Bring your own footage, voice samples and provider accounts.",
+    "developerName": "Brandon Meaux",
+    "category": "Productivity",
+    "capabilities": [
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Turn my filming batch into a sourced reel.",
+      "Find proof visuals for this reel script.",
+      "Review this edit against my reference.",
+      "Turn this reference into scripted ClickUp cards and resource docs using computer use."
+    ],
+    "brandColor": "#49cf26"
+  }
+}

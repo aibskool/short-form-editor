@@ -34,8 +34,9 @@ class PrepareTakeTests(unittest.TestCase):
         if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
             raise unittest.SkipTest('FFmpeg and FFprobe are required')
         encoders = subprocess.check_output(['ffmpeg', '-hide_banner', '-encoders'], text=True)
-        if 'h264_videotoolbox' not in encoders:
-            raise unittest.SkipTest('Current production helper requires macOS h264_videotoolbox')
+        required = 'h264_videotoolbox' if sys.platform == 'darwin' else 'libx264'
+        if required not in encoders:
+            raise unittest.SkipTest(f'Current production helper requires {required}')
         cls.temp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temp.name)
         cls.source = cls.root / 'source.mov'

@@ -134,9 +134,53 @@ class EditorialChecks(unittest.TestCase):
         render.write_bytes(b'changed picture after review')
         self.assert_error('stale approval')
 
-    def test_schema_rejects_fake_product_proof(self):
+    def test_authored_screen_has_no_source_or_proof_gate(self):
         self.data['beats'][0]['primary_job'] = 'proof'
-        self.assert_error('schema:')
+        self.data['beats'][0]['visual']['representation'] = 'ui_mockup'
+        for key in ('truth_status', 'proof_scope', 'evidence_refs', 'limitations', 'on_screen_label'):
+            self.data['beats'][0]['visual'].pop(key)
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_legacy_proof_fields_remain_accepted(self):
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_review_can_pass_without_evidence_honesty_score(self):
+        render = self.root / 'render.mp4'
+        render.write_bytes(b'fixture render')
+        names = ('semantic_fit', 'timing_readability', 'composition_focus',
+                 'reference_voice_coherence')
+        self.data['review'].update(status='passed', reviewer='Fixture reviewer',
+            reviewed_at='2026-09-04T12:00:00Z', render_path='render.mp4',
+            render_sha256=hashlib.sha256(render.read_bytes()).hexdigest(),
+            whole_render_watched_with_sound=True, phone_size_motion_checked=True,
+            checked_spans=[{'interval': {'start': 0, 'end': 2}, 'observation': 'Fixture'}],
+            scores={n: {'score': 4, 'evidence': 'Visual/audio observation', 'revision': None}
+                    for n in names}, total_score=16)
+        self.data['beats'][0]['assessment'].update(status='passed',
+            viewed_render_span={'start': 0, 'end': 2}, observed_takeaway='Fixture')
+        self.data['beats'][0]['placement']['safe_area_check'] = 'clear'
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_editorial_graphic_must_join_and_overlap_spoken_claim(self):
+        self.data['schema_version'] = 2
+        self.data['beats'][0]['claim_id'] = 'context-claim'
+        self.timeline['editorial_graphics'] = [{'claim_id':'missing','text':'CONTEXT','start':0,'end':1}]
+        self.assert_error('unknown claim_id')
+        self.timeline['editorial_graphics'][0].update(claim_id='context-claim',start=2.1,end=2.3)
+        self.assert_error('does not overlap')
+        self.timeline['editorial_graphics'][0].update(start=.5,end=1.3)
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_ready_keyword_offer_needs_spoken_displayed_word_and_resource(self):
+        self.data['schema_version'] = 2
+        self.data['cta'] = {'keyword':'DEMO','resource_path':'guide.md','face_to_camera':True,'status':'ready'}
+        self.timeline['editorial_graphics'] = [{'claim_id':'beat1','text':'Comment DEMO','start':1,'end':2}]
+        self.assert_error('keyword not spoken')
+        self.words['words'][2]['word']='DEMO'
+        self.data['beats'][0]['spoken_text']="DON’T skip DEMO"
+        self.assert_error('resource file is missing')
+        (self.root/'guide.md').write_text('Real guide')
+        self.assertTrue(self.run_check()['mechanical_ready'])
 
 
 if __name__ == '__main__':

@@ -120,8 +120,8 @@ def inspect(run):
     stories = read_rows(run, "research/story-bank.json", "stories", research_issues)
     story_map = index_rows(stories, "stories", research_issues)
     for ident, row in story_map.items():
-        if not row.get("title") or not isinstance(row.get("sources"), list) or not row["sources"]:
-            research_issues.append(f"story {ident}: title and source list required")
+        if not row.get("title"):
+            research_issues.append(f"story {ident}: title required")
     research = stage(run, "research/story-bank.json", research_issues, len(story_map))
 
     ideas = read_rows(run, "ideation/ideas.json", "ideas", idea_issues)

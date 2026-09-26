@@ -1,0 +1,36 @@
+{
+  "output": {
+    "width": 720,
+    "height": 1280,
+    "fps": 30
+  },
+  "spoken_captions": {
+    "font_size": 34,
+    "font_family": "Arial Black",
+    "accent": "#49cf26",
+    "uppercase": true,
+    "hold": 0.06,
+    "max_words": 3,
+    "max_chars": 24,
+    "omit_terminal_punctuation": true,
+    "background": "rgba(0,0,0,0)",
+    "emphasis": []
+  },
+  "editorial_graphics": [
+    {
+      "start": 0,
+      "end": 2,
+      "claim_id": "hook",
+      "role": "hook",
+      "text": "Verified idea",
+      "accent_words": [
+        "Verified"
+      ],
+      "x": 6,
+      "y": 14,
+      "width": 88,
+      "font_size": 76,
+      "animation": "rise"
+    }
+  ]
+}

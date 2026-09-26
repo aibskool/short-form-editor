@@ -1,14 +1,14 @@
 {
-  "name": "samin-reel-engine",
+  "name": "brandon-reel-engine",
   "interface": {
-    "displayName": "Samin Reel Engine"
+    "displayName": "Brandon Reel Engine"
   },
   "plugins": [
     {
-      "name": "samin-reel-engine",
+      "name": "brandon-reel-engine",
       "source": {
         "source": "local",
-        "path": "./plugins/samin-reel-engine"
+        "path": "./plugins/brandon-reel-engine"
       },
       "policy": {
         "installation": "AVAILABLE",

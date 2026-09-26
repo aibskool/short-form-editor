@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import subprocess
+import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -90,7 +91,8 @@ def main():
     filters.append('[ac]anull[aout]' if speed==1 else f'[ac]atempo={speed}[aout]')
     output=Path(a.output).resolve();output.parent.mkdir(parents=True,exist_ok=True)
     graph=output.with_suffix('.ffmpeg.txt');graph.write_text(';\n'.join(filters))
-    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',a.source,'-filter_complex_script',str(graph),'-map','[vout]','-map','[aout]','-c:v','h264_videotoolbox','-b:v','10M','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',str(output)],check=True)
+    video_encoder = ['-c:v','h264_videotoolbox','-b:v','10M'] if sys.platform == 'darwin' else ['-c:v','libx264','-crf','18','-preset','medium']
+    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',a.source,'-filter_complex_script',str(graph),'-map','[vout]','-map','[aout]',*video_encoder,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',str(output)],check=True)
     result={'words':mapped,'duration':cursor/speed,'source_video_offset':spec.get('source_video_offset',0),'speed':speed}
     if frame_rate is not None: result['frame_rate']=str(frame_rate)
     Path(a.words_output).write_text(json.dumps(result,indent=2)+'\n')

@@ -78,6 +78,33 @@ def check(map_path):
                 if aid not in assets: errors.append(f'{label}: unknown asset {aid}')
                 elif 'shot_ids' in assets[aid] and not shot_ids.intersection(assets[aid]['shot_ids']): errors.append(f'{label}: asset {aid} is not joined to a declared beat shot')
         if cursor != len(words): errors.append('beats: trailing words are not mapped')
+        claims = {b.get('claim_id', b['beat_id']): b for b in data['beats']}
+        graphics = timeline.get('editorial_graphics', [])
+        for i, graphic in enumerate(graphics):
+            claim_id = graphic.get('claim_id')
+            if claim_id not in claims:
+                errors.append(f'editorial graphic {i}: unknown claim_id {claim_id}')
+                continue
+            beat = claims[claim_id]
+            span = beat['output_interval']
+            if max(graphic['start'], span['start']) >= min(graphic['end'], span['end']):
+                errors.append(f'editorial graphic {i}: does not overlap spoken claim {claim_id}')
+        for beat in data['beats']:
+            for gid in beat.get('editorial_graphic_ids', []):
+                if not gid.startswith('editorial-') or not gid[10:].isdigit() or int(gid[10:]) >= len(graphics):
+                    errors.append(f"{beat['beat_id']}: unknown editorial graphic {gid}")
+        cta = data.get('cta')
+        if cta:
+            keyword = cta['keyword'].strip()
+            if keyword.casefold() not in normalized(' '.join(w.get('word', w.get('text', '')) for w in words)):
+                errors.append('cta: keyword not spoken in selected take')
+            if not any(keyword.casefold() in normalized(item.get('text', '')) for item in graphics):
+                errors.append('cta: keyword missing from editorial graphics')
+            if cta['status'] in {'ready', 'delivered'}:
+                if not cta['resource_path'] or not (path.parent / cta['resource_path']).resolve().is_file():
+                    errors.append('cta: ready/delivered resource file is missing')
+                if not cta['face_to_camera']:
+                    errors.append('cta: ready/delivered offer must return to face-to-camera')
         review = data['review']; scores = review['scores']
         expected_total = sum(s['score'] for s in scores.values()) if scores is not None else None
         if review['total_score'] != expected_total: errors.append('review: total_score does not equal component scores')
