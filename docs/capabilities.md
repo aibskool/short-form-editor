@@ -23,7 +23,7 @@ Use `python plugins/brandon-reel-engine/scripts/reel.py run ACTION -- --help` fo
 
 ## Editing controls
 
-Presenter-only, split and full-screen B-roll layouts; source in/out ranges; pixel crops; image/video fitting; directed camera moves; independent short spoken captions and larger green/white editorial graphics; timed source labels; resource previews; authored explanatory scenes; local SFX; continuous music with volume envelopes; final encode and loudness receipts.
+Presenter-only, split and full-screen B-roll layouts; source in/out ranges; pixel crops; image/video fitting; directed camera moves; independent short spoken captions and larger green/white editorial graphics; timed source labels; resource previews; authored explanatory scenes; local SFX and purposeful transitions; no background music; final encode and loudness receipts.
 
 ## Source judgment
 
@@ -31,4 +31,4 @@ Map every beat to a viewer question, visual job, claim, source, important spoken
 
 ## Creative quality
 
-A legible opening; claim-led timing without a fixed cut interval; actual readable proof; speech-intelligible music and effects; undamaged word boundaries; no caption/focal-detail collision; real giveaway contents. Store what was observed, what failed and what was repaired. Check the current render rather than carrying a previous version’s pass forward.
+A legible opening; claim-led timing without a fixed cut interval; actual readable proof; speech-intelligible effects without background music; undamaged word boundaries; no caption/focal-detail collision; real giveaway contents. Store what was observed, what failed and what was repaired. Check the current render rather than carrying a previous version’s pass forward.

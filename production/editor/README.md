@@ -1,6 +1,6 @@
 # Original-footage reel editor
 
-This local editing foundation preserves Brandon's recorded picture and voice. It uses pinned **HyperFrames 0.8.27**, HeyGen's open-source HTML/GSAP video renderer, to assemble source cuts, captions, split screens, full-screen visuals, zooms, instrumental music and sound accents. It does not create an avatar, replace speech, upload footage, or call a paid video API.
+This local editing foundation preserves Brandon's recorded picture and voice. It uses pinned **HyperFrames 0.8.27**, HeyGen's open-source HTML/GSAP video renderer, to assemble source cuts, captions, split screens, full-screen visuals, zooms, sound accents and purposeful transitions. It does not create an avatar, replace speech, upload footage, or call a paid video API.
 
 ## Run
 
@@ -34,9 +34,9 @@ For visual shots, use `media` for a local image/video or `graphic` for an explic
 
 `spoken_captions` groups the actual word-timed speech in short lower-third phrases. Legacy `captions` still builds, but a timeline may not contain both keys. `font_size`, `font_family`, `font_path`, `accent`, `emphasis`, `phrases`, `hold`, `max_words`, `max_chars` and transparent `background` remain available. `caption_y` and `spoken_caption_visible` are shot-level adjustments. The default accent is Brandon's requested `#49cf26`; default size is smaller than the older Council example.
 
-`editorial_graphics` is an independent list of `{start,end,claim_id,role,text,accent_words,x,y,width,font_size,align,animation}`. Each graphic is a timed overlay, not transcript coverage. The renderer validates bounds and escapes its words; `accent_words` marks literal tokens in green, while other words are white. `animation` may be `rise`, `pop`, `fade`, or `none`. Put proof attribution in `labels`, not in either text system. The source-backed editorial checker verifies graphic-to-claim joins when an editorial map is supplied. The exact font/geometry are provisional until the 20-second Brandon calibration is reviewed.
+`editorial_graphics` is an independent list of `{start,end,claim_id,role,text,accent_words,x,y,width,font_size,align,animation}`. Each graphic is a timed overlay, not transcript coverage. The renderer validates bounds and escapes its words; `accent_words` marks literal tokens in green, while other words are white. `animation` may be `rise`, `pop`, or `fade`. Put proof attribution in `labels`, not in either text system. The source-backed editorial checker verifies graphic-to-claim joins when an editorial map is supplied. The exact font/geometry are provisional until the 20-second Brandon calibration is reviewed.
 
-`zooms` accepts output-time `{ "at": 5, "scale": 1.1, "duration": 0.16 }` entries. `sfx` accepts a supplied local audio path or the original, synthesized `soft_pop` accent, with `at` and a calibrated `gain`. When `audio_policy.music_required` is true, the build checks for an actual music track. For an intentional music-free edit, set `music_required:false` and explain it in `music_free_reason`. Legacy `user_opt_out` remains accepted.
+`zooms` accepts output-time punch-ins. `transitions` accepts `{at,duration,kind}` with `green_wipe`, `blur_flash` or `light_leak`; use selected semantic boundaries. `sfx` accepts local audio or `soft_pop`. Set `audio_policy.music_required:false` and omit `music` for every Brandon short-form export.
 
 ## Verification receipt
 
@@ -67,29 +67,8 @@ V2 adds `media_crop: [x,y,width,height]` in original source pixels. The builder 
 
 `scene.kind: artifact_preview` shows actual filenames and exact giveaway excerpts; it is a resource preview, never a fabricated model response. Its `reveals` are deterministic text states. Use sparingly: real application/source captures take priority. The v2 reference calibration already carries its original sound effects in the A-roll audio; keep `sfx` empty to avoid doubling them.
 
-## Required music and directed motion
+## No music, animated graphics and directed transitions
 
-Use `python3 <plugin>/scripts/reel.py run build -- --spec /absolute/timeline.json --project /absolute/composition`. The runner rejects a missing track when `audio_policy.music_required:true`. A music-free edit requires `audio_policy.music_free_reason` or a legacy `user_opt_out`; do not silently use it to avoid sourcing audio. The renderer validates supplied file/audio/bounds/volume; listening to the encoded mix remains essential.
+The builder rejects background music entries and `music_required:true`. Brandon adds music on platform. Keep the actual recorded voice and selected effects clear. Use `scene.kind` `kinetic_ranking`, `kinetic_stat` or `kinetic_comparison` with `title`, optional `tag`/`source`, and 1–5 `items` (`label`, `value`, optional `accent`). The scene animates title, rows, bars and source credit. All editorial text and labels animate. Every image-based card or illustration needs a directed `media_zoom` or `media_motion`; check its actual endpoint. `transitions` uses timed visual effects at selected boundaries; no fixed cut interval or mandatory split screen.
 
-A partial timeline example for a **10-second** reel (replace paths and duration):
-
-```json
-{
-  "audio_policy": {"music_required": true},
-  "music": [{
-    "path": "audio/instrumental.wav", "start": 0, "end": 10,
-    "source_start": 0, "gain": 0.26,
-    "envelope": [{"t":0,"v":0.26},{"t":0.05,"v":0.34},
-      {"t":4.6,"v":0.34},{"t":5.1,"v":0.26},
-      {"t":9,"v":0.26},{"t":10,"v":0}]
-  }]
-}
-```
-
-`start`/`end` use the final reel clock. `source_start` selects the musical in-point. Envelope `t` is relative to the music clip start; `v` is its **absolute volume**, replacing `gain` during automation, not multiplying it. Values are 0–1 and times increase within clip duration. Keep the file longer than the selected interval; there is no automatic looping. Index source/license/credit and carry required credit into the publication packet. Finalize the full mixed output and listen at normal volume.
-
-For a directed camera move, a media shot can specify `media_motion: {"from":{"scale":1.02,"x_percent":0,"y_percent":0},"to":{"scale":1.10,"x_percent":-2,"y_percent":0},"ease":"none"}`. The move is applied to the non-timed camera wrapper while the timed media and background remain compositor-controlled. It takes precedence over `media_zoom`. Positive x/y moves the media right/down. Inspect the start/middle/end; a camera move must preserve the required crop text and source context. Use native recorded motion first when it communicates the claim better.
-
-For tightened existing speech, use `production/retime_timeline.py --help` (or plugin `run retime`). Prepare the 1× A-roll and word list first, retime outer cues, then plan music on the final clock. Recheck actions inside recordings and effect tails manually. The current worked revision is `production/pilots/mobbin-v2/`; its technical checks are distinct from perceptual approval.
-
-The finalizer leaves 0.8 dB of pre-AAC headroom by default (`--codec-headroom-db`) while checking the requested decoded true-peak target. This accounts for codec overshoot observed with stronger transient SFX. The final decoded measurement remains authoritative; adjust headroom and re-export if `true_peak_review_needed` is true. Video packets are copied unchanged.
+For tightened speech, use `production/retime_timeline.py --help` and recheck the resulting animation and transition cue positions against the encoded voice. Historical upstream pilots with music remain labeled examples, not Brandon export instructions.

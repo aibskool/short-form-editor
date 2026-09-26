@@ -16,6 +16,7 @@ import subprocess
 import wave
 from motion_scenes import scene_markup, CSS as MOTION_CSS
 from editorial_scenes import artifact_markup, CSS as ARTIFACT_CSS
+from kinetic_scenes import kinetic_markup, CSS as KINETIC_CSS
 
 HERE = Path(__file__).resolve().parent
 
@@ -165,7 +166,7 @@ def validate_editorial_graphics(graphics, duration):
         width = finite_number(item.get("width", 88), f"editorial graphic {index} width")
         if not 0 <= x <= 100 or not 0 <= y <= 100 or width <= 0 or x + width > 100:
             raise ValueError(f"editorial graphic {index} exceeds canvas")
-        if item.get("animation", "rise") not in {"rise", "pop", "fade", "none"}:
+        if item.get("animation", "rise") not in {"rise", "pop", "fade"}:
             raise ValueError(f"editorial graphic {index} has unknown animation")
         if item.get("align", "left") not in {"left", "center", "right"}:
             raise ValueError(f"editorial graphic {index} has unknown alignment")
@@ -232,11 +233,11 @@ def build(spec_path, project):
     duration = sum(float(s["end"]) - float(s["start"]) for s in segments)
     music = spec.get("music", [])
     music_required = bool(spec.get("audio_policy", {}).get("music_required", False))
-    if music_required and not music:
-        raise ValueError("audio_policy.music_required=true but music is missing")
+    if music_required or music:
+        raise ValueError("Brandon short-form exports must not contain background music; add music on the platform")
     policy = spec.get("audio_policy", {})
-    if policy.get("music_required") is False and not music and not (policy.get("music_free_reason") or policy.get("user_opt_out")):
-        raise ValueError("music-free edit needs audio_policy.music_free_reason (or legacy user_opt_out)")
+    if policy.get("music_required") is not False:
+        raise ValueError("audio_policy.music_required must be false for Brandon short-form exports")
     output = spec.get("output", {})
     width, height, fps = int(output.get("width", 1080)), int(output.get("height", 1920)), int(output.get("fps", 30))
     split_fraction = float(output.get("split_fraction", 0.5))
@@ -293,6 +294,8 @@ def build(spec_path, project):
         if shot.get("media"):
             path = media(shot["media"])
             image = Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg", ".avif"}
+            if image and not shot.get('media_motion') and abs(float(shot.get('media_zoom', 1))-1) < .0001:
+                raise ValueError(f"shot {i} still image needs directed media_motion or media_zoom")
             tag = "img" if image else "video"
             extra = '' if image else f' muted playsinline data-media-start="{shot.get("source_start",0)}"'
             media_style = f'{rect}object-fit:{escape(shot.get("fit","contain"))};object-position:{escape(shot.get("object_position","50% 50%"))};background:{escape(shot.get("background","#111"))};'
@@ -325,7 +328,9 @@ def build(spec_path, project):
                 motion_to = motion_values(motion["to"], "to")
                 animations.append(f'tl.fromTo("#broll-camera-{i}",{json.dumps(motion_from,separators=(",",":"))},{json.dumps({**motion_to,"duration":end-start,"ease":"none"},separators=(",",":"))},{start});')
         elif shot.get("scene"):
-            maker = artifact_markup if shot["scene"].get("kind") == "artifact_preview" else scene_markup
+            kind = shot["scene"].get("kind")
+            maker = (artifact_markup if kind == "artifact_preview" else
+                     kinetic_markup if kind in {"kinetic_ranking", "kinetic_stat", "kinetic_comparison"} else scene_markup)
             scene, motion = maker(shot["scene"], f'motion-{i}', start, end, width, split_height if split else height)
             parts.append(scene)
             animations.extend(motion)
@@ -334,6 +339,7 @@ def build(spec_path, project):
             cards = ''.join(f'<div class="role" id="role-{i}-{j}"><strong>{escape(c.get("label",""))}</strong><span>{escape(c.get("text",""))}</span></div>' for j,c in enumerate(graphic.get("cards",[])))
             parts.append(f'<section id="graphic-{i}" class="graphic clip" {timing} style="{rect}"><div class="graphic-inner"><p class="eyebrow">{escape(graphic.get("eyebrow","CONCEPTUAL ILLUSTRATION"))}</p><h1>{escape(graphic.get("title",""))}</h1><div class="roles">{cards}</div><p class="footer">{escape(graphic.get("footer",""))}</p></div></section>')
             animations.append(f'tl.fromTo("#graphic-{i} .role",{{y:18,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.08,ease:"power2.out"}},{start});')
+            animations.append(f'tl.fromTo("#graphic-{i} h1, #graphic-{i} .eyebrow, #graphic-{i} .footer",{{y:16,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.10,ease:"power2.out"}},{start});')
         else:
             raise ValueError(f"shot {i} needs media or graphic for {layout}")
     for zoom in spec.get("zooms", []):
@@ -389,6 +395,19 @@ def build(spec_path, project):
         color = escape(flash.get("color", "#49cf26"))
         parts.append(f'<div id="light-leak-clip-{i}" class="clip" data-start="{at}" data-duration="{length}" data-track-index="7" style="position:absolute;inset:0;z-index:7;pointer-events:none;"><div id="light-leak-{i}" style="position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at 95% 30%,{color},transparent 70%);"></div></div>')
         animations.append(f'tl.fromTo("#light-leak-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.3}}},{at});tl.to("#light-leak-{i}",{{opacity:0,duration:{length*.7}}},{at+length*.3});tl.set("#light-leak-{i}",{{opacity:0}},{at+length});')
+    for i, transition in enumerate(spec.get("transitions", [])):
+        at = finite_number(transition.get("at"), f"transition {i} at")
+        length = finite_number(transition.get("duration", .24), f"transition {i} duration")
+        kind = transition.get("kind")
+        if kind not in {"green_wipe", "blur_flash", "light_leak"} or not 0 <= at < duration or not 0 < length <= .8 or at + length > duration:
+            raise ValueError(f"transition {i} has invalid kind or bounds")
+        background = {"green_wipe":"linear-gradient(100deg,#49cf26 0%,#49cf26 24%,#f5fff0 27%,transparent 48%)", "blur_flash":"linear-gradient(90deg,transparent,#f6fff3,transparent)", "light_leak":"radial-gradient(ellipse at 90% 30%,#ef8f2c,transparent 65%)"}[kind]
+        parts.append(f'<div id="transition-{i}" class="clip" data-start="{at}" data-duration="{length}" data-track-index="8" style="position:absolute;inset:0;z-index:12;pointer-events:none;opacity:0;background:{background};"></div>')
+        if kind == "green_wipe":
+            animations.append(f'tl.fromTo("#transition-{i}",{{opacity:.85,xPercent:-100}},{{opacity:.85,xPercent:110,duration:{length},ease:"power2.inOut"}},{at});')
+        else:
+            peak = .45 if kind == "blur_flash" else .28
+            animations.append(f'tl.fromTo("#transition-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.35}}},{at});tl.to("#transition-{i}",{{opacity:0,duration:{length*.65}}},{at+length*.35});')
     sound_tracks = {}
     for i, sound in enumerate(spec.get("sfx", [])):
         if sound.get("kind") == "soft_pop":
@@ -411,7 +430,8 @@ def build(spec_path, project):
         audio.append(f'<audio id="music-{i}" src="{relative}" {timing}{automation}></audio>')
     for i, label in enumerate(spec.get("labels", [])):
         parts.append(f'<div id="label-{i}" class="editor-label clip" data-start="{label["start"]}" data-duration="{label["end"]-label["start"]}" data-track-index="6" style="top:{float(label.get("y",4))}%;left:{float(label.get("x",5))}%;">{escape(label["text"])}</div>')
-    css = f'''{font_css}{MOTION_CSS}{ARTIFACT_CSS}
+        animations.append(f'tl.fromTo("#label-{i}",{{opacity:0,y:12}},{{opacity:1,y:0,duration:.22,ease:"power2.out"}},{float(label["start"])});')
+    css = f'''{font_css}{MOTION_CSS}{ARTIFACT_CSS}{KINETIC_CSS}
     *{{box-sizing:border-box}} body{{margin:0;background:#111}} #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;background:#111}}
     #presenter{{position:absolute;inset:0;width:{width}px;height:{height}px;overflow:hidden}} #presenter-camera{{position:relative;width:100%;height:100%;transform-origin:50% 38%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}} .broll,.graphic{{position:absolute;left:0;top:0;z-index:2}}

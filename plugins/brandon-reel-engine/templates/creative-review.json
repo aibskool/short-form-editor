@@ -1,16 +1,5 @@
 {
   "render_sha256": "<actual reviewed render hash>",
-  "music": {
-    "status": "pending",
-    "asset_id": null,
-    "user_opt_out": null,
-    "source_in": null,
-    "beat_markers_seconds": [],
-    "cue_checks": [],
-    "energy_plan": [],
-    "audibility_checks": [],
-    "ending_check": "pending"
-  },
   "speech": {
     "edl_path": null,
     "aroll_sha256": null,
@@ -103,5 +92,17 @@
     "comparison_path": null,
     "reviewer": null,
     "approved_render_sha256": null
+  },
+  "audio_policy": {
+    "background_music": "absent_pending_listen",
+    "platform_music": "added_by_brandon_if_desired"
+  },
+  "graphics_motion": {
+    "animated_text_cards_illustrations": "pending",
+    "checks": []
+  },
+  "transitions": {
+    "purposeful_boundaries": "pending",
+    "checks": []
   }
 }

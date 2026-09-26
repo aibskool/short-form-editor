@@ -72,17 +72,9 @@
     }
   ],
   "audio_policy": {
-    "music_required": true
+    "music_required": false,
+    "music_free_reason": "Brandon adds music on platform"
   },
-  "music": [
-    {
-      "path": "music.wav",
-      "start": 0,
-      "end": 12,
-      "source_start": 0,
-      "gain": 0.26
-    }
-  ],
   "spoken_captions": {
     "max_words": 3,
     "max_chars": 24,

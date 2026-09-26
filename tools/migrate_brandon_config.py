@@ -40,7 +40,11 @@ def migrate_timeline(source, target, dry_run=False):
     changed = 'captions' in value
     if changed:
         value['spoken_captions'] = value.pop('captions')
-    # Existing labels, scene, graphic, split_fraction, music and audio_policy retain their meanings.
+    # Preserve legacy source unchanged while making a buildable Brandon export.
+    removed_music = len(value.pop('music', []))
+    old_policy = value.get('audio_policy', {})
+    value['audio_policy'] = {'music_required': False, 'music_free_reason': 'Brandon adds music on the platform'}
+    # Other legacy labels, scenes, graphics and split fractions retain their meanings.
     if target.exists():
         if read_json(target) != value:
             raise ValueError(f'existing target differs: {target}')
@@ -49,7 +53,8 @@ def migrate_timeline(source, target, dry_run=False):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(value, indent=2) + '\n')
     return {'status': 'would_create' if dry_run else 'created', 'target': str(target),
-            'legacy_captions_converted': changed, 'editorial_graphics_inferred': False}
+            'legacy_captions_converted': changed, 'editorial_graphics_inferred': False,
+            'removed_music_entries': removed_music, 'previous_audio_policy': old_policy}
 
 
 def main():

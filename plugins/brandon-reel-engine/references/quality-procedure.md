@@ -8,8 +8,8 @@ Read `production/editorial-judgment.md` for the five scored dimensions and hard 
 2. Check static source claims against the original source. Read the exact crop, not just its heading. Count figures/roles manually where a number matters. Read app/model names and compare input/output examples. Remove wrong or irrelevant evidence.
 3. Check a frame near each shot's first useful moment and reading hold. Empty/black/covered B-roll, clipped faces, hidden captions and tiny required text are failures. If source text is dense, crop to the specific clause rather than shrinking a whole page.
 4. Run HyperFrames check on the built project. Inspect its actual errors/warnings; do not call disabled motion assertions passed. The editorial checker checks structure and joins, not truth or readability.
-5. Confirm the actual instrumental music file, selected in-point and beat/energy map exist when the current audio plan requires music, or record the explicit music-free reason. Verify opening action/diversity, moving B-roll source bounds and both endpoints of each static-proof zoom. Missing required music is a completion failure even if the MP4 has a valid voice/SFX stream.
-6. Review intra-sentence idle gaps as well as false starts. For gaps above roughly 180 ms, inspect waveform and real word boundaries; shorten expendable silence toward 70–120 ms only where the phrase remains natural. Check the frame-aligned keep EDL preserves consonants, breaths that carry delivery, every intended word and the complete CTA. After any cut, confirm words, captions, shots, labels, music and SFX all use the new timebase. ASR gaps and silence-detector output propose cuts; they do not approve them.
+5. Confirm `music` is empty and `audio_policy.music_required:false`; inspect animation of every on-screen text, card and illustration. Check purposeful transition effects at relevant boundaries, opening variety and moving B-roll source bounds.
+6. Review intra-sentence idle gaps as well as false starts. For gaps above roughly 180 ms, inspect waveform and real word boundaries; shorten expendable silence toward 70–120 ms only where the phrase remains natural. Check the frame-aligned keep EDL preserves consonants, breaths that carry delivery, every intended word and the complete CTA. After any cut, confirm words, captions, shots, labels, transitions and SFX all use the new timebase. ASR gaps and silence-detector output propose cuts; they do not approve them.
 
 Before approving a sourced shot, finish: **“At [time], I can read/recognize [exact focal detail]; it explains [specific spoken action/relationship].”** If the answer is only “the page is there” or “it says the same noun,” selection failed. Save the proposed crop and the rejected alternative. Compare reference/candidate caption frames at equal display size before rendering the full cut; matching resolution alone does not match typography or treatment.
 
@@ -37,71 +37,20 @@ Play the first 3–5 seconds at **1× and phone size**, then identify the first 
 
 Record `opening.motion_cadence` from the actual export: `first_visible_action_seconds`, `first_visible_action`, `shot_spans`, `unchanged_visual_spans`, `max_observed_unchanged_seconds`, `split_intro`, `normal_speed_checks` and `status`. Each span contains `{start,end,duration,observed}` in reel seconds. `split_intro` records `{used,duration_seconds,reason}` only when chosen. Each normal-speed check records `{start,end,display_width_px,observed,evidence_path,reviewer}`. Numeric timing alone does not prove usefulness or retention.
 
-## Check music, opening energy and motion explicitly
+## Check audio, opening energy and motion explicitly
 
-The historical upstream Mobbin review makes these checks mandatory. Complete them against the **encoded final render**, not the intended timeline:
+Complete these checks against the encoded final render:
 
 | Check | What to inspect and record | Repair when weak |
 |---|---|---|
-| Background music | At normal phone volume, listen to the opening, a speech-dense body span and CTA. Name the audible rhythmic bed and musical ending; record timecodes. A file or waveform alone cannot prove audibility. | Add the missing instrumental or raise/rebalance the bed; never silently deliver voice/SFX only when the current edit requires music. |
-| Beat/energy design | Mark observed accents and at least the opening, one body payoff and ending decisions. State whether reveals follow their spoken anchors and musical accents without awkwardly cutting speech. | Change musical in-point, accent placement or clip timing; preserve the spoken meaning. |
-| Stronger SFX | Listen to the intro's strongest accent and representative body clicks/reveals. Identify sounds that are actually heard at normal volume, and check every nearby word is intelligible. | Raise an inaudible effect, or shorten/move/EQ it if it masks a consonant; do not simply maximize all gains. |
-| First frame / opening | Run the cold-view test and 1× motion test. Log first action, shot and unchanged-image durations, split choice and useful changes across 3–5 seconds. Judge usefulness and clarity without a fixed duration threshold. | Keep the hook legible while meaningful action or Brandon’s delivery carries it; use full-screen proof where needed. |
-| Motion and diversity | Count seconds of actual recorded motion, authored motion, camera movement on stills and intentional still holds separately. Note distinct source types/views, split/full-screen changes and any repetitive run. | Replace weak static/repeated views with relevant moving footage; use full-screen motion or a new useful source region where it helps. More motion is preferred when it preserves comprehension. |
-| Static-proof camera move | Inspect the start and end crop at phone size and a frame during its reading hold. Name the exact detail and qualification still visible. | Slow, reduce or redirect the zoom; use a justified stable hold rather than clipping evidence. |
+| No background music | Listen across the full export for a musical bed, including source audio. Confirm the timeline contains no music. | Remove the bed and rerender. Brandon adds music on platform. |
+| Speech and SFX | Listen at phone volume to intro, body and ending; log actual audible onset and consonant clarity. | Move, shorten or rebalance a selected effect. |
+| First frame/opening | Run the cold-view and normal-speed motion checks; compare claim clarity with all supplied reels. | Choose a stronger physical action, face delivery or relevant proof. |
+| Animated graphics | Inspect entrances and internal motion of every visible text/card/illustration, including labels. | Animate a meaningful reveal, number, sweep, or camera move; remove inert decoration. |
+| Transitions | Record the boundary, effect and why it helps the new section; inspect actual frames around it. | Add or revise purposeful blur, wipe or light leak; avoid repetitive effects at every cut. |
+| Proof and variety | Inspect real screen details, illustrative footage, face and full-screen choices against each spoken claim. | Crop relevant proof, change view or simplify when weak. |
 
-Copy `<plugin>/templates/creative-review.json` beside the timeline as `creative-review.json`; it supplements existing schemas and is **not** a new renderer input. Populate observations after inspection. Do not convert planned numbers into observed results:
-
-```json
-{
-  "render_sha256": "<actual reviewed render hash>",
-  "music": {
-    "status": "pending",
-    "asset_id": null,
-    "user_opt_out": null,
-    "source_in": null,
-    "beat_markers_seconds": [],
-    "cue_checks": [],
-    "energy_plan": [],
-    "audibility_checks": [],
-    "ending_check": "pending"
-  },
-  "speech": {
-    "edl_path": null,
-    "aroll_sha256": null,
-    "words_path": null,
-    "playback_speed": 1,
-    "pause_cut_checks": [],
-    "retimed_artifacts": [],
-    "complete_speech_check": "pending",
-    "first_word_check": "pending",
-    "cta_and_last_word_check": "pending"
-  },
-  "sfx": {"accent_checks": [], "speech_masking_check": "pending"},
-  "opening": {"window_seconds": 5, "observed_actions": [], "body_comparison": "pending"},
-  "motion": {
-    "recorded_motion_seconds": null,
-    "authored_motion_seconds": null,
-    "camera_move_on_still_seconds": null,
-    "intentional_still_seconds": null,
-    "distinct_source_types_or_views": [],
-    "full_screen_motion_spans": [],
-    "static_endpoint_checks": [],
-    "repetition_findings": []
-  },
-  "playback_review": {"full_with_sound": false, "phone_size": false, "reviewer": null, "method": null, "limitations": []},
-  "gate_results": []
-}
-```
-
-Use music status `present`, `music_free`, `blocked` or `pending`; `opted_out` requires a recorded reason in `audio_policy`. Audibility/accent checks should contain `{time, observed, repair_needed}`; opening actions should contain `{time, action, new_detail}`. Record music `energy_plan` as `{start, end, intent}` and timed spans as `{start, end}`. Treat motion categories as non-overlapping dominant treatments per span so their seconds are comparable; this is an editorial description, not an automatic quality score or minimum motion percentage. Record a deliberate still or unusual opening choice with its proof/readability reason. Keep unobserved listening or motion fields pending.
-
-Make timing/evidence fields useful to the next operator:
-
-- `music.beat_markers_seconds` uses **final reel seconds**, derived from the actual selected musical in-point. Each `cue_checks` entry names `{shot_id, spoken_anchor, beat_reel_time, visual_reel_time, observed, evidence_path}`. A planned beat grid and a detected BPM do not prove the revealed action feels aligned; note any deliberate lead/lag.
-- Each SFX `accent_checks` entry also names `{asset_id, action_reel_time, audible_onset_reel_time, voice_words_at_cue, observed, evidence_path}`. Locate the sound's audible onset inside the file; placing a file with leading silence on the cut is insufficient. A sweep may intentionally lead a transition; document that choice instead of forcing identical timestamps.
-- Each speech `pause_cut_checks` entry names `{source_path, source_clock, source_range, source_cut_frames, source_fps, final_join_time, gap_before_ms, gap_after_ms, adjacent_words, reason, join_observation, evidence_path}`. `source_range` is `[start,end]` in seconds of the named EDL input (master, proxy or prior edited A-roll); identify that clock explicitly. `source_cut_frames` is `[first,last_exclusive]` of the removed interval in that same input. Use actual measured values and the verified CFR source rate. `retimed_artifacts` lists the new word, caption, shot, label, music and SFX records. Set complete-speech checks only after normal-speed playback establishes that all intended words, consonants and the CTA survive. A matching ASR transcript is supporting evidence, not a listening substitute.
-- Each `gate_results` entry names `{gate, status, observed, evidence_path, repair, recheck}` with status `passed`, `failed` or `pending`. Evidence may be a saved frame, short encoded review clip, listening note tied to the current hash, or a technical receipt appropriate to the claim. Record who or what actually perceived it and any limitations. Paths must point to existing artifacts; do not invent a completed review clip.
+Copy `<plugin>/templates/creative-review.json` beside the timeline. Record the exact render hash, source-backed claim checks, no-music listening check, animation and transition spans, caption and editorial graphic checks, SFX, cold-view and full playback observations. A planned cue is not observed playback. Historical Samin/Mobbin notes below describe that earlier pilot and do not change Brandon's audio policy.
 
 ## Concrete pass/fail examples
 
@@ -109,8 +58,8 @@ These are **illustrative decisions**, not claims that a particular render alread
 
 | Gate | A pass establishes | Fail or pending example |
 |---|---|---|
-| Music | The reviewer hears the rhythmic bed beneath intelligible speech in 0–5 seconds, a dense body span and the final CTA; the ending resolves/fades cleanly. The note identifies the current render and those spans. | `music.mp3` exists and LUFS passes, but no one checked the mix: **pending**. The bed is absent or cannot be heard at normal playback volume, with no opt-out: **failed**. |
-| Beats and stronger SFX | The reviewer hears a distinct intro accent at the important visual reveal, plus clear body action accents, and can understand the nearby words. Cue records identify actual musical/visual/audible-onset times. | SFX file starts at 1.40 s but its silence delays the click until 1.85 s after the visible action; move its useful onset. A louder whoosh hides a word: **failed** until repaired. |
+| No background music | Full playback confirms voice and selected effects without any music, including music embedded in source audio. | Any audible bed or a `music` timeline entry: **failed**. Unreviewed audio: **pending**. |
+| Beats and stronger SFX | The reviewer hears a distinct intro accent at the important visual reveal, plus clear body action accents, and can understand the nearby words. Cue records identify actual visual/audible-onset times. | SFX file starts at 1.40 s but its silence delays the click until 1.85 s after the visible action; move its useful onset. A louder whoosh hides a word: **failed** until repaired. |
 | Opening hierarchy | An unbriefed viewer can recognize topic or tension from the first frame; subsequent speech and visuals develop the payoff. The Mobbin hierarchy is historical upstream context, not a mandatory Brandon layout. | A giant number lacks its unit, or unrelated menus remain the only visual clue: **failed** if the actual opening stays unclear. Informed self-check only: unbriefed test **pending**. |
 | Opening motion | The chosen hook establishes topic and tension, then changes view or action when the spoken claim calls for it. Split is optional. Actual spans and first action are recorded. | A clear graphic stays substantially unchanged for 4 seconds with only a 1% zoom: **failed**, even if every encoded frame technically differs. An unchanged hold fails only when it obscures meaning or loses attention; a file called “video” is no substitute for observed action. |
 | Moving proof and diversity | A real recording shows the relevant settings action and resulting state, with enough time to recognize it. Another beat uses a different useful view/detail; full-screen motion is used when it improves the result. | An `.mp4` contains a frozen screenshot, or the same tiny crop repeats under several claims: motion/diversity is not established. An unrelated impressive demo does not become proof because it moves. |
@@ -143,7 +92,7 @@ An available hook/attention predictor can inform creative experiments, but its s
 
 Use this prompt for an independent reviewer with the actual video and source manifest:
 
-> Inspect the provided final reel and all three Brandon style references. For every spoken beat, describe what is actually visible and the viewer question it answers. Evaluate presenter, real screen proof, illustrative footage and kinetic graphics by their claim; check lower-third spoken captions separately from larger green/white editorial graphics. Check the chosen hook, face-to-camera keyword CTA, audible music when required, purposeful effects and readable holds. Identify unsupported proof, wrong entities/counts, illegible focal details, repetitive or inert shots, mistimed reveals, text collisions and sound that masks speech. Report exact timecodes and one actionable repair per defect. Distinguish observations from uncertainty. Do not infer live product execution from a reconstructed interface. Do not assume the source manifest proves the rendered pixels match it. State whether you watched the full video with sound, what phone-size checks you performed, and any tool limits. Score only dimensions you can actually assess.
+> Inspect the provided final reel and all three Brandon style references. For every spoken beat, describe what is actually visible and the viewer question it answers. Evaluate presenter, real screen proof, illustrative footage and kinetic graphics by their claim; check lower-third spoken captions separately from larger green/white editorial graphics. Check the chosen hook, face-to-camera keyword CTA, absence of background music, purposeful effects and readable holds. Identify unsupported proof, wrong entities/counts, illegible focal details, repetitive or inert shots, mistimed reveals, text collisions and sound that masks speech. Report exact timecodes and one actionable repair per defect. Distinguish observations from uncertainty. Do not infer live product execution from a reconstructed interface. Do not assume the source manifest proves the rendered pixels match it. State whether you watched the full video with sound, what phone-size checks you performed, and any tool limits. Score only dimensions you can actually assess.
 
 ## Repair table
 
@@ -155,10 +104,10 @@ Use this prompt for an independent reviewer with the actual video and source man
 | Too much text | Keep one focal phrase; use short captions; remove redundant graphic copy | Show a concrete action/object instead |
 | Weak proof timing | Move reveal/crop to the important noun or action | Split the beat into setup and payoff |
 | Generated count/identity changes | Revise with an approved still and explicit count/action | Deterministic illustration or relevant real asset |
-| Missing or inaudible music when the current edit requires music | Obtain a playable instrumental and mix it audibly beneath the voice | Follow provider fallback; label the preview incomplete with the music blocker |
+| Background music in a Brandon export | Remove it and listen to the full render | Deliver only a review candidate until the rerender is clean |
 | Intro is static or visually weaker than the body | Lead with the strongest relevant motion/result and a useful detail/payoff | Reframe static proof deliberately; preserve reading time and source context |
 | Repetitive B-roll or gratuitous motion | Change the relevant action, source region, scale or full-screen/split treatment | Replace weak footage; keep an intentional still when it gives stronger proof |
-| SFX too quiet to register | Raise the selected accent while listening with voice and music | Choose a clearer/shorter effect or move it into a gap |
+| SFX too quiet to register | Raise the selected accent while listening with voice | Choose a clearer/shorter effect or move it into a gap |
 | SFX masks a word | Lower or move that effect; listen in context | Remove it; voice clarity takes precedence |
 | Intra-sentence pauses make the delivery drag | Verify the actual quiet gap and shorten it with a frame-aligned keep EDL | Preserve a natural join; retain the pause if it carries meaning or protects speech |
 | Tightening clips a consonant or causes later cues to drift | Restore speech handles and rebuild the complete time map/cues | Recheck every changed join, late sync and the final CTA at normal speed |

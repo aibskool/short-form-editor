@@ -39,11 +39,7 @@ For each selected visual, add a short `motion_note` in its existing notes field 
 
 ## Music and effects are production assets
 
-Source the instrumental bed while sourcing B-roll. **Follow the current edit's explicit audio plan.** If `audio_policy.music_required` is true, source and validate an audible rights-cleared bed; if false, record `music_free_reason`. First inspect the user's reusable licensed library and already authorized media provider; then search an appropriate rights-cleared source or create an original instrumental with an available authorized generator. Choose an energetic rhythm with clear accents, enough usable duration, and room for the speaking voice. Record local file/hash, source or generation receipt, reuse basis, duration, intended musical in-point, observed beat/section markers and any required attribution. Measure tempo only when it helps editing; do not invent BPM from a title.
-
-Select SFX for the actual actions: distinct clicks/typing, a sweep for a directed reveal, and a stronger impact for a real hook/payoff. Retain source/license information. Inspect and listen to their useful bounds; long silence before a sound causes a mistimed accent even when its file starts on the cut. Incidental audio from product demos stays muted unless explicitly chosen and cleared as part of the mix.
-
-If a provider fails, check the documented error and make one specific retry when appropriate, then use another available authorized source, a verified local licensed track, or an original authored/generated instrumental. Do not spend outside existing authorization or claim a queued generation is an asset. If all viable routes fail, record `music.status: "blocked"`, the failed dependency and next action in `creative-review.json`/`operator-state.json`; continue independent editing and deliver only a clearly labelled incomplete preview until a playable music file is obtained. **Never silently replace the required music-backed output with voice plus SFX.**
+For Brandon short-form, source only claim-relevant picture and selected effects. Do not source or mix a music bed; Brandon adds it on the platform. Record the source, license, hash and intended cue for each SFX. Use real screen captures for claimed actions/results, and do not put internal provenance caveats into the rendered picture. Kinetic cards and illustrations need animated entrances or internal changes; use purposeful transitions at selected boundaries.
 
 ## Reject noun matches before editing
 

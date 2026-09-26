@@ -26,7 +26,7 @@ See the packaged [Mobbin hook decision](https://github.com/Samin12/samin-reel-en
 
 Before polishing, run the [muted cold-view test](quality-procedure.md#first-frame-and-two-second-cold-view-test). If the viewer cannot identify subject, payoff and focal detail, simplify/reframe the hook before adding cuts or effects. More action alone does not repair unclear meaning, and no visual test guarantees retention or virality.
 
-Brandon's supplied reels use clear speech, low music, selected effects and visual changes that serve the claim. Plan the opening separately; choose the most relevant action and a coherent visual hierarchy. Do not force three unrelated clips or a transition on every word.
+Brandon's short-form exports contain speech and selected effects, with no background music. Animate every on-screen text/card/illustration; place purposeful transition effects at useful cut or section boundaries. Plan the opening separately and avoid a fixed cut interval or mandatory split screen.
 
 Prefer actual motion inside the B-roll: typing, scrolling to a relevant section, a cursor selecting an option, a changing app state, a demo result, or a physical action. Use moving B-roll full-screen freely when it reads better or creates a stronger moment; the presenter does not have to remain visible. Vary the visual experience through different relevant sources, source regions, shot scales and layouts. A close detail, wider context and actual action can create useful diversity within one source. Repeated zooms on the same unchanged screenshot do not provide the same diversity as a new useful view/action.
 
@@ -95,21 +95,8 @@ Do not manually add an unspoken word to fix a weak sentence. Correct an ASR spel
 
 ## Music, beats, SFX and VFX
 
-The supplied Brandon reels contain music and selected accents. Select a rights-cleared track when the current edit's audio plan calls for one; `audio_policy.music_required:true` enforces its presence. A music-free edit must be explicitly recorded in the plan, not inferred from an empty asset folder. Preserve speech intelligibility and listen to the export.
+Brandon's current audio policy is categorical: `audio_policy.music_required:false`, no `music` entries and no background music in the encoded short-form video. He may add music on the platform. Keep the current voice intelligible and use selected SFX to mark real actions or reveals. Index each SFX source and listen to the final voice/effect mix at phone volume. Never reuse old narration. Historical Samin pilot music notes remain in its labeled case study, not as an active Brandon requirement.
 
-Map music to the locked voice: choose its in-point and selected accents around meaningful reveals without forcing cuts onto beats. Do not stretch or chop Brandon's words to force a cut. A track present in the timeline but inaudible in the export has not met a music-backed plan.
+For each spoken claim, choose A-roll, real captured screen proof, contextual footage, kinetic graphics, or a combination that makes the claim understandable. Animate editorial words, cards, labels and illustrations with a readable entrance or meaningful internal change. A static proof screenshot may use a directed camera move that reveals the relevant area. Use a wipe, blur flash or light leak at selected boundaries, with a reason in the shot map; do not stamp the same effect onto every cut. Keep production caveats in the asset/claim record rather than as audience-facing disclaimer overlays.
 
-For a fresh reel, mix Brandon's current voice with separately identified music and effects. Never put an old narration under a different script.
-
-**Make SFX clearly audible and more assertive than the first Mobbin pilot.** Give the intro its strongest purposeful accents, then accent real clicks, reveals, crop changes and major payoffs throughout. As mix starting points, place the music bed roughly 14–20 dB below the active voice's average level, and selected transient effect peaks roughly 4–8 dB below nearby voice peaks; compare like measurements over the same speech region. These ranges are calibration aids, not pass thresholds or universal file gains. Raise a weak effect until it reads at normal phone volume, then move, shorten, EQ or reduce it if it masks a word. Duck the bed temporarily beneath dense speech or an important phrase and let its energy recover. Do not achieve a louder mix by clipping or burying consonants.
-
-The original synthesized starting set is in `production/pilots/council/sfx/index.json`:
-
-- `small-tick.wav`: typing/click detail; legacy starting gain 0.22, raise if it fails the audibility check.
-- `soft-sweep.wav`: crop/screen transition; start gain 0.30, lead its envelope into the cut.
-- `paper-flick.wav`: resource/document appearance; start gain 0.30.
-- `rounded-impact.wav`: one meaningful verdict/reveal; start gain 0.16.
-
-Those legacy gains are asset-specific starting points, not final targets, universal loudness values or the exact human-reference effects. Do not copy them unchanged if the result is too quiet. Use top-level `sfx` entries such as `{"path":"sfx/paper-flick.wav","at":5.1,"gain":0.30}` and calibrate against the current voice/music. Copy the correct files and provenance into the reel's asset index. One repeated whoosh on every cut flattens the accents; choose clicks, swishes, impacts or ticks that match what moves. Listen to the complete mix at normal phone volume, check music and effects are perceptible, and preserve speech clarity and a clean ending.
-
-Use hard cuts, small punch-ins, directed crop moves and restrained caption pops to support the words. No mandatory transition quota, flashes or random zooms. In the renderer, crop backgrounds must be timed clips; an opaque untimed layer once hid earlier B-roll despite passing browser checks. Verify encoded frames after any layering change.
+Use hard cuts, small punch-ins, directed crop moves and restrained caption pops to support the words. Include some purposeful transition effects across the edit without imposing one on every cut or a fixed interval. In the renderer, crop backgrounds must be timed clips; an opaque untimed layer once hid earlier B-roll despite passing browser checks. Verify encoded frames after any layering change.

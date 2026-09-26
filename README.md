@@ -91,11 +91,11 @@ The [historical curated resource format](skill/references/curated-resource-reels
 
 **Turn a filmed batch into a reel**
 
-> Use reel director. Here are my footage, scripts and reference. Select the take, preserve my actual voice, find supporting real-world B-roll and make a vertical review cut with captions, music and SFX.
+> Use reel director. Here are my footage, scripts and reference. Select the take, preserve my actual voice, find supporting real-world B-roll and make a vertical review cut with captions, animated graphics, transitions and SFX, without background music.
 
 **Repair a weak edit**
 
-> Use reel review. Inspect this export at phone size. Check the first frame, first-second motion, source relevance, caption placement, music and SFX. Make timecoded repairs and recheck the output.
+> Use reel review. Inspect this export at phone size. Check the first frame, first-second motion, source relevance, caption placement, animation, transitions and SFX; confirm no music. Make timecoded repairs and recheck the output.
 
 **Prepare the giveaway handoff**
 
@@ -112,7 +112,7 @@ The [historical curated resource format](skill/references/curated-resource-reels
 | [`reel-intake`](plugins/brandon-reel-engine/skills/reel-intake/SKILL.md) | Transcription, take selection and timing |
 | [`reel-assets`](plugins/brandon-reel-engine/skills/reel-assets/SKILL.md) | Real-source B-roll and visible proof |
 | [`reel-generate`](plugins/brandon-reel-engine/skills/reel-generate/SKILL.md) | Explanatory asset generation and inspection |
-| [`reel-edit`](plugins/brandon-reel-engine/skills/reel-edit/SKILL.md) | Composition, captions, motion, music and SFX |
+| [`reel-edit`](plugins/brandon-reel-engine/skills/reel-edit/SKILL.md) | Composition, captions, motion, transitions and SFX |
 | [`reel-review`](plugins/brandon-reel-engine/skills/reel-review/SKILL.md) | Actual-output judgment and repair |
 | [`reel-deliver`](plugins/brandon-reel-engine/skills/reel-deliver/SKILL.md) | Resource packs, Skool and ManyChat handoffs |
 | [`reel-clickup`](plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md) | Complete ClickUp cards, resource Docs and verified board stages |

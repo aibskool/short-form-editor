@@ -1,5 +1,6 @@
 import unittest
 from edit import map_words, caption_groups, phrase_groups, escape, validate_editorial_graphics, editorial_words
+from kinetic_scenes import kinetic_markup
 
 
 class TimelineTests(unittest.TestCase):
@@ -43,9 +44,19 @@ class TimelineTests(unittest.TestCase):
         self.assertIn('editorial-accent',markup)
         self.assertIn('&lt;screen&gt;',markup)
         for invalid in ({**graphic,'claim_id':''},{**graphic,'start':3},
-                        {**graphic,'x':90,'width':20},{**graphic,'animation':'blink'}):
+                        {**graphic,'x':90,'width':20},{**graphic,'animation':'blink'},
+                        {**graphic,'animation':'none'}):
             with self.assertRaises(ValueError):
                 validate_editorial_graphics([invalid],3)
+
+    def test_kinetic_cards_animate_each_item_and_escape_claim_text(self):
+        markup, motion = kinetic_markup({'kind':'kinetic_stat','title':'Trust <now>',
+            'items':[{'label':'Recent survey','value':'45%','accent':True}],
+            'source':'BrightLocal · 2026'}, 'test-scene', 2, 5, 720, 1280)
+        self.assertIn('Trust &lt;now&gt;', markup)
+        self.assertIn('BrightLocal · 2026', markup)
+        self.assertTrue(any('row-0' in cue and 'fromTo' in cue for cue in motion))
+        self.assertTrue(any('bar-0' in cue and 'scaleX:0' in cue for cue in motion))
 
 
 if __name__=="__main__":

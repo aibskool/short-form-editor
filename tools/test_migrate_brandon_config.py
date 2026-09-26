@@ -37,6 +37,7 @@ class MigrationTests(unittest.TestCase):
         old=self.root/'old.json';new=self.root/'new.json'
         data={'captions':{'phrases':[{'word_range':[0,2]}]},'labels':[{'text':'SOURCE'}],
               'output':{'split_fraction':.45},'audio_policy':{'music_required':True},
+              'music':[{'path':'old-song.mp3'}],
               'shots':[{'layout':'split','graphic':{'title':'Historical example'}}]}
         old.write_text(json.dumps(data))
         receipt=migrate.migrate_timeline(old,new)
@@ -46,8 +47,12 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(output['spoken_captions'],data['captions'])
         self.assertNotIn('captions',output)
         self.assertNotIn('editorial_graphics',output)
-        for key in ('labels','output','audio_policy','shots'):
+        for key in ('labels','output','shots'):
             self.assertEqual(output[key],data[key])
+        self.assertEqual(output['audio_policy']['music_required'],False)
+        self.assertNotIn('music',output)
+        self.assertEqual(receipt['removed_music_entries'],1)
+        self.assertEqual(json.loads(old.read_text()),data)
         self.assertEqual(migrate.migrate_timeline(old,new)['status'],'already_migrated')
         with self.assertRaisesRegex(ValueError,'existing target differs'):
             new.write_text('{}');migrate.migrate_timeline(old,new)
