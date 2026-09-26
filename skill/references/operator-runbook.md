@@ -76,7 +76,7 @@ python3 production/finalize_render.py --input /absolute/work/NEW-RUN/raw.mp4 \
 python3 production/check_editorial.py --map /absolute/editorial-map.json
 ```
 
-Set `audio_policy.music_required:false` and omit `music` for every Brandon short-form build. Copy `<plugin>/templates/creative-review.json` to the pilot directory and fill observations, including transitions and animation of all graphics.
+Set `audio_policy.music_required:false` and omit `music` for every Brandon short-form build. Copy `<plugin>/templates/creative-review.json` to the pilot directory and fill observations, including fixed lower-third placement, transcript cleanup, word-cued graphics, negative-state color/opacity, transitions and a useful change within every two-second custom UI span.
 
 The intake requires a cached Whisper model and the Python packages in `production/requirements.txt`; read its setup before running. The editor's Node packages come from `npm ci` in `production/editor`. `prepare_take.py` currently uses macOS `h264_videotoolbox`; on another OS change only that encoder to available `libx264` after checking FFmpeg, then verify the output. It overwrites its named outputs: give it new paths. Do not repeatedly transcribe an unchanged batch.
 

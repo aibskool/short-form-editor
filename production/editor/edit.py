@@ -114,6 +114,23 @@ def map_words(words, segments):
     return result
 
 
+def validate_scene_cues(shots, words, fps):
+    """Reject a declared word cue that misses the nearest encoded frame."""
+    for shot_index, shot in enumerate(shots):
+        scene = shot.get('scene', {})
+        if scene.get('kind') not in {'kinetic_ranking', 'kinetic_stat', 'kinetic_comparison'}:
+            continue
+        for item_index, item in enumerate(scene.get('items', [])):
+            for field, index_field, offset_field in (('at','anchor_word_index','cue_offset'),('fade_at','fade_anchor_word_index','fade_cue_offset')):
+                if index_field in item:
+                    index = int(item[index_field])
+                    if not 0 <= index < len(words) or field not in item:
+                        raise ValueError(f'shot {shot_index} item {item_index} has invalid {index_field}')
+                    expected = words[index]['start'] + float(item.get(offset_field, 0))
+                    if abs(float(item[field])-expected) > 1/fps + .001:
+                        raise ValueError(f'shot {shot_index} item {item_index} {field} misses spoken cue by more than one frame')
+
+
 def caption_groups(words, max_words=4, max_chars=27):
     groups, current = [], []
     for word in words:
@@ -199,6 +216,30 @@ def make_pop(path):
         out.writeframes(b"".join(samples))
 
 
+def make_accent(path, kind):
+    """Original low-level UI accents; the mix still requires listening review."""
+    if kind == 'soft_pop':
+        return make_pop(path)
+    if kind not in {'soft_click', 'soft_whoosh', 'soft_error'}:
+        raise ValueError(f'unknown synthetic SFX kind: {kind}')
+    rate = 48000
+    duration = {'soft_click': .075, 'soft_whoosh': .24, 'soft_error': .20}[kind]
+    samples = []
+    for n in range(int(rate*duration)):
+        t = n/rate
+        fade = math.sin(math.pi*t/duration)**2
+        if kind == 'soft_click':
+            wave_value = (math.sin(2*math.pi*1900*t)+.28*math.sin(2*math.pi*3600*t))*math.exp(-t*75)
+        elif kind == 'soft_whoosh':
+            wave_value = .6*math.sin(2*math.pi*(300*t+1800*t*t))*fade
+        else:
+            wave_value = (.7*math.sin(2*math.pi*165*t)+.22*math.sin(2*math.pi*247*t))*fade
+        samples.append(struct.pack('<h', int(9000*wave_value)))
+    with wave.open(str(path),'wb') as out:
+        out.setparams((1,2,rate,0,'NONE','not compressed'))
+        out.writeframes(b''.join(samples))
+
+
 def build(spec_path, project):
     spec_path, project = Path(spec_path).resolve(), Path(project).resolve()
     spec = json.loads(spec_path.read_text())
@@ -231,6 +272,10 @@ def build(spec_path, project):
         if not 0 <= float(segment["start"]) < float(segment["end"]) <= source_duration + 0.05:
             raise ValueError("source segment lies outside the source video")
     duration = sum(float(s["end"]) - float(s["start"]) for s in segments)
+    output = spec.get("output", {})
+    width, height, fps = int(output.get("width", 1080)), int(output.get("height", 1920)), int(output.get("fps", 30))
+    words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
+    validate_scene_cues(spec.get('shots', []), words, fps)
     music = spec.get("music", [])
     music_required = bool(spec.get("audio_policy", {}).get("music_required", False))
     if music_required or music:
@@ -238,8 +283,6 @@ def build(spec_path, project):
     policy = spec.get("audio_policy", {})
     if policy.get("music_required") is not False:
         raise ValueError("audio_policy.music_required must be false for Brandon short-form exports")
-    output = spec.get("output", {})
-    width, height, fps = int(output.get("width", 1080)), int(output.get("height", 1920)), int(output.get("fps", 30))
     split_fraction = float(output.get("split_fraction", 0.5))
     if not 0.25 <= split_fraction <= 0.75:
         raise ValueError("split_fraction must leave room for both visual and presenter")
@@ -251,6 +294,9 @@ def build(spec_path, project):
         raise ValueError("spoken_captions must be an object")
     graphics = validate_editorial_graphics(spec.get("editorial_graphics", []), duration)
     font_size = float(captions.get("font_size", width * 0.048))
+    caption_y = finite_number(captions.get('y', 83), 'spoken_captions.y')
+    if not 65 <= caption_y <= 90:
+        raise ValueError('spoken_captions.y must stay in the lower third')
     accent = captions.get("accent", "#49cf26")
     position = spec["source"].get("object_position", "50% 40%")
     font_name = captions.get("font_family", "Arial Black")
@@ -283,10 +329,15 @@ def build(spec_path, project):
             raise ValueError(f"unknown shot layout: {layout}")
         split = layout == "split"
         animations.append(f'tl.set("#presenter",{{top:{split_height if split else 0},height:{height-split_height if split else height}}},{start});')
-        animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y",64 if split else 77)}%",autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
+        animations.append(f'tl.set("#caption-anchor",{{autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
         backing = captions.get("background", "rgba(0,0,0,0)")
         animations.append(f'tl.set(".caption-text",{{backgroundColor:"{backing}"}},{start});')
         animations.append(f'tl.set("#presenter-camera",{{scale:{shot.get("zoom",1)},xPercent:{shot.get("x_percent",0)},yPercent:{shot.get("y_percent",0)}}},{start});')
+        if shot.get('zoom_to') is not None:
+            zoom_to = finite_number(shot['zoom_to'], f'shot {i} zoom_to')
+            if not 1 <= zoom_to <= 1.2:
+                raise ValueError('zoom_to must be between 1 and 1.2')
+            animations.append(f'tl.to("#presenter-camera",{{scale:{zoom_to},duration:{min(end-start,.85)},ease:"power2.out"}},{start});')
         if layout == "presenter":
             continue
         rect = f'width:{width}px;height:{split_height if split else height}px;'
@@ -344,7 +395,6 @@ def build(spec_path, project):
             raise ValueError(f"shot {i} needs media or graphic for {layout}")
     for zoom in spec.get("zooms", []):
         animations.append(f'tl.to("#presenter-camera",{{scale:{float(zoom["scale"])},duration:{float(zoom.get("duration",0.16))},ease:"power2.out"}},{float(zoom["at"])});')
-    words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
     phrases = captions.get("phrases", [])
     groups = phrase_groups(words, phrases) if phrases else caption_groups(words, int(captions.get("max_words",4)), int(captions.get("max_chars",27)))
     emphasis = {w.lower().strip(".,!?:;") for w in captions.get("emphasis", [])}
@@ -410,10 +460,12 @@ def build(spec_path, project):
             animations.append(f'tl.fromTo("#transition-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.35}}},{at});tl.to("#transition-{i}",{{opacity:0,duration:{length*.65}}},{at+length*.35});')
     sound_tracks = {}
     for i, sound in enumerate(spec.get("sfx", [])):
-        if sound.get("kind") == "soft_pop":
-            target = assets / "soft-pop.wav"
-            make_pop(target)
-            path, length = target.relative_to(project).as_posix(), 0.16
+        if sound.get("kind") in {"soft_pop", "soft_click", "soft_whoosh", "soft_error"}:
+            kind = sound['kind']
+            target = assets / f"{kind}.wav"
+            if not target.exists():
+                make_accent(target, kind)
+            path, length = target.relative_to(project).as_posix(), {'soft_pop':.16,'soft_click':.075,'soft_whoosh':.24,'soft_error':.20}[kind]
         else:
             path = media(sound["path"])
             length = float(sound.get("duration", probe(project/path)["format"]["duration"]))
@@ -436,7 +488,7 @@ def build(spec_path, project):
     #presenter{{position:absolute;inset:0;width:{width}px;height:{height}px;overflow:hidden}} #presenter-camera{{position:relative;width:100%;height:100%;transform-origin:50% 38%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}} .broll,.graphic{{position:absolute;left:0;top:0;z-index:2}}
     .broll-viewport{{position:absolute;left:0;top:0;z-index:2;overflow:hidden}} .broll-camera{{position:relative;width:100%;height:100%;transform-origin:center}}
-    #caption-anchor{{position:absolute;top:77%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
+    #caption-anchor{{position:absolute;top:{caption_y}%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
     .caption-text{{display:inline-block;max-width:100%;border-radius:.16em;padding:.07em .12em;font-family:"{font_name}",Arial,sans-serif;font-weight:900;font-size:{font_size}px;line-height:1.06;letter-spacing:-0.02em;color:white;-webkit-text-stroke:{width*.0035}px #222;paint-order:stroke fill;text-shadow:0 {width*.003}px {width*.004}px #111;}}
     .caption-line{{display:block}} .caption-line.connector{{font-family:Arial,sans-serif;font-size:.72em;font-weight:500;line-height:1.18;letter-spacing:0;-webkit-text-stroke:{width*.0017}px #222;}}
     .emphasis{{color:{accent}}} .graphic{{background:#efede8;color:#171719;font-family:Arial,sans-serif}}

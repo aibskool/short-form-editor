@@ -44,13 +44,13 @@ Complete these checks against the encoded final render:
 | Check | What to inspect and record | Repair when weak |
 |---|---|---|
 | No background music | Listen across the full export for a musical bed, including source audio. Confirm the timeline contains no music. | Remove the bed and rerender. Brandon adds music on platform. |
-| Speech and SFX | Listen at phone volume to intro, body and ending; log actual audible onset and consonant clarity. | Move, shorten or rebalance a selected effect. |
+| Speech and SFX | Listen at phone volume to intro, body and ending; log actual audible onset against the spoken word and graphic frame, and consonant clarity. | Move, shorten or rebalance a selected effect. |
 | First frame/opening | Run the cold-view and normal-speed motion checks; compare claim clarity with all supplied reels. | Choose a stronger physical action, face delivery or relevant proof. |
-| Animated graphics | Inspect entrances and internal motion of every visible text/card/illustration, including labels. | Animate a meaningful reveal, number, sweep, or camera move; remove inert decoration. |
+| Animated graphics | Inspect entrances and internal motion of every visible text/card/illustration, including labels. For custom UI cards/grids/stats log any span exceeding two seconds without a useful change. | Animate a word-cued reveal, count, contrast change or camera move; remove inert decoration. |
 | Transitions | Record the boundary, effect and why it helps the new section; inspect actual frames around it. | Add or revise purposeful blur, wipe or light leak; avoid repetitive effects at every cut. |
 | Proof and variety | Inspect real screen details, illustrative footage, face and full-screen choices against each spoken claim. | Crop relevant proof, change view or simplify when weak. |
 
-Copy `<plugin>/templates/creative-review.json` beside the timeline. Record the exact render hash, source-backed claim checks, no-music listening check, animation and transition spans, caption and editorial graphic checks, SFX, cold-view and full playback observations. A planned cue is not observed playback. Historical Samin/Mobbin notes below describe that earlier pilot and do not change Brandon's audio policy.
+Copy `<plugin>/templates/creative-review.json` beside the timeline. Record the exact render hash, source-backed claim checks, no-music listening check, word-to-frame graphic cues, negative-state contrast, fixed lower-third safety, animation and transition spans, caption and editorial graphic checks, SFX, cold-view and full playback observations. A planned cue is not observed playback. Historical Samin/Mobbin notes below describe that earlier pilot and do not change Brandon's audio policy.
 
 ## Concrete pass/fail examples
 

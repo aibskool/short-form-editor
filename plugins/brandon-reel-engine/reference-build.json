@@ -10,8 +10,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/brandon-style-profile.md",
-      "source_sha256": "374282707409ada15823e4e4c34618c337e82de7aabfccbd68061de158d3a634",
-      "packaged_sha256": "374282707409ada15823e4e4c34618c337e82de7aabfccbd68061de158d3a634"
+      "source_sha256": "5d68f8b00ce8b80e76b694becd7dae2cc7f34742e26d126a479d4acdd21264ef",
+      "packaged_sha256": "5d68f8b00ce8b80e76b694becd7dae2cc7f34742e26d126a479d4acdd21264ef"
     },
     {
       "path": "plugins/brandon-reel-engine/references/curated-resource-reels.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/operator-runbook.md",
-      "source_sha256": "f2d50fd35e08c9bc97a034bd3b51886ce3d3ded9fc0e4c2b3f048a04b9ff0e41",
-      "packaged_sha256": "f2d50fd35e08c9bc97a034bd3b51886ce3d3ded9fc0e4c2b3f048a04b9ff0e41"
+      "source_sha256": "68a671dd740e59ade95156739afea6c9cd0b6136b49ee98d4b66606f4acb9d20",
+      "packaged_sha256": "68a671dd740e59ade95156739afea6c9cd0b6136b49ee98d4b66606f4acb9d20"
     },
     {
       "path": "plugins/brandon-reel-engine/references/pipeline-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/quality-procedure.md",
-      "source_sha256": "81ca090deafef6e21a9f284d9369715c36519caae258fb2fb957e31282736250",
-      "packaged_sha256": "81ca090deafef6e21a9f284d9369715c36519caae258fb2fb957e31282736250"
+      "source_sha256": "33a206cb290aee0be564dce4729d0da8372ca7db9557d28d628b0e5e0c6d2991",
+      "packaged_sha256": "33a206cb290aee0be564dce4729d0da8372ca7db9557d28d628b0e5e0c6d2991"
     },
     {
       "path": "plugins/brandon-reel-engine/references/research-contract.md",
@@ -60,8 +60,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/shot-recipes.md",
-      "source_sha256": "c71772d52b8a440c37b362f344830c88f611487062b1968d2a01a9ddeb9cb02b",
-      "packaged_sha256": "c71772d52b8a440c37b362f344830c88f611487062b1968d2a01a9ddeb9cb02b"
+      "source_sha256": "2cb0c9efbbd2fcf064239a200f93f99b1c9c885932248dd131259503fb519942",
+      "packaged_sha256": "2cb0c9efbbd2fcf064239a200f93f99b1c9c885932248dd131259503fb519942"
     },
     {
       "path": "plugins/brandon-reel-engine/references/skool.md",
