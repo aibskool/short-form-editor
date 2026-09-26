@@ -68,7 +68,7 @@ python3 production/prepare_take.py --source /absolute/source.mp4 \
 
 node production/capture_evidence.cjs --sources /absolute/sources.json --out /absolute/work/NEW-RUN/captures
 python3 <plugin>/scripts/reel.py run build -- --spec /absolute/timeline.json --project /absolute/work/NEW-RUN/composition
-production/editor/node_modules/.bin/hyperframes check /absolute/work/NEW-RUN/composition --at 1,5,10 --json
+python3 production/editor/hyperframes_cli.py check /absolute/work/NEW-RUN/composition --at 1,5,10 --json
 python3 production/editor/edit.py render --project /absolute/work/NEW-RUN/composition \
   --output /absolute/work/NEW-RUN/raw.mp4 --quality high --workers 2
 python3 production/finalize_render.py --input /absolute/work/NEW-RUN/raw.mp4 \

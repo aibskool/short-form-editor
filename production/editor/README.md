@@ -9,12 +9,14 @@ Use the project's pinned Python 3.11 environment, Node 22+, FFmpeg/FFprobe, and 
 ```bash
 npm ci
 python3 edit.py build --spec timeline.json --project /absolute/path/to/composition
-./node_modules/.bin/hyperframes check /absolute/path/to/composition --at 1,5,10 --json
-./node_modules/.bin/hyperframes snapshot /absolute/path/to/composition --at 1,5,10 --no-end --describe false
+python3 hyperframes_cli.py check /absolute/path/to/composition --at 1,5,10 --json
+python3 hyperframes_cli.py snapshot /absolute/path/to/composition --at 1,5,10 --no-end --describe false
 python3 edit.py render --project /absolute/path/to/composition --output /absolute/path/to/pilot.mp4 --quality standard --workers 1
 ```
 
 Review snapshots before the full render. `--describe false` keeps snapshot images out of optional external vision analysis. The build writes `index.html`, the editable input timeline, mapped word timings, and a build receipt. Rendering writes a probe receipt after verifying the MP4. Then run `python3 ../finalize_render.py --input /absolute/path/to/raw.mp4 --output /absolute/path/to/final.mp4 --receipt /absolute/path/to/verification.json` to normalize the actual mixed audio, decode the entire final file and record its hash/loudness. Use a new final output path; existing versions are preserved. Local media is hardlinked when possible and copied otherwise; keep source files unchanged while editing.
+
+All repository renderer invocations use `hyperframes_cli.py`, which sets HyperFrames' `HYPERFRAMES_NO_TELEMETRY=1` and `DO_NOT_TRACK=1` flags before starting the pinned CLI. The original package remains a local compositor dependency; analytics are disabled for its check, snapshot and render commands. Do not invoke its binary directly from a new repository workflow.
 
 Use a 720×1280 proxy for the first visual pass or 1080×1920 for final delivery. The source may be portrait or landscape; `object_position` controls the authored crop. This is not automatic face tracking. Start with one render worker on memory-constrained machines; two is a reasonable initial choice for this 16 GB M1 Pro. Four may increase memory pressure. HyperFrames can download its Chrome runtime on the first render and cache it for later runs; dependencies/fonts can also require initial network access.
 

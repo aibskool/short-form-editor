@@ -46,11 +46,13 @@ Complete these checks against the encoded final render:
 | No background music | Listen across the full export for a musical bed, including source audio. Confirm the timeline contains no music. | Remove the bed and rerender. Brandon adds music on platform. |
 | Speech and SFX | Listen at phone volume to intro, body and ending; log actual audible onset against the spoken word and graphic frame, and consonant clarity. | Move, shorten or rebalance a selected effect. |
 | First frame/opening | Run the cold-view and normal-speed motion checks; compare claim clarity with all supplied reels. | Choose a stronger physical action, face delivery or relevant proof. |
-| Animated graphics | Inspect entrances and internal motion of every visible text/card/illustration, including labels. For custom UI cards/grids/stats log any span exceeding two seconds without a useful change. | Animate a word-cued reveal, count, contrast change or camera move; remove inert decoration. |
-| Transitions | Record the boundary, effect and why it helps the new section; inspect actual frames around it. | Add or revise purposeful blur, wipe or light leak; avoid repetitive effects at every cut. |
+| Animated graphics | Inspect entrances and internal motion of every visible text/card/illustration, including labels. Confirm the full reel contains actual kinetic cards or diagrams where the spoken story calls for them; animated subtitle-like text alone is insufficient. For custom UI cards/grids/stats log any span exceeding two seconds without a useful change. | Animate a word-cued reveal, count, contrast change or camera move; remove inert decoration. |
+| Transitions | Record the boundary, effect and why it helps the new section; inspect frames before, during and after it across the entire picture. | Replace a partial/corner flash with an intentional full-frame sweep, blur, wipe or light leak; avoid repetitive effects at every cut. |
 | Visual variety | Inspect screen details, authored graphics, face and full-screen choices for clarity and rhythm. | Crop, change view or simplify when weak. |
 
 Copy `<plugin>/templates/creative-review.json` beside the timeline. Record the exact render hash, no-music listening check, word-to-frame graphic cues, negative-state contrast, fixed lower-third safety, animation and transition spans, caption and editorial graphic checks, SFX, cold-view and full playback observations. Check that no disclaimers or production caveats appear in the encoded picture. A planned cue is not observed playback. Historical Samin/Mobbin notes below describe that earlier pilot and do not change Brandon's audio policy.
+
+For Brandon, use a brief low-level whoosh at selected visual boundaries rather than repeating electronic beeps or clicks. Measure the effect peak and listen with surrounding words before accepting it. No SFX cue is mandatory if speech is clearer without one.
 
 ## Concrete pass/fail examples
 

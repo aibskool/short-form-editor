@@ -30,8 +30,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/operator-runbook.md",
-      "source_sha256": "f116c4784b08b10b63633812f1abdfdbcc414702813b45a327ee9013ec4cfe1b",
-      "packaged_sha256": "f116c4784b08b10b63633812f1abdfdbcc414702813b45a327ee9013ec4cfe1b"
+      "source_sha256": "ef35a4745358ef953472d56da6f5350d04ccef5928cea73f5062637b5e4b0d64",
+      "packaged_sha256": "ef35a4745358ef953472d56da6f5350d04ccef5928cea73f5062637b5e4b0d64"
     },
     {
       "path": "plugins/brandon-reel-engine/references/pipeline-contract.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/quality-procedure.md",
-      "source_sha256": "14fcbff6ec7f5463c0d79bea0e52d431d006da133c5c3ba8120b2b249a5a9052",
-      "packaged_sha256": "14fcbff6ec7f5463c0d79bea0e52d431d006da133c5c3ba8120b2b249a5a9052"
+      "source_sha256": "d0df509f083a0a4935a8d34cdfb0474aab6135175bb3267c5c29a4a64a1da721",
+      "packaged_sha256": "d0df509f083a0a4935a8d34cdfb0474aab6135175bb3267c5c29a4a64a1da721"
     },
     {
       "path": "plugins/brandon-reel-engine/references/research-contract.md",
@@ -60,8 +60,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/shot-recipes.md",
-      "source_sha256": "58f55560a73cc40ae8883e6232607ab4d8dd96c43286a24f718c9b5ed10d8a42",
-      "packaged_sha256": "58f55560a73cc40ae8883e6232607ab4d8dd96c43286a24f718c9b5ed10d8a42"
+      "source_sha256": "5deb96a0eb68df7586a5822e16d688d39e7b484baf8d2541fd150a26c9138b88",
+      "packaged_sha256": "5deb96a0eb68df7586a5822e16d688d39e7b484baf8d2541fd150a26c9138b88"
     },
     {
       "path": "plugins/brandon-reel-engine/references/skool.md",

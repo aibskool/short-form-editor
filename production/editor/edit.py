@@ -17,6 +17,7 @@ import wave
 from motion_scenes import scene_markup, CSS as MOTION_CSS
 from editorial_scenes import artifact_markup, CSS as ARTIFACT_CSS
 from kinetic_scenes import kinetic_markup, CSS as KINETIC_CSS
+from hyperframes_cli import run as run_hyperframes
 
 HERE = Path(__file__).resolve().parent
 
@@ -528,8 +529,8 @@ def main():
         print(json.dumps(build(args.spec,args.project),indent=2))
     else:
         if not args.output: ap.error("render requires --output")
-        command=[str(HERE/"node_modules/.bin/hyperframes"),"render",str(Path(args.project).resolve()),"--output",str(Path(args.output).resolve()),"--quality",args.quality,"--workers",str(args.workers),"--no-best-effort","--strict"]
-        subprocess.run(command,check=True)
+        command=["render",str(Path(args.project).resolve()),"--output",str(Path(args.output).resolve()),"--quality",args.quality,"--workers",str(args.workers),"--no-best-effort","--strict"]
+        run_hyperframes(command)
         result=probe(Path(args.output))
         (Path(args.project)/"render-receipt.json").write_text(json.dumps(result,indent=2)+"\n")
         print(json.dumps({"output":str(Path(args.output).resolve()),"duration":result["format"]["duration"],"bytes":Path(args.output).stat().st_size}))
