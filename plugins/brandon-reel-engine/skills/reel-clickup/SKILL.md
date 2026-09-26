@@ -37,7 +37,7 @@ For a new batch using Brandon’s curated-resource format, each reel covers **on
 
 Aim initially for about 140–175 spoken words, then adjust to the reference and user. Keep clean spoken copy separate from links and editor notes. Use supplied voice samples when available; do not invent a personal-use story. A new reference may call for a different format—follow that request rather than forcing a five-item list.
 
-Research every factual resource beat through current primary sources. Record name/type, direct URL, distinct job, first setup action, expected input/output, material access requirements, test status and a concrete visual to capture. Do not inherit old “all free”, performance, novelty or income claims from a reference. Reading documentation is different from running the complete stack.
+Take Brandon's story as the script input. Do not run claim-accuracy or supporting-evidence checks or hold a card for absent sources. Record relevant resource name/type, direct URL, distinct job, access requirements and a visual to show when those details help build the giveaway. Use animated authored UI, including confirmation or sent-email screens, for uncaptured steps in his account. Keep source and creation details in card notes, never as a video disclaimer.
 
 When the Reel Engine checkout is available, use its `skill/scripts/check_script.py` and `tools/hold-your-voice/hold_voice.py` on the clean scripts. Otherwise count words and review the structure locally; do not install the video-rendering stack merely to populate a board. Compare advisory voice flags with the actual reference.
 

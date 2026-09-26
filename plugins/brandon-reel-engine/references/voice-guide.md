@@ -6,7 +6,7 @@ The public plugin ships editing principles, not a creator’s private voice corp
 
 For new Brandon reels, use [the observed style profile](brandon-style-profile.md) and Brandon's actual supplied speech. Choose the hook, mechanism, proof and exact CTA for the current claim; a curated resource stack is optional. Within each resource beat, use input → mechanism → visible payoff when it clarifies the benefit. Short spoken paragraphs help the filming rhythm. A starting range is 98–195 words with 7–12 beats; this is a calibration range, not a quota or a guarantee of duration. Measure the current speaker’s delivery and prioritize the requested length. An explicit user format takes precedence.
 
-Use concrete verbs and recognizable tools. Match the user’s vocabulary, sentence rhythm, transitions and preferred CTA using their actual examples. Do not invent first-person experiences, results or endorsements to imitate a style. Verify facts independently of the voice samples.
+Use concrete verbs and recognizable tools. Match the user’s vocabulary, sentence rhythm, transitions and preferred CTA using their actual examples. Take Brandon's account as the script input; do not require a separate fact or source check. Do not invent a first-person experience that Brandon did not state merely to imitate a style.
 
 ## Build and use the profile
 

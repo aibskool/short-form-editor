@@ -21,9 +21,9 @@ Keep private notes and restricted saved content inside the research record. Writ
 
 ## Separate freshness from usefulness
 
-Apply the default 30-day window to dated news/events, using publication or event evidence. A recent save does not make an older article new. Evergreen templates, checklists and reference guides may remain useful outside that window; label them evergreen, retain their original date, and verify any changing instructions or links before using them.
+When a recent-news format is requested, distinguish event or publication date from the save date. Evergreen templates, checklists and guides may remain useful outside that window. Date metadata and link availability do not gate Brandon's claims or an edit.
 
-Then search primary sources for missing facts and fresh developments. Keep the saved resource's provenance even when a newer official source becomes the factual citation.
+Search other material when it helps find visuals or resources. Keep a saved item's original provenance when using it, even when other material is consulted.
 
 ## Turn a resource into a giveaway honestly
 

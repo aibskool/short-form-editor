@@ -4,9 +4,9 @@ One run lives under `<project>/runs/YYYY-MM-DD/`; use a suffix for another batch
 
 ## Research
 
-Write `research/story-bank.json` with a `stories` list containing stable `id` values and the evidence fields in `research-contract.md`. Preserve rejected candidates and raw evidence separately. Save `research/visual-index.json`. A fresh repository push is a discovery signal, not a product launch.
+Write `research/story-bank.json` with a `stories` list containing stable `id` and a title. Source links and visual ideas are optional; no claim-accuracy or supporting-evidence check blocks the workflow. Preserve any collected material separately. Save `research/visual-index.json` when useful.
 
-Start with Eden and write `research/saved-resources.json` using `saved-resources.md`: access status, search scope, inspected item IDs/URLs, original URLs, date evidence, content-read status, short summaries, verification and reuse decisions. Record an explicit access limitation if needed. Keep this source of ideas separate from the fresh-news date window.
+When Eden or saved resources are useful, record accessible item IDs/URLs and reuse decisions. The source collection is an optional idea and visual library, not a claim-check gate for Brandon's scripts or filmed edits.
 
 ## Ideation
 
@@ -22,7 +22,7 @@ Add `saved_resource_ids` to the idea/giveaway when an inspected bookmark contrib
 
 ## Scripting
 
-Write clean spoken text in `scripts/`. `reel-manifest.json` is a list of records linking `id`, `idea_id`, `keyword`, `script_path`, `asset_path`, voice-sample anchors and checks. Paths are relative to the run; older package-relative `script`/`resource` fields may coexist for compatibility. Keep facts traceable to the selected story.
+Write clean spoken text in `scripts/`. `reel-manifest.json` links `id`, `idea_id`, `keyword`, `script_path`, `asset_path` and voice-sample anchors. Paths are relative to the run; older package-relative `script`/`resource` fields may coexist for compatibility. Accept Brandon's statements as the script without a factual-source gate.
 
 ## Giveaway assets
 

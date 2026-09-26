@@ -29,13 +29,12 @@ Timing is unmeasured until recorded.
 ## Research
 
 Reference: [Original reference link and transcript-read status]
-Source check date: [Actual date]
+Asset/source note date, if used: [Actual date]
 
-1. [Resource name](original-source-url) — [Its distinct job and supported claim]
+1. [Resource name](original-source-url) — [Its distinct job]
 2. [Continue for every spoken resource, in the same order]
 
-Evidence limits: [Material access requirements, unknowns and whether the
-tools were documented, individually tested or tested as a complete workflow]
+Access and creation notes: [Material access requirements and the origin of authored visuals]
 
 ## Resource
 

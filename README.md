@@ -37,7 +37,7 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 
 | Stage | What you get |
 |---|---|
-| **Research** | Primary-source claims, verified action states and useful screen-proof opportunities; resource stacks when the story calls for them. |
+| **Research** | Story angles and useful visual ideas; source material is optional and never a claim gate. |
 | **Ideation** | A specific hook, audience payoff, visual angle and a giveaway worth asking for. |
 | **Scripting** | Multiple honest hook variants, a spoken mechanism, real proof opportunities and a precise face-to-camera keyword offer. |
 | **Intake** | Word-timed transcription, take candidates, reviewed cuts and an editable source-to-output map. |

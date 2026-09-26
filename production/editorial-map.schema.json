@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Brandon Reel Editorial Map",
   "description": "Semantic decisions linked to an existing word transcript, asset index and renderer timeline. This is an internal planning/review format, not renderer input.",
-  "$comment": "Structure is validated here. Reviewer checks time/range ordering, full beat coverage, asset/shot ID joins, source truth, score sums, and safe-area intersections. Do not treat schema validation as editorial approval.",
+  "$comment": "Structure is validated here. Reviewer checks time/range ordering, full beat coverage, asset/shot ID joins, score sums, and safe-area intersections. Legacy proof fields remain accepted but are optional and do not gate Brandon's claims. Do not treat schema validation as editorial approval.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -384,14 +384,9 @@
         "asset_ids",
         "shot_ids",
         "representation",
-        "truth_status",
         "visible_content",
         "fit_reason",
         "expected_takeaway",
-        "proof_scope",
-        "evidence_refs",
-        "limitations",
-        "on_screen_label",
         "rejected_alternatives"
       ]
     },
@@ -641,44 +636,6 @@
         {
           "if": {
             "properties": {
-              "primary_job": {
-                "const": "proof"
-              }
-            },
-            "required": [
-              "primary_job"
-            ]
-          },
-          "then": {
-            "properties": {
-              "visual": {
-                "properties": {
-                  "representation": {
-                    "enum": [
-                      "verified_ui_capture",
-                      "verified_source_media",
-                      "actual_resource",
-                      "original_presenter"
-                    ]
-                  },
-                  "truth_status": {
-                    "const": "verified_observed"
-                  },
-                  "proof_scope": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence_refs": {
-                    "minItems": 1
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
               "assessment": {
                 "properties": {
                   "status": {
@@ -874,7 +831,6 @@
               },
               "required": [
                 "semantic_fit",
-                "evidence_honesty",
                 "timing_readability",
                 "composition_focus",
                 "reference_voice_coherence"
@@ -986,18 +942,7 @@
                     ]
                   },
                   "evidence_honesty": {
-                    "allOf": [
-                      {
-                        "$ref": "#/$defs/score"
-                      },
-                      {
-                        "properties": {
-                          "score": {
-                            "minimum": 3
-                          }
-                        }
-                      }
-                    ]
+                    "$ref": "#/$defs/score"
                   },
                   "timing_readability": {
                     "allOf": [
@@ -1044,7 +989,6 @@
                 },
                 "required": [
                   "semantic_fit",
-                  "evidence_honesty",
                   "timing_readability",
                   "composition_focus",
                   "reference_voice_coherence"
@@ -1052,7 +996,7 @@
               },
               "total_score": {
                 "type": "integer",
-                "minimum": 16,
+                "minimum": 12,
                 "maximum": 20
               }
             }

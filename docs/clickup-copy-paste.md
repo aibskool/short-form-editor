@@ -13,7 +13,7 @@ https://github.com/aibskool/short-form-editor/blob/main/plugins/brandon-reel-eng
 New reference reel: PASTE_REFERENCE_LINK_HERE
 ClickUp List or Board: PASTE_CLICKUP_LINK_HERE
 
-Use computer use to populate ClickUp. Create five distinct reel scripts in the reference’s hook and writing style. Each reel should cover one specific viewer outcome through a complementary stack of useful plugins, skills, MCPs or tools. Inspect the actual reference transcript and verify new factual claims with primary sources.
+Use computer use to populate ClickUp. Create five distinct reel scripts in the reference’s hook and writing style. Each reel should cover one specific viewer outcome through a complementary stack of useful plugins, skills, MCPs or tools. Inspect the reference transcript for its structure. Take Brandon's story as given; do not check its claims or demand sources.
 
 Choose the two strongest giveaway opportunities, build their complete resource docs and downloadable packs, and put those two tasks in Built Resource. Put the other three in Script, with the remaining giveaway work clearly stated.
 
@@ -21,7 +21,7 @@ Use this workflow: Script → Approved → Built Resource → Filmed → Edited 
 
 Each card must contain:
 - The complete spoken script directly in the description.
-- Research: source links, supported claims, access requirements and what was tested.
+- Research/visual notes: optional asset links and access requirements; no claim-check gate.
 - Resource: actual Doc and files when built, otherwise the exact remaining resource plan.
 - Build/reverse-engineering notes explaining how the reference was adapted.
 - Filming notes: what to show for each resource beat and the CTA.
@@ -40,7 +40,7 @@ https://github.com/aibskool/short-form-editor/blob/main/plugins/brandon-reel-eng
 Reference or subject: PASTE_NEW_LINK_HERE
 Destination: PASTE_CLICKUP_LIST_OR_BOARD_LINK_HERE
 
-Use computer use to create or update one complete reel card. Write the script, research its claims and build the exact resource promised in the CTA. Include the script, research, resource Doc/download, adaptation notes and filming notes. Put it in Built Resource once the giveaway exists and opens. Attach an existing matching final edit only if one is available. Verify the saved card and return its link.
+Use computer use to create or update one complete reel card. Write the script from Brandon's account and build the exact resource promised in the CTA. Include the script, optional asset notes, resource Doc/download, adaptation notes and filming notes. Do not make claim accuracy or supporting evidence a gate. Put it in Built Resource once the giveaway exists and opens. Attach an existing matching final edit only if one is available. Verify the saved card and return its link.
 ```
 
 ## Package existing human and avatar edits
@@ -59,7 +59,7 @@ Use computer use to create or update two cards: Brandon (real person) and Avatar
 
 **Script** — full spoken copy, word count and estimated timing.
 
-**Research** — original links, claim evidence, access limits and test state.
+**Research/visual notes** — optional original links, asset access and creation state.
 
 **Resource** — the real guide/list, copyable prompts or checklist and download.
 

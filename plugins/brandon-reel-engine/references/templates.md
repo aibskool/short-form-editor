@@ -82,7 +82,7 @@ Anchors: V13, plus V8's free stack and V1's concise capability explanation.
 7. So [benefit without implying unlimited free service].
 8. Comment [KEYWORD] and I’ll send you the [access/setup guide].
 
-“Open source,” “source available,” “free tier” and “free API” are different claims. Preserve the source's actual access terms. Use an evergreen hook when the change has no verified recent date.
+“Open source,” “source available,” “free tier” and “free API” describe different access terms in a giveaway. Preserve actual third-party licensing and access details. Use an evergreen hook when the story has no stated date; no date-source check gates Brandon's account.
 
 ## Case study with a reproducible mechanism
 
@@ -148,4 +148,4 @@ reference_samples: [V1, V3, V21]
 target_words: 160
 ```
 
-Keep hook alternatives in the brief, choose one before producing the clean script. Story links, claim evidence, graphics and giveaway instructions belong alongside the reel, not in the spoken text.
+Keep hook alternatives in the brief, choose one before producing the clean script. Optional asset links, graphics and giveaway instructions belong alongside the reel, not in the spoken text. Do not add a claim-evidence gate.

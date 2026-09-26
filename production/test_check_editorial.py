@@ -134,9 +134,32 @@ class EditorialChecks(unittest.TestCase):
         render.write_bytes(b'changed picture after review')
         self.assert_error('stale approval')
 
-    def test_schema_rejects_fake_product_proof(self):
+    def test_authored_screen_has_no_source_or_proof_gate(self):
         self.data['beats'][0]['primary_job'] = 'proof'
-        self.assert_error('schema:')
+        self.data['beats'][0]['visual']['representation'] = 'ui_mockup'
+        for key in ('truth_status', 'proof_scope', 'evidence_refs', 'limitations', 'on_screen_label'):
+            self.data['beats'][0]['visual'].pop(key)
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_legacy_proof_fields_remain_accepted(self):
+        self.assertTrue(self.run_check()['mechanical_ready'])
+
+    def test_review_can_pass_without_evidence_honesty_score(self):
+        render = self.root / 'render.mp4'
+        render.write_bytes(b'fixture render')
+        names = ('semantic_fit', 'timing_readability', 'composition_focus',
+                 'reference_voice_coherence')
+        self.data['review'].update(status='passed', reviewer='Fixture reviewer',
+            reviewed_at='2026-09-04T12:00:00Z', render_path='render.mp4',
+            render_sha256=hashlib.sha256(render.read_bytes()).hexdigest(),
+            whole_render_watched_with_sound=True, phone_size_motion_checked=True,
+            checked_spans=[{'interval': {'start': 0, 'end': 2}, 'observation': 'Fixture'}],
+            scores={n: {'score': 4, 'evidence': 'Visual/audio observation', 'revision': None}
+                    for n in names}, total_score=16)
+        self.data['beats'][0]['assessment'].update(status='passed',
+            viewed_render_span={'start': 0, 'end': 2}, observed_takeaway='Fixture')
+        self.data['beats'][0]['placement']['safe_area_check'] = 'clear'
+        self.assertTrue(self.run_check()['mechanical_ready'])
 
     def test_editorial_graphic_must_join_and_overlap_spoken_claim(self):
         self.data['schema_version'] = 2
