@@ -1,47 +1,35 @@
-<p align="center"><img src="docs/assets/hero.svg" alt="Samin Reel Engine — From proof to pixels. Research, reels and resources." width="100%"></p>
+<p align="center"><img src="docs/assets/hero.svg" alt="Brandon Reel Engine — research, reels and resources." width="100%"></p>
 
 <p align="center">
   <strong>A research-to-reel production system for Codex.</strong><br>
-  Real evidence. Your voice. Fast edits. Useful giveaways.
+  Your voice. Tight cuts. Animated edits. Useful giveaways.
 </p>
 
 <p align="center">
-  <a href="#see-it-in-motion">Watch the demo</a> ·
+  <a href="#brandon-style-references">Style references</a> ·
   <a href="#get-started">Install</a> ·
   <a href="docs/capabilities.md">Capability guide</a> ·
   <a href="docs/workflow.md">Workflow</a> ·
   <a href="docs/integrations.md">Integrations</a>
 </p>
 
-Samin Reel Engine turns a promising story into a complete creator workflow: research the claim, develop an angle, write a filmable script, gather proof, edit the recorded take, review the actual output, and prepare the resource promised in the CTA.
+Brandon Reel Engine turns a story into a complete creator workflow: develop an angle, write a filmable script, select useful visuals, edit the recorded take, review the actual output, and prepare the resource promised in the CTA. For a filmed reel, Brandon's spoken claims are accepted as given; editing never waits for a claim-accuracy or supporting-evidence check.
 
 It combines **eleven focused skills** with a **local HyperFrames editing runtime**, practical source-finding recipes, reusable JSON contracts and explicit creative checks. Skills load by stage, so an agent can repair one weak visual or work through the complete pipeline.
 
 **New link → ClickUp workflow:** [Copy a ready-to-use Codex prompt](docs/clickup-copy-paste.md) to create scripts, research notes, resource Docs and correctly staged cards using computer use. This workflow does not require the video-rendering dependencies.
 
-## Explore the interactive website
+## Brandon style references
 
-[**Visit the Reel Engine 3D experience →**](https://open-yoga-hpnv.here.now/?v=3)
+The current visual target is based on Brandon's [Astra workflow](https://www.instagram.com/p/DdpOfqtgr8a/), [photographer website](https://www.instagram.com/p/DdsBCNtB6LW/) and [GovDeals](https://www.instagram.com/p/DdkZiwiuDPv/) reels. Read the [observed style profile](skill/references/brandon-style-profile.md). It separates short lower-third spoken captions from independent large green/white editorial graphics. An original-footage 20-second calibration and Brandon's review remain required before claiming a match.
 
-![The Reel Engine website: your next reel needs a system](docs/assets/website-desktop.png)
+See the [migration inventory and acceptance checklist](docs/brandon-migration.md) for the exact legacy mappings, build gates and verification status.
 
-Explore the pipeline, watch the actual reel, choose your starting point and sign up for product updates. This Director’s Cut example uses the original [Scroll Craft](https://github.com/nateherkai/scroll-craft) engine. [Website source and buyer-journey walkthrough](https://github.com/Samin12/astra-designer/tree/main/examples/directors-cut).
+For local reference video files and a finished 20-second Brandon cut, use `python production/compare_style.py --candidate BRANDON.mp4 --reference Astra ASTRA.mp4 START END proof --reference Photographer PHOTOGRAPHER.mp4 START END website --reference GovDeals GOVDEALS.mp4 START END mechanism --out /absolute/review-directory`. Select intervals by the same visual job, then inspect the frame slider and listen to the originals. The tool records a pending review; it does not grade resemblance.
 
-## See it in motion
+The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Director's Cut website](https://open-yoga-hpnv.here.now/?v=3) are historical Samin material retained with attribution, not a Brandon calibration.
 
-<table>
-<tr>
-<td width="44%" align="center"><img src="docs/assets/opening.gif" alt="Animated opening: presenter below a clear graphic, then rapidly changing real app examples" width="300"></td>
-<td valign="top">
-<h3>Clear immediately. Moving immediately.</h3>
-<p>The Mobbin demo begins with the presenter below the graphic for <strong>0.5 seconds</strong>, then changes useful app views roughly every <strong>0.7–0.8 seconds</strong>.</p>
-<p>The subject, count and benefit remain understandable while the visuals move. Native app motion, real source screens, short captions, a continuous music bed and purposeful sound effects carry the edit.</p>
-<p><strong>This is an actual rendered example.</strong> The GIF is silent; use the full MP4 to hear the mix.</p>
-<p><a href="https://github.com/Samin12/samin-reel-engine-plugin/releases/tag/v0.3.0">Watch or download the full 49-second reel →</a></p>
-<p><a href="docs/showcase.md">Read the editing decisions and verification limits</a></p>
-</td>
-</tr>
-</table>
+![Historical upstream Mobbin opening](docs/assets/opening.gif)
 
 ## One connected pipeline
 
@@ -49,35 +37,33 @@ Explore the pipeline, watch the actual reel, choose your starting point and sign
 
 | Stage | What you get |
 |---|---|
-| **Research** | Outcome-led stacks of plugins, skills, MCPs and resources; Eden reference breakdowns, primary-source claims and visual opportunities. |
+| **Research** | Story angles and useful visual ideas; source material is optional and never a claim gate. |
 | **Ideation** | A specific hook, audience payoff, visual angle and a giveaway worth asking for. |
-| **Scripting** | An outcome-first hook, distinct named-resource beats and a matching complete-list CTA, calibrated to your examples. |
+| **Scripting** | Multiple honest hook variants, a spoken mechanism, real proof opportunities and a precise face-to-camera keyword offer. |
 | **Intake** | Word-timed transcription, take candidates, reviewed cuts and an editable source-to-output map. |
 | **Assets** | Relevant posts, GitHub READMEs, docs, screenshots, screen recordings and real resource previews with provenance. |
 | **Generation** | A bounded brief for missing explanatory images or motion, using an available provider; generated material stays distinguishable from evidence. |
-| **Editing** | Vertical compositions, presenter/split/full-screen layouts, crops, zooms, captions, music, SFX and deterministic renders. |
-| **Review** | A cold first-frame check, source-fit/readability checks, motion and audio observations, and timecoded repairs against the actual export. |
+| **Editing** | A-roll, full-screen evidence and optional split; independent spoken captions and animated green/white editorial graphics, sound and deterministic renders. |
+| **Review** | Encoded-frame and audio review, both text tracks, animation, transitions, calibration comparison and timecoded repairs. |
 | **Giveaways** | Real prompts, checklists or resource packs that match the spoken promise and CTA keyword. |
 | **Delivery** | Skool post and ManyChat handoff packets, release files and a verifiable production record. Publication is a separate action. |
 
 ## What makes the edit different
 
-- **Proof follows the sentence.** Every insert answers a viewer question and identifies the exact visible detail that supports the spoken claim. A relevant word in a screenshot is not enough.
-- **The first frame explains the idea.** Subject, benefit and relationship must be visible together at phone size. Animation cannot hide essential context until later.
-- **The intro earns its motion.** Prefer unchanged image holds of 0.5 seconds or less; cap them at 1 second. Tiny zooms and caption-only changes do not qualify as meaningful intro action.
-- **Music and SFX are part of the brief.** The plugin build command requires an actual music track unless the user explicitly opts out. Effects should read clearly without masking speech.
-- **Speech stays human.** Remove reviewed quiet gaps and retime words, captions and outer cues while keeping the voice at 1×. Recheck word boundaries and effect tails.
-- **Real motion comes first.** Prefer relevant typing, scrolling, interface changes and demonstrations. Reframe still proof when it helps; preserve its readable detail.
-- **The resource exists before the promise.** Prepare the actual giveaway, then validate the keyword, links and community handoff.
-- **An encode is not a creative approval.** Structural checks, sampled frames, full playback and user acceptance are recorded separately.
+- **Story drives the visuals.** Use supplied screen captures where useful and animated authored graphics for uncaptured steps. Do not fact-check Brandon's recorded claims or require proof as an editing gate.
+- **Two text systems.** Short word-timed lower-third captions and larger animated green/white editorial graphics have separate timing, placement and meaning.
+- **Cuts follow understanding.** A-roll, full-screen proof, illustrative footage and optional split are chosen by the claim; there is no fixed cut interval.
+- **The CTA is direct.** Brandon faces the camera and says the exact displayed keyword.
+- **Motion is required.** Animate every authored on-screen text/card/illustration and use purposeful transitions at appropriate boundaries, even when the assembly omits them. Never put disclaimers or production caveats on the video.
+- **Style requires calibration.** Compare a 20-second render from original Brandon footage with the three references, then wait for his review before claiming a match.
 
 ## Get started
 
 You need Codex with plugin support, Git, Python **3.11**, Node.js and FFmpeg/FFprobe. Provider accounts are only needed for the stages that use them.
 
 ```bash
-git clone https://github.com/Samin12/samin-reel-engine-plugin.git
-cd samin-reel-engine-plugin
+git clone https://github.com/aibskool/short-form-editor.git
+cd short-form-editor
 
 python3.11 -m venv .venv
 source .venv/bin/activate
@@ -85,9 +71,9 @@ python -m pip install -r production/requirements.txt
 npm ci --prefix production/editor
 
 python tools/build-plugin.py
-python plugins/samin-reel-engine/scripts/reel.py --project "$PWD" configure
+python plugins/brandon-reel-engine/scripts/reel.py --project "$PWD" configure
 codex plugin marketplace add "$PWD"
-codex plugin add samin-reel-engine@samin-reel-engine
+codex plugin add brandon-reel-engine@brandon-reel-engine
 ```
 
 Start a new Codex task to load the installed skills. Keep the virtual environment active for CLI commands. The dependency pins capture the tested Python 3.11 setup; they are not a claim of universal platform compatibility.
@@ -100,17 +86,17 @@ For local speech transcription, also install `production/requirements-intake.txt
 
 **Start from an idea**
 
-> Use Samin Reel Engine. Find a complementary stack of skills, plugins and resources that helps my audience with this outcome. Use my Eden saves and primary sources, including useful evergreen tools. Follow my five design resources reel for the hook and writing style, then prepare the script, proof-asset queue and complete giveaway.
+> Use Brandon Reel Engine. Research the claim, draft two distinct truthful hooks, plan A-roll, actual screen proof, illustrative footage and green/white kinetic graphics. Script in my voice and build the exact keyword resource before promising it.
 
-New research/script batches default to the [curated resource format](skill/references/curated-resource-reels.md), based on [Samin's reference reel](https://www.instagram.com/p/Dc7hhAUEvu1/). Each reel covers one outcome through several distinct resources. Explicit requests for news, a single-tool explainer or another format still take precedence. The collector includes evergreen resources by default; use `--mode news` for recent repository activity. Eden MCP is preferred when available and authenticated; the plugin does not bundle an Eden connection or claim access when it is missing.
+The [historical curated resource format](skill/references/curated-resource-reels.md) is optional. Current scripts follow the story and its proof. Use authorized saved resources and primary sources when available.
 
 **Turn a filmed batch into a reel**
 
-> Use reel director. Here are my footage, scripts and reference. Select the take, preserve my actual voice, find supporting real-world B-roll and make a vertical review cut with captions, music and SFX.
+> Use reel director. Here are my footage, scripts and reference. Select the take, preserve my actual voice, find supporting real-world B-roll and make a vertical review cut with captions, animated graphics, transitions and SFX, without background music.
 
 **Repair a weak edit**
 
-> Use reel review. Inspect this export at phone size. Check the first frame, first-second motion, source relevance, caption placement, music and SFX. Make timecoded repairs and recheck the output.
+> Use reel review. Inspect this export at phone size. Check the first frame, first-second motion, source relevance, caption placement, animation, transitions and SFX; confirm no music. Make timecoded repairs and recheck the output.
 
 **Prepare the giveaway handoff**
 
@@ -120,28 +106,28 @@ New research/script batches default to the [curated resource format](skill/refer
 
 | Skill | Focus |
 |---|---|
-| [`reel-director`](plugins/samin-reel-engine/skills/reel-director/SKILL.md) | State, stage routing and the complete workflow |
-| [`reel-research`](plugins/samin-reel-engine/skills/reel-research/SKILL.md) | Sources, bookmarks, facts and visual leads |
-| [`reel-ideation`](plugins/samin-reel-engine/skills/reel-ideation/SKILL.md) | Hooks, angles, viewer value and giveaway promises |
-| [`reel-script`](plugins/samin-reel-engine/skills/reel-script/SKILL.md) | Your supplied voice examples and filmable copy |
-| [`reel-intake`](plugins/samin-reel-engine/skills/reel-intake/SKILL.md) | Transcription, take selection and timing |
-| [`reel-assets`](plugins/samin-reel-engine/skills/reel-assets/SKILL.md) | Real-source B-roll and visible proof |
-| [`reel-generate`](plugins/samin-reel-engine/skills/reel-generate/SKILL.md) | Explanatory asset generation and inspection |
-| [`reel-edit`](plugins/samin-reel-engine/skills/reel-edit/SKILL.md) | Composition, captions, motion, music and SFX |
-| [`reel-review`](plugins/samin-reel-engine/skills/reel-review/SKILL.md) | Actual-output judgment and repair |
-| [`reel-deliver`](plugins/samin-reel-engine/skills/reel-deliver/SKILL.md) | Resource packs, Skool and ManyChat handoffs |
-| [`reel-clickup`](plugins/samin-reel-engine/skills/reel-clickup/SKILL.md) | Complete ClickUp cards, resource Docs and verified board stages |
+| [`reel-director`](plugins/brandon-reel-engine/skills/reel-director/SKILL.md) | State, stage routing and the complete workflow |
+| [`reel-research`](plugins/brandon-reel-engine/skills/reel-research/SKILL.md) | Sources, bookmarks, facts and visual leads |
+| [`reel-ideation`](plugins/brandon-reel-engine/skills/reel-ideation/SKILL.md) | Hooks, angles, viewer value and giveaway promises |
+| [`reel-script`](plugins/brandon-reel-engine/skills/reel-script/SKILL.md) | Your supplied voice examples and filmable copy |
+| [`reel-intake`](plugins/brandon-reel-engine/skills/reel-intake/SKILL.md) | Transcription, take selection and timing |
+| [`reel-assets`](plugins/brandon-reel-engine/skills/reel-assets/SKILL.md) | Real-source B-roll and visible proof |
+| [`reel-generate`](plugins/brandon-reel-engine/skills/reel-generate/SKILL.md) | Explanatory asset generation and inspection |
+| [`reel-edit`](plugins/brandon-reel-engine/skills/reel-edit/SKILL.md) | Composition, captions, motion, transitions and SFX |
+| [`reel-review`](plugins/brandon-reel-engine/skills/reel-review/SKILL.md) | Actual-output judgment and repair |
+| [`reel-deliver`](plugins/brandon-reel-engine/skills/reel-deliver/SKILL.md) | Resource packs, Skool and ManyChat handoffs |
+| [`reel-clickup`](plugins/brandon-reel-engine/skills/reel-clickup/SKILL.md) | Complete ClickUp cards, resource Docs and verified board stages |
 
 ## Local tools underneath the skills
 
 The runner exposes a fixed set of commands rather than arbitrary shell dispatch:
 
 ```bash
-python plugins/samin-reel-engine/scripts/reel.py doctor
-python plugins/samin-reel-engine/scripts/reel.py run pipeline -- --help
-python plugins/samin-reel-engine/scripts/reel.py run capture -- --help
+python plugins/brandon-reel-engine/scripts/reel.py doctor
+python plugins/brandon-reel-engine/scripts/reel.py run pipeline -- --help
+python plugins/brandon-reel-engine/scripts/reel.py run capture -- --help
 python production/editor/edit.py build --help
-python plugins/samin-reel-engine/scripts/reel.py run check -- --help
+python plugins/brandon-reel-engine/scripts/reel.py run check -- --help
 ```
 
 Research collection, pipeline validation, script measurement, intake, take preparation, timing remaps, evidence capture, composition building, rendering, mastering, editorial checks, a review player and ManyChat packet preparation are included. [Browse the commands and their boundaries](docs/capabilities.md).
@@ -154,17 +140,17 @@ The playbooks contain ordered procedures, fallback options, concrete pass/fail e
 
 Useful starting points:
 
-- [Operator runbook](plugins/samin-reel-engine/references/operator-runbook.md)
-- [Visual-evidence rules](plugins/samin-reel-engine/references/visual-evidence.md)
-- [Shot recipes and opening motion](plugins/samin-reel-engine/references/shot-recipes.md)
-- [Quality procedure](plugins/samin-reel-engine/references/quality-procedure.md)
-- [Creative-review template](plugins/samin-reel-engine/templates/creative-review.json)
+- [Operator runbook](plugins/brandon-reel-engine/references/operator-runbook.md)
+- [Visual-evidence rules](plugins/brandon-reel-engine/references/visual-evidence.md)
+- [Shot recipes and opening motion](plugins/brandon-reel-engine/references/shot-recipes.md)
+- [Quality procedure](plugins/brandon-reel-engine/references/quality-procedure.md)
+- [Creative-review template](plugins/brandon-reel-engine/templates/creative-review.json)
 - [Asset-index schema](production/asset-index.schema.json) and [editorial-map schema](production/editorial-map.schema.json)
 
 ## Repository map
 
 ```text
-plugins/samin-reel-engine/   11 skills, shared playbooks, templates and runner
+plugins/brandon-reel-engine/   11 skills, shared playbooks, templates and runner
 production/                 Local intake, capture, edit and review runtime
 skill/                      Maintained playbooks and research/pipeline helpers
 tools/hold-your-voice/       Voice-profile and draft-check helper
@@ -172,6 +158,6 @@ voice/                      Instructions for your local, ignored voice samples
 docs/                       Setup, capabilities, workflow and visual showcase
 ```
 
-This is the public distribution. Production data belongs in your local workspace. Historical Council/Mobbin paths in playbooks describe worked examples; private audit records and raw media are not bundled. Use the public [showcase](docs/showcase.md) and your own asset/timeline records.
+This fork retains source-available upstream material. Council/Mobbin examples and the upstream public showcase are historical, not Brandon style samples. Raw Brandon filming and a reviewed calibration are not bundled.
 
 Public/source-available, with rights retained unless separately licensed. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).

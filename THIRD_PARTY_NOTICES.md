@@ -1,5 +1,7 @@
 # Third-party notices
 
+Brandon Reel Engine is a maintained fork of Samin Yasar's [Samin Reel Engine](https://github.com/Samin12/samin-reel-engine-plugin). The original project copyright and source-available terms remain in [LICENSE](LICENSE). Historical Council/Mobbin examples and release records describe upstream work; renaming this fork does not transfer their authorship or media rights.
+
 - HyperFrames is installed as a dependency, pinned in production/editor/package.json. Its upstream license applies: https://github.com/heygen-com/hyperframes
 - GSAP is installed as a dependency; consult its distributed license and current upstream terms: https://gsap.com/
 - The vendored Hold Your Voice helper retains its MIT license in tools/hold-your-voice/LICENSE. Source: https://github.com/Samin12/hold-your-voice

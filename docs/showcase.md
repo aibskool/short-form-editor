@@ -1,4 +1,6 @@
-# Mobbin: clarity plus opening energy
+# Historical upstream Mobbin showcase: clarity plus opening energy
+
+This reel and its original measurements are by Samin Yasar. They remain as truthful upstream history, not as evidence that Brandon Reel Engine matches Brandon's three reference reels. See [Brandon's observed profile](../skill/references/brandon-style-profile.md) and the pending original-footage calibration.
 
 [Full reel with sound](https://github.com/Samin12/samin-reel-engine-plugin/releases/tag/v0.3.0)
 

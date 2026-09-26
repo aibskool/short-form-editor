@@ -1,0 +1,87 @@
+{
+  "source": "skill/references",
+  "target": "plugins/brandon-reel-engine/references",
+  "runtime": "Configured local project; resolve with plugin scripts/reel.py context",
+  "files": [
+    {
+      "path": "plugins/brandon-reel-engine/references/asset-playbook.md",
+      "source_sha256": "cfa7813af28d51aba8747df3895dd07ec560e74a647bc1c324d02b1e4b46f69d",
+      "packaged_sha256": "cfa7813af28d51aba8747df3895dd07ec560e74a647bc1c324d02b1e4b46f69d"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/brandon-style-profile.md",
+      "source_sha256": "7852f72040d53e4eb7512fef9cd29d7305669ba5a59f77378dbeaf3f0b3c0edd",
+      "packaged_sha256": "7852f72040d53e4eb7512fef9cd29d7305669ba5a59f77378dbeaf3f0b3c0edd"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/curated-resource-reels.md",
+      "source_sha256": "eba31b109ee00c4d74a4a100a39c3c79a1fe297f13d870a5a3d32c0bb0d63f79",
+      "packaged_sha256": "eba31b109ee00c4d74a4a100a39c3c79a1fe297f13d870a5a3d32c0bb0d63f79"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/generation-recipes.md",
+      "source_sha256": "50228a690948a21ce8dc27e4807c34ebad2413e112e713e27931d6b65a5eedff",
+      "packaged_sha256": "50228a690948a21ce8dc27e4807c34ebad2413e112e713e27931d6b65a5eedff"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/manychat.md",
+      "source_sha256": "706707ed07a654b969ca7337f0aa8f051bbaa203c15ac1b389d1ebb1d77227a3",
+      "packaged_sha256": "706707ed07a654b969ca7337f0aa8f051bbaa203c15ac1b389d1ebb1d77227a3"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/operator-runbook.md",
+      "source_sha256": "ef35a4745358ef953472d56da6f5350d04ccef5928cea73f5062637b5e4b0d64",
+      "packaged_sha256": "ef35a4745358ef953472d56da6f5350d04ccef5928cea73f5062637b5e4b0d64"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/pipeline-contract.md",
+      "source_sha256": "62638b89c0b92717ca12d78d2ed0636e5b7d9389b6861f200e84e632a1f5abde",
+      "packaged_sha256": "62638b89c0b92717ca12d78d2ed0636e5b7d9389b6861f200e84e632a1f5abde"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/pipeline-operations.md",
+      "source_sha256": "cc933979a30309dc8e8c76edae7730598bb5020863f3b8af0e06e49c653e0445",
+      "packaged_sha256": "cc933979a30309dc8e8c76edae7730598bb5020863f3b8af0e06e49c653e0445"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/quality-procedure.md",
+      "source_sha256": "d0df509f083a0a4935a8d34cdfb0474aab6135175bb3267c5c29a4a64a1da721",
+      "packaged_sha256": "d0df509f083a0a4935a8d34cdfb0474aab6135175bb3267c5c29a4a64a1da721"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/research-contract.md",
+      "source_sha256": "09751feea5cc5e307c1c1464ed57be4cce286ca2b72443727284d73bd98d43d9",
+      "packaged_sha256": "09751feea5cc5e307c1c1464ed57be4cce286ca2b72443727284d73bd98d43d9"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/saved-resources.md",
+      "source_sha256": "2252bae8e23151802c036aa89ca6b75329e8431ffc78a42a3d5ba1283f7ee693",
+      "packaged_sha256": "2252bae8e23151802c036aa89ca6b75329e8431ffc78a42a3d5ba1283f7ee693"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/shot-recipes.md",
+      "source_sha256": "5deb96a0eb68df7586a5822e16d688d39e7b484baf8d2541fd150a26c9138b88",
+      "packaged_sha256": "5deb96a0eb68df7586a5822e16d688d39e7b484baf8d2541fd150a26c9138b88"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/skool.md",
+      "source_sha256": "e216318be7ff8202144b4a520e2297d4108193d29225f2bc3dbe5480f59842de",
+      "packaged_sha256": "e216318be7ff8202144b4a520e2297d4108193d29225f2bc3dbe5480f59842de"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/templates.md",
+      "source_sha256": "a2e0672739347d519dbe7824f4022af21b753db6f3764950ca7e82f233a3393e",
+      "packaged_sha256": "a2e0672739347d519dbe7824f4022af21b753db6f3764950ca7e82f233a3393e"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/visual-evidence.md",
+      "source_sha256": "fbdb850225d95fc011439af810f643f123fd22629c313263d50d82bc45818f47",
+      "packaged_sha256": "1078c7e16933273522371adb03ed45adac116e38a66c34f95706c0ce580240ca"
+    },
+    {
+      "path": "plugins/brandon-reel-engine/references/voice-guide.md",
+      "source_sha256": "65f7214a013bfcf063a4995d56bdcc6850ae3ea4dabcff4c480c4f104cca0769",
+      "packaged_sha256": "65f7214a013bfcf063a4995d56bdcc6850ae3ea4dabcff4c480c4f104cca0769"
+    }
+  ]
+}

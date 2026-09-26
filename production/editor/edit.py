@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and render local Samin A-roll edits; no HeyGen cloud-render API jobs.
+"""Build and render local Brandon A-roll edits; no HeyGen cloud-render API jobs.
 
 python3 edit.py build --spec timeline.json --project /path/to/composition
 python3 edit.py render --project /path/to/composition --output /path/to/pilot.mp4
@@ -16,6 +16,8 @@ import subprocess
 import wave
 from motion_scenes import scene_markup, CSS as MOTION_CSS
 from editorial_scenes import artifact_markup, CSS as ARTIFACT_CSS
+from kinetic_scenes import kinetic_markup, CSS as KINETIC_CSS
+from hyperframes_cli import run as run_hyperframes
 
 HERE = Path(__file__).resolve().parent
 
@@ -113,6 +115,23 @@ def map_words(words, segments):
     return result
 
 
+def validate_scene_cues(shots, words, fps):
+    """Reject a declared word cue that misses the nearest encoded frame."""
+    for shot_index, shot in enumerate(shots):
+        scene = shot.get('scene', {})
+        if scene.get('kind') not in {'kinetic_ranking', 'kinetic_stat', 'kinetic_comparison'}:
+            continue
+        for item_index, item in enumerate(scene.get('items', [])):
+            for field, index_field, offset_field in (('at','anchor_word_index','cue_offset'),('fade_at','fade_anchor_word_index','fade_cue_offset')):
+                if index_field in item:
+                    index = int(item[index_field])
+                    if not 0 <= index < len(words) or field not in item:
+                        raise ValueError(f'shot {shot_index} item {item_index} has invalid {index_field}')
+                    expected = words[index]['start'] + float(item.get(offset_field, 0))
+                    if abs(float(item[field])-expected) > 1/fps + .001:
+                        raise ValueError(f'shot {shot_index} item {item_index} {field} misses spoken cue by more than one frame')
+
+
 def caption_groups(words, max_words=4, max_chars=27):
     groups, current = [], []
     for word in words:
@@ -147,6 +166,43 @@ def phrase_groups(words, phrases):
     return groups
 
 
+def validate_editorial_graphics(graphics, duration):
+    """Check independent, claim-linked graphic timing and normalized placement."""
+    if not isinstance(graphics, list):
+        raise ValueError("editorial_graphics must be a list")
+    for index, item in enumerate(graphics):
+        if not isinstance(item, dict) or not str(item.get("claim_id", "")).strip():
+            raise ValueError(f"editorial graphic {index} needs a claim_id")
+        if not str(item.get("text", "")).strip():
+            raise ValueError(f"editorial graphic {index} needs text")
+        start = finite_number(item.get("start"), f"editorial graphic {index} start")
+        end = finite_number(item.get("end"), f"editorial graphic {index} end")
+        if not 0 <= start < end <= duration + 0.0001:
+            raise ValueError(f"editorial graphic {index} lies outside output timeline")
+        x = finite_number(item.get("x", 6), f"editorial graphic {index} x")
+        y = finite_number(item.get("y", 12), f"editorial graphic {index} y")
+        width = finite_number(item.get("width", 88), f"editorial graphic {index} width")
+        if not 0 <= x <= 100 or not 0 <= y <= 100 or width <= 0 or x + width > 100:
+            raise ValueError(f"editorial graphic {index} exceeds canvas")
+        if item.get("animation", "rise") not in {"rise", "pop", "fade"}:
+            raise ValueError(f"editorial graphic {index} has unknown animation")
+        if item.get("align", "left") not in {"left", "center", "right"}:
+            raise ValueError(f"editorial graphic {index} has unknown alignment")
+        if item.get("font_size") is not None and finite_number(item["font_size"], "font_size") <= 0:
+            raise ValueError(f"editorial graphic {index} font_size must be positive")
+    return graphics
+
+
+def editorial_words(item):
+    """Escape user text and emphasize only literal words present in that text."""
+    accent = {str(w).casefold().strip('.,!?;:') for w in item.get("accent_words", [])}
+    words = []
+    for token in str(item["text"]).split():
+        klass = "editorial-accent" if token.casefold().strip('.,!?;:') in accent else "editorial-white"
+        words.append(f'<span class="{klass}">{escape(token)}</span>')
+    return " ".join(words)
+
+
 def make_pop(path):
     """Original short synthetic accent, not third-party SFX or generated speech."""
     rate, duration = 48000, 0.16
@@ -159,6 +215,30 @@ def make_pop(path):
             phase = 2 * math.pi * (850 * t - 1800 * t * t)
             samples.append(struct.pack("<h", int(11000 * envelope * math.sin(phase))))
         out.writeframes(b"".join(samples))
+
+
+def make_accent(path, kind):
+    """Original low-level UI accents; the mix still requires listening review."""
+    if kind == 'soft_pop':
+        return make_pop(path)
+    if kind not in {'soft_click', 'soft_whoosh', 'soft_error'}:
+        raise ValueError(f'unknown synthetic SFX kind: {kind}')
+    rate = 48000
+    duration = {'soft_click': .075, 'soft_whoosh': .24, 'soft_error': .20}[kind]
+    samples = []
+    for n in range(int(rate*duration)):
+        t = n/rate
+        fade = math.sin(math.pi*t/duration)**2
+        if kind == 'soft_click':
+            wave_value = (math.sin(2*math.pi*1900*t)+.28*math.sin(2*math.pi*3600*t))*math.exp(-t*75)
+        elif kind == 'soft_whoosh':
+            wave_value = .6*math.sin(2*math.pi*(300*t+1800*t*t))*fade
+        else:
+            wave_value = (.7*math.sin(2*math.pi*165*t)+.22*math.sin(2*math.pi*247*t))*fade
+        samples.append(struct.pack('<h', int(9000*wave_value)))
+    with wave.open(str(path),'wb') as out:
+        out.setparams((1,2,rate,0,'NONE','not compressed'))
+        out.writeframes(b''.join(samples))
 
 
 def build(spec_path, project):
@@ -193,25 +273,38 @@ def build(spec_path, project):
         if not 0 <= float(segment["start"]) < float(segment["end"]) <= source_duration + 0.05:
             raise ValueError("source segment lies outside the source video")
     duration = sum(float(s["end"]) - float(s["start"]) for s in segments)
-    music = spec.get("music", [])
-    music_required = bool(spec.get("audio_policy", {}).get("music_required", False))
-    if music_required and not music:
-        raise ValueError("audio_policy.music_required=true but music is missing")
     output = spec.get("output", {})
     width, height, fps = int(output.get("width", 1080)), int(output.get("height", 1920)), int(output.get("fps", 30))
+    words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
+    validate_scene_cues(spec.get('shots', []), words, fps)
+    music = spec.get("music", [])
+    music_required = bool(spec.get("audio_policy", {}).get("music_required", False))
+    if music_required or music:
+        raise ValueError("Brandon short-form exports must not contain background music; add music on the platform")
+    policy = spec.get("audio_policy", {})
+    if policy.get("music_required") is not False:
+        raise ValueError("audio_policy.music_required must be false for Brandon short-form exports")
     split_fraction = float(output.get("split_fraction", 0.5))
     if not 0.25 <= split_fraction <= 0.75:
         raise ValueError("split_fraction must leave room for both visual and presenter")
     split_height = round(height * split_fraction)
-    captions = spec.get("captions", {})
-    font_size = float(captions.get("font_size", width * 0.08))
-    accent = captions.get("accent", "#D4A1F7")
+    if "spoken_captions" in spec and "captions" in spec:
+        raise ValueError("choose spoken_captions or legacy captions, not both")
+    captions = spec.get("spoken_captions", spec.get("captions", {}))
+    if not isinstance(captions, dict):
+        raise ValueError("spoken_captions must be an object")
+    graphics = validate_editorial_graphics(spec.get("editorial_graphics", []), duration)
+    font_size = float(captions.get("font_size", width * 0.048))
+    caption_y = finite_number(captions.get('y', 83), 'spoken_captions.y')
+    if not 65 <= caption_y <= 90:
+        raise ValueError('spoken_captions.y must stay in the lower third')
+    accent = captions.get("accent", "#49cf26")
     position = spec["source"].get("object_position", "50% 40%")
     font_name = captions.get("font_family", "Arial Black")
     font_css = ""
     if captions.get("font_path"):
-        font_name = "SaminCaption"
-        font_css = f"@font-face{{font-family:'SaminCaption';src:url('{media(captions['font_path'])}');font-weight:900;}}"
+        font_name = "BrandonCaption"
+        font_css = f"@font-face{{font-family:'BrandonCaption';src:url('{media(captions['font_path'])}');font-weight:900;}}"
     gsap = HERE / "node_modules/gsap/dist/gsap.min.js"
     if not gsap.is_file():
         raise ValueError("run npm ci in production/editor before building")
@@ -237,10 +330,15 @@ def build(spec_path, project):
             raise ValueError(f"unknown shot layout: {layout}")
         split = layout == "split"
         animations.append(f'tl.set("#presenter",{{top:{split_height if split else 0},height:{height-split_height if split else height}}},{start});')
-        animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y",44 if split else 60)}%"}},{start});')
+        animations.append(f'tl.set("#caption-anchor",{{autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
         backing = captions.get("background", "rgba(0,0,0,0)")
         animations.append(f'tl.set(".caption-text",{{backgroundColor:"{backing}"}},{start});')
         animations.append(f'tl.set("#presenter-camera",{{scale:{shot.get("zoom",1)},xPercent:{shot.get("x_percent",0)},yPercent:{shot.get("y_percent",0)}}},{start});')
+        if shot.get('zoom_to') is not None:
+            zoom_to = finite_number(shot['zoom_to'], f'shot {i} zoom_to')
+            if not 1 <= zoom_to <= 1.2:
+                raise ValueError('zoom_to must be between 1 and 1.2')
+            animations.append(f'tl.to("#presenter-camera",{{scale:{zoom_to},duration:{min(end-start,.85)},ease:"power2.out"}},{start});')
         if layout == "presenter":
             continue
         rect = f'width:{width}px;height:{split_height if split else height}px;'
@@ -248,6 +346,8 @@ def build(spec_path, project):
         if shot.get("media"):
             path = media(shot["media"])
             image = Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg", ".avif"}
+            if image and not shot.get('media_motion') and abs(float(shot.get('media_zoom', 1))-1) < .0001:
+                raise ValueError(f"shot {i} still image needs directed media_motion or media_zoom")
             tag = "img" if image else "video"
             extra = '' if image else f' muted playsinline data-media-start="{shot.get("source_start",0)}"'
             media_style = f'{rect}object-fit:{escape(shot.get("fit","contain"))};object-position:{escape(shot.get("object_position","50% 50%"))};background:{escape(shot.get("background","#111"))};'
@@ -280,20 +380,22 @@ def build(spec_path, project):
                 motion_to = motion_values(motion["to"], "to")
                 animations.append(f'tl.fromTo("#broll-camera-{i}",{json.dumps(motion_from,separators=(",",":"))},{json.dumps({**motion_to,"duration":end-start,"ease":"none"},separators=(",",":"))},{start});')
         elif shot.get("scene"):
-            maker = artifact_markup if shot["scene"].get("kind") == "artifact_preview" else scene_markup
+            kind = shot["scene"].get("kind")
+            maker = (artifact_markup if kind == "artifact_preview" else
+                     kinetic_markup if kind in {"kinetic_ranking", "kinetic_stat", "kinetic_comparison"} else scene_markup)
             scene, motion = maker(shot["scene"], f'motion-{i}', start, end, width, split_height if split else height)
             parts.append(scene)
             animations.extend(motion)
         elif shot.get("graphic"):
             graphic = shot["graphic"]
             cards = ''.join(f'<div class="role" id="role-{i}-{j}"><strong>{escape(c.get("label",""))}</strong><span>{escape(c.get("text",""))}</span></div>' for j,c in enumerate(graphic.get("cards",[])))
-            parts.append(f'<section id="graphic-{i}" class="graphic clip" {timing} style="{rect}"><div class="graphic-inner"><p class="eyebrow">{escape(graphic.get("eyebrow","CONCEPTUAL ILLUSTRATION"))}</p><h1>{escape(graphic.get("title",""))}</h1><div class="roles">{cards}</div><p class="footer">{escape(graphic.get("footer",""))}</p></div></section>')
+            parts.append(f'<section id="graphic-{i}" class="graphic clip" {timing} style="{rect}"><div class="graphic-inner"><p class="eyebrow">{escape(graphic.get("eyebrow",""))}</p><h1>{escape(graphic.get("title",""))}</h1><div class="roles">{cards}</div><p class="footer">{escape(graphic.get("footer",""))}</p></div></section>')
             animations.append(f'tl.fromTo("#graphic-{i} .role",{{y:18,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.08,ease:"power2.out"}},{start});')
+            animations.append(f'tl.fromTo("#graphic-{i} h1, #graphic-{i} .eyebrow, #graphic-{i} .footer",{{y:16,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.10,ease:"power2.out"}},{start});')
         else:
             raise ValueError(f"shot {i} needs media or graphic for {layout}")
     for zoom in spec.get("zooms", []):
         animations.append(f'tl.to("#presenter-camera",{{scale:{float(zoom["scale"])},duration:{float(zoom.get("duration",0.16))},ease:"power2.out"}},{float(zoom["at"])});')
-    words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
     phrases = captions.get("phrases", [])
     groups = phrase_groups(words, phrases) if phrases else caption_groups(words, int(captions.get("max_words",4)), int(captions.get("max_chars",27)))
     emphasis = {w.lower().strip(".,!?:;") for w in captions.get("emphasis", [])}
@@ -320,18 +422,57 @@ def build(spec_path, project):
         parts.append(f'<div id="caption-{i}" class="caption clip" data-start="{start}" data-duration="{max(.01,end-start)}" data-track-index="5"><div class="caption-text">{"".join(lines)}</div></div>')
         animations.append(f'tl.fromTo("#caption-{i} .caption-text",{{scale:0.97}},{{scale:1,duration:0.07,ease:"power2.out"}},{start});')
     parts.append('</div>')
+    for i, graphic in enumerate(graphics):
+        start, end = float(graphic["start"]), float(graphic["end"])
+        size = finite_number(graphic.get("font_size", width * .105), f"editorial graphic {i} font_size")
+        role = escape(graphic.get("role", "emphasis"))
+        claim_id = escape(graphic["claim_id"])
+        style = (f'left:{float(graphic.get("x",6))}%;top:{float(graphic.get("y",12))}%;'
+                 f'width:{float(graphic.get("width",88))}%;text-align:{graphic.get("align","left")};'
+                 f'font-size:{size}px;')
+        parts.append(f'<div id="editorial-{i}" class="editorial-graphic clip" data-claim-id="{claim_id}" '
+                     f'data-role="{role}" data-start="{start}" data-duration="{end-start}" '
+                     f'data-track-index="7" style="{style}">{editorial_words(graphic)}</div>')
+        animation = graphic.get("animation", "rise")
+        if animation == "rise":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0,y:20}},{{opacity:1,y:0,duration:0.20,ease:"power2.out"}},{start});')
+        elif animation == "pop":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0,scale:0.88}},{{opacity:1,scale:1,duration:0.16,ease:"back.out(1.4)"}},{start});')
+        elif animation == "fade":
+            animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0}},{{opacity:1,duration:0.18,ease:"none"}},{start});')
+        # Give longer editorial holds a second visible change. The entrance
+        # alone must not leave an authored card/text treatment inert for >2s.
+        if end - start > 2:
+            animations.append(f'tl.to("#editorial-{i}",{{scale:1.035,duration:0.22,ease:"power2.out"}},{start+1.55});')
+        if end - start > 3.2:
+            animations.append(f'tl.to("#editorial-{i}",{{scale:1,duration:0.18,ease:"power2.inOut"}},{start+2.85});')
     for i, flash in enumerate(spec.get("flashes", [])):
         at, length = float(flash["at"]), float(flash.get("duration", .16))
         peak = min(.22, max(0, float(flash.get("opacity", .14))))
-        color = escape(flash.get("color", "#D4A1F7"))
+        color = escape(flash.get("color", "#49cf26"))
         parts.append(f'<div id="light-leak-clip-{i}" class="clip" data-start="{at}" data-duration="{length}" data-track-index="7" style="position:absolute;inset:0;z-index:7;pointer-events:none;"><div id="light-leak-{i}" style="position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at 95% 30%,{color},transparent 70%);"></div></div>')
         animations.append(f'tl.fromTo("#light-leak-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.3}}},{at});tl.to("#light-leak-{i}",{{opacity:0,duration:{length*.7}}},{at+length*.3});tl.set("#light-leak-{i}",{{opacity:0}},{at+length});')
+    for i, transition in enumerate(spec.get("transitions", [])):
+        at = finite_number(transition.get("at"), f"transition {i} at")
+        length = finite_number(transition.get("duration", .24), f"transition {i} duration")
+        kind = transition.get("kind")
+        if kind not in {"green_wipe", "blur_flash", "light_leak"} or not 0 <= at < duration or not 0 < length <= .8 or at + length > duration:
+            raise ValueError(f"transition {i} has invalid kind or bounds")
+        background = {"green_wipe":"linear-gradient(100deg,#49cf26 0%,#49cf26 24%,#f5fff0 27%,transparent 48%)", "blur_flash":"linear-gradient(90deg,transparent,#f6fff3,transparent)", "light_leak":"radial-gradient(ellipse at 90% 30%,#ef8f2c,transparent 65%)"}[kind]
+        parts.append(f'<div id="transition-{i}" class="clip" data-start="{at}" data-duration="{length}" data-track-index="8" style="position:absolute;inset:0;z-index:12;pointer-events:none;opacity:0;background:{background};"></div>')
+        if kind == "green_wipe":
+            animations.append(f'tl.fromTo("#transition-{i}",{{opacity:.85,xPercent:-100}},{{opacity:.85,xPercent:110,duration:{length},ease:"power2.inOut"}},{at});')
+        else:
+            peak = .45 if kind == "blur_flash" else .28
+            animations.append(f'tl.fromTo("#transition-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.35}}},{at});tl.to("#transition-{i}",{{opacity:0,duration:{length*.65}}},{at+length*.35});')
     sound_tracks = {}
     for i, sound in enumerate(spec.get("sfx", [])):
-        if sound.get("kind") == "soft_pop":
-            target = assets / "soft-pop.wav"
-            make_pop(target)
-            path, length = target.relative_to(project).as_posix(), 0.16
+        if sound.get("kind") in {"soft_pop", "soft_click", "soft_whoosh", "soft_error"}:
+            kind = sound['kind']
+            target = assets / f"{kind}.wav"
+            if not target.exists():
+                make_accent(target, kind)
+            path, length = target.relative_to(project).as_posix(), {'soft_pop':.16,'soft_click':.075,'soft_whoosh':.24,'soft_error':.20}[kind]
         else:
             path = media(sound["path"])
             length = float(sound.get("duration", probe(project/path)["format"]["duration"]))
@@ -348,25 +489,28 @@ def build(spec_path, project):
         audio.append(f'<audio id="music-{i}" src="{relative}" {timing}{automation}></audio>')
     for i, label in enumerate(spec.get("labels", [])):
         parts.append(f'<div id="label-{i}" class="editor-label clip" data-start="{label["start"]}" data-duration="{label["end"]-label["start"]}" data-track-index="6" style="top:{float(label.get("y",4))}%;left:{float(label.get("x",5))}%;">{escape(label["text"])}</div>')
-    css = f'''{font_css}{MOTION_CSS}{ARTIFACT_CSS}
+        animations.append(f'tl.fromTo("#label-{i}",{{opacity:0,y:12}},{{opacity:1,y:0,duration:.22,ease:"power2.out"}},{float(label["start"])});')
+    css = f'''{font_css}{MOTION_CSS}{ARTIFACT_CSS}{KINETIC_CSS}
     *{{box-sizing:border-box}} body{{margin:0;background:#111}} #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;background:#111}}
     #presenter{{position:absolute;inset:0;width:{width}px;height:{height}px;overflow:hidden}} #presenter-camera{{position:relative;width:100%;height:100%;transform-origin:50% 38%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}} .broll,.graphic{{position:absolute;left:0;top:0;z-index:2}}
     .broll-viewport{{position:absolute;left:0;top:0;z-index:2;overflow:hidden}} .broll-camera{{position:relative;width:100%;height:100%;transform-origin:center}}
-    #caption-anchor{{position:absolute;top:62%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
+    #caption-anchor{{position:absolute;top:{caption_y}%;left:0;width:100%;z-index:8}} .caption{{position:absolute;left:5%;width:90%;text-align:center}}
     .caption-text{{display:inline-block;max-width:100%;border-radius:.16em;padding:.07em .12em;font-family:"{font_name}",Arial,sans-serif;font-weight:900;font-size:{font_size}px;line-height:1.06;letter-spacing:-0.02em;color:white;-webkit-text-stroke:{width*.0035}px #222;paint-order:stroke fill;text-shadow:0 {width*.003}px {width*.004}px #111;}}
     .caption-line{{display:block}} .caption-line.connector{{font-family:Arial,sans-serif;font-size:.72em;font-weight:500;line-height:1.18;letter-spacing:0;-webkit-text-stroke:{width*.0017}px #222;}}
     .emphasis{{color:{accent}}} .graphic{{background:#efede8;color:#171719;font-family:Arial,sans-serif}}
+    .editorial-graphic{{position:absolute;z-index:9;max-height:75%;overflow:hidden;color:white;font-family:Arial,sans-serif;font-weight:900;line-height:1.02;letter-spacing:-.035em;text-shadow:0 2px 10px #000b;pointer-events:none;}}
+    .editorial-white{{color:#fff}} .editorial-accent{{color:#49cf26;text-shadow:0 0 18px #49cf2666,0 2px 10px #000b}}
     .editor-label{{position:absolute;z-index:8;font:700 30px Arial,sans-serif;letter-spacing:.08em;color:#fff;background:#1d1c20;padding:12px 18px;border-radius:6px;}}
     .graphic-inner{{position:absolute;inset:9% 8%;display:flex;flex-direction:column;justify-content:center;gap:{width*.02}px}} .eyebrow{{font-size:{width*.017}px;letter-spacing:.13em;font-weight:800;color:#706476;margin:0}}
     h1{{font-size:{width*.065}px;line-height:1.04;margin:0;letter-spacing:-.055em;font-weight:900}} .roles{{display:grid;grid-template-columns:1fr 1fr;gap:{width*.025}px}}
     .role{{background:#fff;border:2px solid #d4d0d9;border-radius:{width*.023}px;padding:{width*.022}px;display:flex;flex-direction:column;gap:{width*.012}px}} .role strong{{font-size:{width*.032}px;letter-spacing:-.03em}} .role span{{font-size:{width*.022}px;line-height:1.24;color:#57525e}} .footer{{font-size:{width*.022}px;color:#514757;margin:0;line-height:1.3}}
     '''
-    markup = f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title","Samin reel edit"))}</title><script src="assets/gsap.min.js"></script><style>{css}</style></head><body><div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">{"".join(parts+audio)}</div><script>const tl=gsap.timeline({{paused:true}});{"".join(animations)}window.__timelines.main=tl;</script></body></html>'
+    markup = f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title","Brandon reel edit"))}</title><script src="assets/gsap.min.js"></script><style>{css}</style></head><body><div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">{"".join(parts+audio)}</div><script>const tl=gsap.timeline({{paused:true}});{"".join(animations)}window.__timelines.main=tl;</script></body></html>'
     (project/"index.html").write_text(markup)
     (project/"timeline.json").write_text(json.dumps(spec,indent=2)+"\n")
     (project/"mapped-words.json").write_text(json.dumps(words,indent=2)+"\n")
-    receipt = {"project":str(project),"duration":duration,"width":width,"height":height,"fps":fps,"words":len(words),"caption_groups":len(groups),"shots":len(shots),"original_audio_preserved":has_audio,"music_count":len(music),"music_required":music_required,"media_transfer":"local hardlink or copy; no upload","rendered":False}
+    receipt = {"project":str(project),"duration":duration,"width":width,"height":height,"fps":fps,"words":len(words),"caption_groups":len(groups),"editorial_graphics":len(graphics),"shots":len(shots),"original_audio_preserved":has_audio,"music_count":len(music),"music_required":music_required,"media_transfer":"local hardlink or copy; no upload","rendered":False}
     (project/"build-receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
     return receipt
 
@@ -385,8 +529,8 @@ def main():
         print(json.dumps(build(args.spec,args.project),indent=2))
     else:
         if not args.output: ap.error("render requires --output")
-        command=[str(HERE/"node_modules/.bin/hyperframes"),"render",str(Path(args.project).resolve()),"--output",str(Path(args.output).resolve()),"--quality",args.quality,"--workers",str(args.workers),"--no-best-effort","--strict"]
-        subprocess.run(command,check=True)
+        command=["render",str(Path(args.project).resolve()),"--output",str(Path(args.output).resolve()),"--quality",args.quality,"--workers",str(args.workers),"--no-best-effort","--strict"]
+        run_hyperframes(command)
         result=probe(Path(args.output))
         (Path(args.project)/"render-receipt.json").write_text(json.dumps(result,indent=2)+"\n")
         print(json.dumps({"output":str(Path(args.output).resolve()),"duration":result["format"]["duration"],"bytes":Path(args.output).stat().st_size}))

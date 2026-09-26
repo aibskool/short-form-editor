@@ -2,8 +2,8 @@
 """Retime an existing supported edit after reviewed 1x pause removals.
 
 Run prepare_take.py first. Supply its new video/word files and a JSON document
-with source_duration and cuts [{start,end}] on the OLD output clock. Add music
-after this operation. Review internal B-roll actions again: shortening a shot
+with source_duration and cuts [{start,end}] on the OLD output clock. Keep
+background music absent from the Brandon export. Review internal B-roll actions again: shortening a shot
 does not time-warp its source video or retime baked-in visual events.
 """
 import argparse
@@ -16,7 +16,7 @@ from pathlib import Path
 def retime(spec, decision, source, words):
     spec = copy.deepcopy(spec)
     if spec.get('music'):
-        raise ValueError('Remove/replan music after speech retiming; never chop the music bed with word gaps')
+        raise ValueError('Migrate legacy music out of the timeline before retiming')
     total = float(decision['source_duration'])
     cuts = decision['cuts']
     cursor = 0
@@ -34,12 +34,19 @@ def retime(spec, decision, source, words):
         return value - sum(max(0, min(value, c['end'])-c['start']) for c in cuts)
 
     duration = t(total)
-    for collection in ('shots', 'labels'):
+    for collection in ('shots', 'labels', 'editorial_graphics'):
         for item in spec.get(collection, []):
             item['start'], item['end'] = t(item['start']), t(item['end'])
             if item['end'] <= item['start']:
                 raise ValueError(f'{collection} item was entirely removed; make an editorial decision')
-    for collection in ('zooms', 'flashes'):
+            scene = item.get('scene', {}) if collection == 'shots' else {}
+            for element in scene.get('items', []):
+                for field in ('at', 'fade_at'):
+                    if field in element:
+                        element[field] = t(element[field])
+            for cue in scene.get('motion_cues', []):
+                cue['at'] = t(cue['at'])
+    for collection in ('zooms', 'flashes', 'transitions'):
         for item in spec.get(collection, []):
             at = float(item['at'])
             if 'duration' in item:
@@ -56,8 +63,9 @@ def retime(spec, decision, source, words):
     spec['retime_review'] = {
         'removed_seconds': total-duration, 'cut_count': len(cuts),
         'speech_speed': 1, 'baked_visual_actions': 'must recheck against retimed speech',
-        'music': 'add continuous bed on final clock',
-        'captions': 'rebuilt from supplied retimed words; phrase word ranges preserved'
+        'music': 'none in Brandon short-form export',
+        'spoken_captions': 'rebuilt from supplied retimed words; phrase word ranges preserved',
+        'editorial_graphics': 'outer cue times remapped; recheck claim and animation against encoded speech'
     }
     return spec
 

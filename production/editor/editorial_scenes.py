@@ -10,7 +10,7 @@ def artifact_markup(scene, ident, start, end, width, height):
     rows = ''.join(f'<div class="artifact-row {"active" if i == active else ""}"><span class="file-icon"></span>{esc(name)}</div>' for i, name in enumerate(files))
     excerpt = scene['excerpt']
     markup = f'''<section id="{ident}" class="artifact clip" data-start="{start}" data-duration="{end-start}" data-track-index="2" style="width:{width}px;height:{height}px;">
-      <div class="artifact-heading">{esc(scene.get('heading', 'COUNCIL PROMPT PACK'))}</div>
+      <div class="artifact-heading">{esc(scene.get('heading', 'RESOURCE PREVIEW'))}</div>
       <div class="artifact-window"><div class="artifact-files">{rows}</div><div class="artifact-page">
       <div class="artifact-filename">{esc(files[active])}</div><div id="{ident}-quote" class="artifact-quote">{esc(excerpt)}</div>
       </div></div><div class="artifact-footer">{esc(scene.get('footer', 'Excerpt from the downloadable files'))}</div></section>'''
@@ -28,7 +28,7 @@ CSS = '''
 .artifact-window{display:flex;height:600px;background:#faf9f5;border:2px solid #c9c5bc;border-radius:18px;overflow:hidden;box-shadow:0 20px 45px #27231e22}
 .artifact-files{width:390px;flex-shrink:0;padding:22px 12px;background:#ddd9d0;border-right:2px solid #c9c5bc}
 .artifact-row{font-size:26px;line-height:1.2;padding:20px 10px;display:flex;gap:12px;align-items:center;border-radius:6px}
-.artifact-row.active{background:#bcb3c6;color:#1c1720}
+.artifact-row.active{background:#a4df98;color:#1c1720}
 .file-icon{width:17px;height:22px;background:#faf9f5;border:1px solid #6f6876;display:inline-block;flex-shrink:0}
 .artifact-page{padding:32px 28px;min-width:0;display:flex;flex-direction:column;gap:35px}
 .artifact-filename{font:22px Menlo,monospace;color:#696259;padding-bottom:24px;border-bottom:2px solid #d1cbc2}

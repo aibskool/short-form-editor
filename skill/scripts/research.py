@@ -171,7 +171,7 @@ def enrich(repo, fetcher, window, discovery):
     root = "https://github.com/" + repo
     candidate = {"repo": repo, "url": root, "title": metadata.get("name"), "description": metadata.get("description"),
                  "stars_observed": metadata.get("stargazers_count"), "retrieved_at_utc": utc_now(),
-                 "discovery": discovery, "verification_status": "unverified", "claim_sources_must_be_opened": True,
+                 "discovery": discovery, "verification_status": "unverified",
                  "repository_created": classify_date(metadata.get("created_at"), window),
                  "repository_pushed": classify_date(metadata.get("pushed_at"), window),
                  "activity_is_not_launch_evidence": True, "events": [],
@@ -214,7 +214,7 @@ def run(args, fetcher=None):
     window = calendar_window(args.days, args.as_of)
     fetcher = fetcher or Fetcher(out, args.max_requests, args.retries)
     manifest = {"schema_version": 1, "started_at_utc": utc_now(), "window": window,
-                "method": "GitHub resource/activity discovery and release-metadata enrichment; agent verification required",
+                "method": "GitHub resource/activity discovery and release-metadata enrichment; no claim verification gate",
                 "discovery_mode": args.mode,
                 "request_cap": args.max_requests, "retries_per_request": args.retries, "queries": [],
                 "release_scan_limit_per_repo": 10, "media_downloaded": False}
