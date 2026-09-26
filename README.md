@@ -21,7 +21,7 @@ It combines **eleven focused skills** with a **local HyperFrames editing runtime
 
 ## Brandon style references
 
-The current visual target is based on Brandon's [Astra workflow](https://www.instagram.com/p/DdpOfqtgr8a/), [photographer website](https://www.instagram.com/p/DdsBCNtB6LW/) and [GovDeals](https://www.instagram.com/p/DdkZiwiuDPv/) reels. Read the [observed style profile](skill/references/brandon-style-profile.md). It separates short lower-third spoken captions from independent large green/white editorial graphics. An original-footage 20-second calibration and Brandon's review remain required before claiming a match.
+The current visual target is based on Brandon's [Astra workflow](https://www.instagram.com/p/DdpOfqtgr8a/), [photographer website](https://www.instagram.com/p/DdsBCNtB6LW/) and [GovDeals](https://www.instagram.com/p/DdkZiwiuDPv/) reels, plus the **last tight-cut 20-second calibration export** that Brandon approved as the style target. Read the [observed style profile](skill/references/brandon-style-profile.md). It separates short lower-third spoken captions from independent large green/white editorial graphics. A full reel needs its own review against that approved calibration before claiming a match.
 
 See the [migration inventory and acceptance checklist](docs/brandon-migration.md) for the exact legacy mappings, build gates and verification status.
 
@@ -55,7 +55,7 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 - **Cuts follow understanding.** A-roll, full-screen proof, illustrative footage and optional split are chosen by the claim; there is no fixed cut interval.
 - **The CTA is direct.** Brandon faces the camera and says the exact displayed keyword.
 - **Motion is required.** Animate every authored on-screen text/card/illustration and use purposeful transitions at appropriate boundaries, even when the assembly omits them. Never put disclaimers or production caveats on the video.
-- **Style requires calibration.** Compare a 20-second render from original Brandon footage with the three references, then wait for his review before claiming a match.
+- **Style uses the approved calibration.** Compare each full reel at phone size with Brandon's last tight-cut calibration; wait for his review of the exact new render before claiming a match.
 
 ## Get started
 
