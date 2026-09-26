@@ -78,7 +78,7 @@
     },
     "editorial_graphics": {
       "status": "pending",
-      "claim_checks": [],
+      "timing_and_motion_checks": [],
       "collision_checks": []
     }
   },
@@ -104,5 +104,9 @@
   "transitions": {
     "purposeful_boundaries": "pending",
     "checks": []
+  },
+  "disclaimer_overlays": {
+    "status": "pending",
+    "observed_text": []
   }
 }

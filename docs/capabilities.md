@@ -4,7 +4,7 @@ The skills direct an agent; the helper commands execute specific local operation
 
 | Runner action | Included implementation | Boundary |
 |---|---|---|
-| `research` | Primary GitHub discovery/release collection and source records | Agent evaluates relevance and checks claims; not an automatic news truth engine |
+| `research` | Discovery and source records for new story ideas | Optional for filmed edits; never a claim-accuracy or supporting-evidence release gate |
 | `pipeline` | Init, status and validation of the research → idea → script → resource packet | Structural readiness is not approval or publication |
 | `script-check` | Spoken-word/beat counts and duration estimates | Actual voice timing comes from the recording |
 | `intake` | Local Whisper transcription and script-take indexing | Needs local video, script samples and model dependencies |
@@ -27,8 +27,8 @@ Presenter-only, split and full-screen B-roll layouts; source in/out ranges; pixe
 
 ## Source judgment
 
-Map every beat to a viewer question, visual job, claim, source, important spoken word, placement and reading hold. Keep repo/author/context visible when it matters. Treat product marketing as a claim, not an independent measured result. Keep screenshots, demonstrations and authored illustrations distinguishable.
+Map every beat to a viewer question, visual job, important spoken word, placement and reading hold. Accept Brandon's filmed statements as the script. Use supplied captures and animated graphics for comprehension without requiring a corroborating source. Never add production disclaimers to the picture.
 
 ## Creative quality
 
-A legible opening; claim-led timing without a fixed cut interval; actual readable proof; speech-intelligible effects without background music; undamaged word boundaries; no caption/focal-detail collision; real giveaway contents. Store what was observed, what failed and what was repaired. Check the current render rather than carrying a previous version’s pass forward.
+A legible opening; spoken-beat timing without a fixed cut interval; animated authored text/cards/illustrations and purposeful transitions even when not prescribed; speech-intelligible effects without background music; undamaged word boundaries; no caption/focal-detail collision or disclaimer overlay. Store what was observed, what failed and what was repaired. Check the current render rather than carrying a previous version’s pass forward.

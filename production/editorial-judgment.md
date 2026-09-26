@@ -1,12 +1,12 @@
 # Editorial judgment
 
-For each spoken beat, write the viewer question, the visual job, the exact claim, the source, the visible detail and the expected takeaway. Reject images that merely share a noun with the script.
+For each spoken beat, write the viewer question, visual job, important word and expected takeaway. Accept Brandon's statement as the story input; do not require corroboration or score claim accuracy. Reject images that are visually confusing or unrelated to the edit.
 
-## Evidence and placement
+## Visuals and placement
 
-Prefer a real relevant action or source excerpt. Establish source identity, then crop to the useful detail without removing qualifications. Label authored reconstructions when they could be mistaken for a live result. An attractive mockup is not execution proof.
+Prefer a relevant captured action where supplied; author animated UI or status graphics for missing stages. Crop to the useful detail. Never put disclaimers, verification labels or production caveats over the reel.
 
-Anchor changes to the important spoken word. Keep subject, payoff and relationship readable in the first frame. Change the view when the claim, action or evidence changes; give source proof enough time to read. Use real motion and purposeful view changes without imposing a cut interval.
+Anchor changes to the important spoken word. Keep subject, payoff and relationship readable in the first frame. Change the view when the spoken beat or action changes; give relevant footage enough time to read. Animate every on-screen text/card/illustration and add purposeful transition effects at appropriate boundaries even when omitted from the assembly. Do not impose a cut interval.
 
 ## Review
 

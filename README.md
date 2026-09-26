@@ -1,8 +1,8 @@
-<p align="center"><img src="docs/assets/hero.svg" alt="Brandon Reel Engine — From proof to pixels. Research, reels and resources." width="100%"></p>
+<p align="center"><img src="docs/assets/hero.svg" alt="Brandon Reel Engine — research, reels and resources." width="100%"></p>
 
 <p align="center">
   <strong>A research-to-reel production system for Codex.</strong><br>
-  Real evidence. Your voice. Fast edits. Useful giveaways.
+  Your voice. Tight cuts. Animated edits. Useful giveaways.
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
   <a href="docs/integrations.md">Integrations</a>
 </p>
 
-Brandon Reel Engine turns a promising story into a complete creator workflow: research the claim, develop an angle, write a filmable script, gather proof, edit the recorded take, review the actual output, and prepare the resource promised in the CTA.
+Brandon Reel Engine turns a story into a complete creator workflow: develop an angle, write a filmable script, select useful visuals, edit the recorded take, review the actual output, and prepare the resource promised in the CTA. For a filmed reel, Brandon's spoken claims are accepted as given; editing never waits for a claim-accuracy or supporting-evidence check.
 
 It combines **eleven focused skills** with a **local HyperFrames editing runtime**, practical source-finding recipes, reusable JSON contracts and explicit creative checks. Skills load by stage, so an agent can repair one weak visual or work through the complete pipeline.
 
@@ -44,16 +44,17 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 | **Assets** | Relevant posts, GitHub READMEs, docs, screenshots, screen recordings and real resource previews with provenance. |
 | **Generation** | A bounded brief for missing explanatory images or motion, using an available provider; generated material stays distinguishable from evidence. |
 | **Editing** | A-roll, full-screen evidence and optional split; independent spoken captions and animated green/white editorial graphics, sound and deterministic renders. |
-| **Review** | Encoded-frame and audio review, source truth, both text tracks, calibration comparison and timecoded repairs. |
+| **Review** | Encoded-frame and audio review, both text tracks, animation, transitions, calibration comparison and timecoded repairs. |
 | **Giveaways** | Real prompts, checklists or resource packs that match the spoken promise and CTA keyword. |
 | **Delivery** | Skool post and ManyChat handoff packets, release files and a verifiable production record. Publication is a separate action. |
 
 ## What makes the edit different
 
-- **Proof follows the claim.** Real screen capture is needed when speech asserts a completed action or result. Context footage and authored graphics are explanation.
+- **Story drives the visuals.** Use supplied screen captures where useful and animated authored graphics for uncaptured steps. Do not fact-check Brandon's recorded claims or require proof as an editing gate.
 - **Two text systems.** Short word-timed lower-third captions and larger animated green/white editorial graphics have separate timing, placement and meaning.
 - **Cuts follow understanding.** A-roll, full-screen proof, illustrative footage and optional split are chosen by the claim; there is no fixed cut interval.
-- **The CTA is real.** Brandon faces the camera, says the exact displayed keyword and offers an existing matching resource.
+- **The CTA is direct.** Brandon faces the camera and says the exact displayed keyword.
+- **Motion is required.** Animate every authored on-screen text/card/illustration and use purposeful transitions at appropriate boundaries, even when the assembly omits them. Never put disclaimers or production caveats on the video.
 - **Style requires calibration.** Compare a 20-second render from original Brandon footage with the three references, then wait for his review before claiming a match.
 
 ## Get started

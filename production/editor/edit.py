@@ -388,7 +388,7 @@ def build(spec_path, project):
         elif shot.get("graphic"):
             graphic = shot["graphic"]
             cards = ''.join(f'<div class="role" id="role-{i}-{j}"><strong>{escape(c.get("label",""))}</strong><span>{escape(c.get("text",""))}</span></div>' for j,c in enumerate(graphic.get("cards",[])))
-            parts.append(f'<section id="graphic-{i}" class="graphic clip" {timing} style="{rect}"><div class="graphic-inner"><p class="eyebrow">{escape(graphic.get("eyebrow","CONCEPTUAL ILLUSTRATION"))}</p><h1>{escape(graphic.get("title",""))}</h1><div class="roles">{cards}</div><p class="footer">{escape(graphic.get("footer",""))}</p></div></section>')
+            parts.append(f'<section id="graphic-{i}" class="graphic clip" {timing} style="{rect}"><div class="graphic-inner"><p class="eyebrow">{escape(graphic.get("eyebrow",""))}</p><h1>{escape(graphic.get("title",""))}</h1><div class="roles">{cards}</div><p class="footer">{escape(graphic.get("footer",""))}</p></div></section>')
             animations.append(f'tl.fromTo("#graphic-{i} .role",{{y:18,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.08,ease:"power2.out"}},{start});')
             animations.append(f'tl.fromTo("#graphic-{i} h1, #graphic-{i} .eyebrow, #graphic-{i} .footer",{{y:16,opacity:0}},{{y:0,opacity:1,duration:0.22,stagger:0.10,ease:"power2.out"}},{start});')
         else:
@@ -439,6 +439,12 @@ def build(spec_path, project):
             animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0,scale:0.88}},{{opacity:1,scale:1,duration:0.16,ease:"back.out(1.4)"}},{start});')
         elif animation == "fade":
             animations.append(f'tl.fromTo("#editorial-{i}",{{opacity:0}},{{opacity:1,duration:0.18,ease:"none"}},{start});')
+        # Give longer editorial holds a second visible change. The entrance
+        # alone must not leave an authored card/text treatment inert for >2s.
+        if end - start > 2:
+            animations.append(f'tl.to("#editorial-{i}",{{scale:1.035,duration:0.22,ease:"power2.out"}},{start+1.55});')
+        if end - start > 3.2:
+            animations.append(f'tl.to("#editorial-{i}",{{scale:1,duration:0.18,ease:"power2.inOut"}},{start+2.85});')
     for i, flash in enumerate(spec.get("flashes", [])):
         at, length = float(flash["at"]), float(flash.get("duration", .16))
         peak = min(.22, max(0, float(flash.get("opacity", .14))))

@@ -25,7 +25,7 @@ This fork keeps Samin Yasar's copyright, source-available terms, third-party not
 1. Keep a backup of the original timeline and configuration. Run `python tools/migrate_brandon_config.py --dry-run --timeline /path/old.json --out /path/new.json`; inspect the reported target and any conflict.
 2. Run the same command without `--dry-run`. It never deletes or overwrites the old file; rerunning identical input reports `already_migrated`. If the old and new project roots disagree, select the intended checkout explicitly and resolve the conflict rather than silently merging them.
 3. Install the new marketplace/plugin ID as shown in [setup](setup.md). `BRANDON_REEL_PROJECT` or `--project` can select a checkout; remove `SAMIN_REEL_PROJECT` after migration. Existing installation entries are not changed by the script.
-4. Read the copied timeline and add source-backed `editorial_graphics`, real proof sources, hook variants and an exact spoken/displayed keyword CTA. Verify the output with `production/check_editorial.py` and an encoded render. The migration cannot infer a true claim or make old footage match Brandon's style.
+4. Read the copied timeline and add animated `editorial_graphics`, supplied screen captures or authored status graphics, hook variants and an exact spoken/displayed keyword CTA. Add purposeful transitions at appropriate boundaries even when the brief omits them. Do not add disclaimers or make claim accuracy/supporting evidence an editing gate. Verify the encoded render's speech, pacing, animation, transitions and no-music policy. `production/check_editorial.py` is an optional legacy map/timing consistency check, not a claim check or release gate.
 
 ## Acceptance checklist
 
@@ -34,7 +34,7 @@ This fork keeps Samin Yasar's copyright, source-available terms, third-party not
 | Plugin packaging | Maintained sources rebuilt, hashes recorded, no active old plugin path | Passed in source checkout. |
 | Migration | Dry run, repeat run, target conflict, original file preservation and removal of music from copied timeline | Automated tests pass. |
 | Two text systems | Lower-third spoken words and separately timed green/white claim graphics; mobile crop and collision review | Structural build/tests pass; encoded pixels need review. |
-| Claim and proof | Each beat has a precise claim, source scope and corresponding real screen or labeled illustration | Contract/checker ready; depends on selected story assets. |
+| Story and visuals | Each spoken beat has a readable visual treatment; absent captures may use animated authored graphics without a proof gate | Review the encoded edit. |
 | Hook and CTA | At least two truthful opening choices; final face-to-camera spoken/displayed keyword and ready matching resource | Planned/checker ready; requires Brandon's filmed story. |
 | Audio and motion | Recorded voice intact; no background music; visual changes based on meaning; effect levels checked by listening | Structural checks pass; encoded listening pending. |
 | Calibration | Original approximately 20-second Brandon source passage, frame-aligned pause cuts, final render hash, every encoded frame compared with all three source reels and audio listened to | **Rendered calibration underway** with original Brandon footage and all three supplied references. Human visual/audio comparison and Brandon review remain pending. `production/compare_style.py` emits `pending_human_review`, never a match score. |

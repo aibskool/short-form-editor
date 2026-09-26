@@ -11,11 +11,11 @@ Resolve `<plugin>` as the directory containing this plugin's `.codex-plugin/`. R
 
 Read [asset playbook](../../references/asset-playbook.md), [visual evidence](../../references/visual-evidence.md), and the relevant [shot recipe](../../references/shot-recipes.md). This is the default before generating visuals.
 
-For each beat, state what the viewer needs to see and why. Search Eden/original sources and the user's existing assets first. Prefer a real repo/README/release crop for documented software claims, an original post for a statement, a genuine input/action/result recording for behavior, and the real resource for a giveaway.
+For each beat, state what the viewer needs to see and why. Use Brandon's supplied assets first. Accept his spoken statement as given; do not demand a corroborating source or reject a beat for missing evidence. Prefer relevant recordings when supplied and use animated authored graphics for uncaptured stages.
 
 **Prioritize motion when relevance and readability are equal.** Search for real typing, scrolling, UI flows, demonstrations and changing results; inspect playback and record the useful action's source bounds. Allocate the strongest relevant actions and most useful variety to the first 3–5 seconds. Supply different views/details/scales, including clips suitable for full-screen use. When static proof is stronger, propose a slow safe zoom/reframe and name the detail that must stay readable. Animated stills are not proof of app interaction.
 
-Source real proof, contextual footage and selected SFX. Brandon adds music on platform, so omit any background music from short-form exports. Index SFX provenance and choose effects for actual actions and meaningful transitions. Animate all visible text, cards and illustrations; record proof provenance outside the picture.
+Select screen captures, contextual footage, authored graphics and SFX. Brandon adds music on platform, so omit any background music from short-form exports. Choose effects for meaningful action and transitions. Animate all visible text, cards and illustrations and add purposeful transitions at appropriate boundaries even when the assembly omits them. Never put a disclaimer or production caveat on the picture.
 
 Apply the playbook's **noun-match rejection gate** before selection: identify the exact focal detail, how it shows the spoken action/relationship, a stronger alternative considered, and the actual phone-size crop check. A Wikipedia definition of “judge” does not explain an AI judging arguments. A whole page with unreadable text is not evidence merely because its URL is real. Reject generic text cards that just restate the line when a useful action, object or mechanism can be shown.
 
@@ -25,4 +25,4 @@ Capture public sources with the existing `capture_evidence.cjs` helper through `
 
 Write source bounds in master seconds and placement in final-reel seconds. Save local path, hash, source URL/ID, capture method, useful claim/detail, proof limits, reuse basis and visual-inspection status. Reject unrelated impressive-looking screens. Keep alternatives in the source shortlist and selected files in the active asset index.
 
-If no real asset answers an abstract beat, give `reel-generate` a specific missing explanation, required count/layout and acceptance checks. A missing proof shot cannot be solved by generating fake proof. Ready means the selected local files were actually opened and the editor can explain their intended placement.
+If no supplied asset illustrates a beat, give `reel-generate` a specific motion-graphic brief or author an animated status card. The lack of a capture is not an editorial veto. Ready means selected local files were actually opened and the editor can explain their intended placement.

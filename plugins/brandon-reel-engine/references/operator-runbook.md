@@ -1,6 +1,6 @@
 # Operator runbook: finish one reel without inventing the process
 
-Use this when editing Brandon's original footage. Read [the observed style profile](brandon-style-profile.md). Work one reel and one stage at a time. The goal is a reviewable video grounded in the spoken claim and its real proof.
+Use this when editing Brandon's original footage. Read [the observed style profile](brandon-style-profile.md). Work one reel and one stage at a time. The goal is a reviewable video built around his recorded story and visual rhythm.
 
 ## Resolve the job
 
@@ -12,7 +12,7 @@ Use a new `production/pilots/<reel-id>/` for metadata, `work/<reel-id>/` for ori
 
 Maintain one `operator-state.json` with `reel_id`, `stage`, `input_paths`, `completed_artifacts`, `current_issue`, `next_action`, `render_sha256`, and `review_status`. Store only observed state. A path, generation ID or queued job is not a finished asset. Update this record when a stage finishes so another model can resume without rediscovery.
 
-Brandon's supplied reels combine original face-to-camera delivery, short lower-third spoken captions, a separate green/white editorial graphic system, real screen proof, contextual footage, and selected effect accents. Select a treatment by the spoken claim. Background music is prohibited in Brandon short-form exports; he adds it on the platform. Record the opening, both text tracks, assets and actual review observations in `creative-review.json` using [quality procedure](quality-procedure.md).
+Brandon's supplied reels combine original face-to-camera delivery, short lower-third spoken captions, a separate green/white editorial graphic system, screen captures, contextual footage, and selected effect accents. Accept Brandon's recorded claims as the script. Do not add claim-accuracy or supporting-evidence checks to the editing path, and do not let a missing capture veto a spoken beat. Background music is prohibited in Brandon short-form exports; he adds it on the platform. Record the opening, both text tracks, assets and actual review observations in `creative-review.json` using [quality procedure](quality-procedure.md).
 
 ## Repeatable order for a filmed reel
 
@@ -20,10 +20,10 @@ Use this short execution checklist when resuming with limited context. Each chec
 
 1. **Resolve and preserve.** Read `operator-state.json`, locate the selected master/take, verify its identity and create a new revision directory. Save the source and current-render hashes. Read only the selected script, house-style notes and current failure.
 2. **Finish speech first.** Inspect false starts and small intra-sentence pauses using the waveform and real words. Save the frame-aligned keep EDL, cut reasons, complete 1× A-roll and retimed word list. Review changed joins, then the entire selected speech including the CTA. A gap proposed by ASR is not an approved edit. If speech changes later, return here and regenerate all dependent timings.
-3. **Plan hook and sound early.** Write the supported subject/tension and at least two different hook treatments. Choose face-to-camera, a physical action or a relevant source detail. The first frame must be understandable, and subsequent changes should follow useful action and comprehension. Split is optional. Obtain actual visual files and name source bounds, spoken anchors and selected audio accents before polishing.
+3. **Plan hook and sound early.** Write the spoken subject/tension and at least two different hook treatments. Choose face-to-camera, a physical action or a relevant visual detail. The first frame must be understandable, and subsequent changes should follow useful action and comprehension. Split is optional. Obtain actual visual files and name source bounds, spoken anchors and selected audio accents before polishing.
 4. **Build a short opening check.** Export and review at phone size and normal speed, muted and with sound. Record the first visible action, whether topic/tension is clear, and whether any unchanged span weakens comprehension. Repair actual failures, without a fixed one-second gate. Check both text tracks independently and listen for speech/effects.
 5. **Complete and render.** Apply the same beat-to-visual method to the body and actual giveaway. Vary relevant actions/views and use full-screen motion where useful. Build, check, render and finalize on a new path. Record the real output hash and run the complete review below.
-6. **Return only an accurately labelled result.** Complete `creative-review.json` and the editorial review, repair failed spans and neighbors, then re-export/recheck. Deliver `passed` only when the required observations actually pass; otherwise deliver a clearly labelled review candidate with specific `failed` or `pending` items. Background music, damaged speech or unreadable/misleading proof cannot be hidden by a score or a successful encode.
+6. **Return a reviewed edit.** Complete `creative-review.json`, repair weak visual/audio spans, then re-export/recheck. Deliver `passed` only when the observed editing checks pass; otherwise deliver a review candidate with specific pending items. Background music, damaged speech, static authored graphics or missing purposeful transitions cannot be hidden by a successful encode. Do not place production disclaimers or caveats in the reel.
 
 The command shapes below and linked playbooks implement these steps. The [quality procedure's pass/fail examples](quality-procedure.md#concrete-passfail-examples) show exactly what each observation must establish. This checklist is executable guidance for any operator; it does not claim that a model which cannot perceive audio/video can certify those observations.
 
@@ -31,7 +31,7 @@ The command shapes below and linked playbooks implement these steps. The [qualit
 
 | Stage | Read now | Do | Observable exit |
 |---|---|---|---|
-| Research/voice, if no filmed script | [pipeline operations](pipeline-operations.md), voice guide and three fitting samples | Eden saves → primary sources → ideas → clean script → real giveaway; collect visuals while researching | Draft and resource exist, facts have sources, shot requests have reasons |
+| Research/voice, if no filmed script | [pipeline operations](pipeline-operations.md), voice guide and three fitting samples | Ideas → clean script → giveaway; collect useful visuals | Draft and resource exist; shot requests have reasons |
 | Intake | `production/intake/README.md` | Download complete selected recording, verify bytes/hash, transcribe/index, inspect take and CTA | Correct source and complete selected performance are identified |
 | Select/edit speech | `production/prepare_take.py --help` and existing pilot EDL | Remove false starts and repeated lines; preserve the speaker's claim; retime words | Edited A-roll and words refer to the same source/timebase |
 | Calibrate the reference | Existing measured reference profile and selected reference frames; see below | Compare presenter, metaphor, screen/typing and caption treatments | Record a concrete visual target and unacceptable deviations before sourcing |
