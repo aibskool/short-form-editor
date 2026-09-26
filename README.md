@@ -55,7 +55,7 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 - **Cuts follow understanding.** A-roll, full-screen proof, illustrative footage and optional split are chosen by the claim; there is no fixed cut interval.
 - **The CTA is direct.** Brandon faces the camera and says the exact displayed keyword.
 - **Motion is required.** Animate every authored on-screen text/card/illustration and use purposeful transitions at appropriate boundaries, even when the assembly omits them. Never put disclaimers or production caveats on the video.
-- **Style uses the approved calibration.** Compare each full reel at phone size with Brandon's last tight-cut calibration; wait for his review of the exact new render before claiming a match.
+- **Style uses the approved calibration and later feedback.** Keep the substantial animated graphic language while Brandon stays visible behind most claims; use a full-screen grid selectively. Compare each full reel at phone size and wait for his review of the exact new render before claiming a match.
 
 ## Get started
 

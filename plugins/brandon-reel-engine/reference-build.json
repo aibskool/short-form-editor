@@ -10,8 +10,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/brandon-style-profile.md",
-      "source_sha256": "821fba11339fb7bddda329c331b0fe7797abb57234efb17ed39c887f73a6090e",
-      "packaged_sha256": "821fba11339fb7bddda329c331b0fe7797abb57234efb17ed39c887f73a6090e"
+      "source_sha256": "079ae1488b0eafe9f051d2d757ffe60087d0df0f4a3cf830dbd73da800360d86",
+      "packaged_sha256": "079ae1488b0eafe9f051d2d757ffe60087d0df0f4a3cf830dbd73da800360d86"
     },
     {
       "path": "plugins/brandon-reel-engine/references/curated-resource-reels.md",
@@ -45,8 +45,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/quality-procedure.md",
-      "source_sha256": "4756b4c4bf0e071c28506f36d1bcb5aa7912ba9d3a3f7af52c7c1ecb9a085ba7",
-      "packaged_sha256": "4756b4c4bf0e071c28506f36d1bcb5aa7912ba9d3a3f7af52c7c1ecb9a085ba7"
+      "source_sha256": "91aee24c9e782a17a9e95fc1cda10de93bd9ff6df19084782832ef2232af6cfe",
+      "packaged_sha256": "91aee24c9e782a17a9e95fc1cda10de93bd9ff6df19084782832ef2232af6cfe"
     },
     {
       "path": "plugins/brandon-reel-engine/references/research-contract.md",
@@ -60,8 +60,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/shot-recipes.md",
-      "source_sha256": "9f0d1b952c0d5c33424d36c04f759fd67ac85cfdf1a210fd20bcce735b293c79",
-      "packaged_sha256": "9f0d1b952c0d5c33424d36c04f759fd67ac85cfdf1a210fd20bcce735b293c79"
+      "source_sha256": "a058e6ef66c4483e8aec160a4e7b2fdca98fe4fd4274f93621272456ab5560e7",
+      "packaged_sha256": "a058e6ef66c4483e8aec160a4e7b2fdca98fe4fd4274f93621272456ab5560e7"
     },
     {
       "path": "plugins/brandon-reel-engine/references/skool.md",
