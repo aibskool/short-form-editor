@@ -104,3 +104,5 @@ Use hard cuts, small punch-ins, directed crop moves and restrained caption pops 
 ## Word-cued custom graphics
 
 Record the word onset, item entrance, negative-state change, counter start and corresponding SFX in the final reel clock. At 30 fps, align to the nearest frame; do not promise sub-frame precision from a video export. Positive ranks can brighten, while an omitted fourth result should enter visibly then dim to about 30% on the spoken consequence. Keep lower-third captions at a fixed Y position across shots and ensure each custom UI holds no more than two seconds without an authored visual change. A count-up for a sourced figure begins when the figure is spoken. Check that an earlier-year value is not displayed before Brandon says it.
+
+For Brandon short-form, remove expendable silence that lasts 0.5 s or more after a spoken phrase, including swallowing. Place a cut on verified quiet frames, preserve a short natural lead into the next word, then retime every caption, scene item, counter, effect and transition to the new source clock. This is a speech-gap rule, not a fixed visual cut interval.

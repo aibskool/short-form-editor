@@ -84,7 +84,7 @@ An EDL uses source seconds, e.g. `{"speed":1,"segments":[{"start":2.2,"end":7.6}
 
 Use the actual waveform and verified word boundaries to inspect failed takes and distracting idle gaps in Brandon's delivery. Do not trim a deliberate pause just to reach a target cadence. Preserve every intended word, consonant, natural join and the full CTA; keep the original speaking speed unless Brandon asks otherwise. An ASR timing gap alone is not proof of silence.
 
-Apply approved micro-pause cuts through the frame-aligned keep EDL, retain their source ranges and reasons, then verify each audio join in context. Any speech trim changes the timebase: rebuild the word map and retime **every** caption, shot, label, transition and SFX cue before rendering. Recheck late-reel sync and the final word; never keep old absolute placements after tightening the voice. Use the existing CFR workflow below and preserve a copy of the prior edit.
+Apply frame-aligned cuts to every expendable silence of 0.5 s or more, including swallowing, retaining the source ranges and reasons; verify each audio join in context. Distinguish actual waveform silence from imprecise word-map gaps. Any speech trim changes the timebase: rebuild the word map and retime **every** caption, shot, label, transition and SFX cue before rendering. Recheck late-reel sync and the final word; never keep old absolute placements after tightening the voice. Use the existing CFR workflow below and preserve a copy of the prior edit.
 
 For an existing timeline, run `prepare_take.py` first to create the tightened A-roll and new word list. Then use the reusable retimer rather than shifting timeline timestamps by hand:
 
@@ -99,7 +99,7 @@ python3 <plugin>/scripts/reel.py --project /absolute/checkout run retime -- \
 
 `pause-removals.json` has `{ "source_duration": OLD_OUTPUT_DURATION, "cuts": [{"start": REMOVED_START, "end": REMOVED_END}] }`, replacing the uppercase placeholders with measured seconds. Its cuts are ordered, disjoint removed intervals on the **old output clock**, not the original filming-master clock unless those clocks are identical. This removal list is separate from the keep EDL used to prepare the new A-roll. Its `source_duration` must match the old timeline's summed `source.segments` duration; the helper rejects a mismatch.
 
-The retimer remaps shots, labels, zooms, flashes, transitions and SFX onset times; points `source` at the tightened clip; and uses the new words. Recheck every effect after pause removal. Legacy music timelines must be migrated to the current no-background-music policy before building.
+The retimer remaps shots, nested scene item/fade/motion cues, labels, zooms, flashes, transitions and SFX onset times; points `source` at the tightened clip; and uses the new words. Recheck every effect after pause removal. Legacy music timelines must be migrated to the current no-background-music policy before building.
 
 The helper does **not** retime actions baked into B-roll, source-video offsets, generated scene internals or the natural duration of an SFX file. Recheck typing, cursor clicks, results and effect tails against the new spoken anchors; manually trim/re-author affected visuals when needed. A fully removed shot/event requires an editorial decision rather than a silent deletion. The emitted `retime_review` is a work reminder, not proof of audiovisual sync.
 

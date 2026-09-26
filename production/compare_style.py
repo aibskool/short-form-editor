@@ -32,11 +32,14 @@ def frames(path, output, start, end, fps):
     return [f'{output.name}/{p.name}' for p in found]
 
 
-def create(candidate, references, out, fps=30):
+def create(candidate, references, out, fps=30, allow_tightened=False):
     if len(references) != 3 or len({name for name, *_ in references}) != 3:
         raise ValueError('calibration needs three distinctly named local reference intervals')
     length = duration(candidate)
-    if abs(length-20) > 1/fps + .02:
+    if allow_tightened:
+        if not 10 <= length <= 20 + 1/fps + .02:
+            raise ValueError(f'tightened calibration must be 10–20 seconds; found {length:.3f}s')
+    elif abs(length-20) > 1/fps + .02:
         raise ValueError(f'calibration must be 20 seconds within one frame; found {length:.3f}s')
     if out.exists() and any(out.iterdir()):
         raise ValueError(f'comparison output must be new/empty: {out}')
@@ -55,6 +58,7 @@ def create(candidate, references, out, fps=30):
                for i in range(total)]
     digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
     result = {'candidate_sha256':digest,'fps':fps,'status':'pending_human_review',
+              'candidate_duration_seconds':length,'tightened_from_20s':bool(allow_tightened and length<19.9),
               'alignment':'Normalized progress within manually selected intervals of the same visual job; not a pixel similarity score',
               'clips':clips,'frame_mapping':mapping,'audio_review':'pending_listening'}
     (out/'comparison.json').write_text(json.dumps(result,indent=2)+'\n')
@@ -78,11 +82,12 @@ def main():
                     metavar=('NAME','PATH','START','END','VISUAL_JOB'))
     ap.add_argument('--out',required=True,type=Path)
     ap.add_argument('--fps',type=int,default=30)
+    ap.add_argument('--allow-tightened',action='store_true',help='Compare an intentionally shortened 10–20 s cut after speech cleanup')
     args=ap.parse_args()
     if not 1<=args.fps<=60: ap.error('--fps must be 1–60')
     try:
         refs=[(name,Path(path),float(start),float(end),job) for name,path,start,end,job in args.reference]
-        result=create(args.candidate,refs,args.out,args.fps)
+        result=create(args.candidate,refs,args.out,args.fps,args.allow_tightened)
         print(json.dumps({'status':result['status'],'candidate_sha256':result['candidate_sha256'],
                           'frame_count':len(result['frame_mapping']),'review':str(args.out/'index.html')},indent=2))
     except (OSError,ValueError,subprocess.CalledProcessError) as exc:

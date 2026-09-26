@@ -29,6 +29,15 @@ class RetimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'music'):
             retime({**self.spec, 'music': [{}]}, self.cuts, 'x', 'y')
 
+    def test_retimes_nested_scene_events_with_spoken_cues(self):
+        spec={**self.spec,'shots':[{'start':0,'end':5,'scene':{'kind':'kinetic_stat',
+            'items':[{'at':3.5,'fade_at':4.5,'anchor_word_index':2}],
+            'motion_cues':[{'at':4.0,'kind':'scan'}]}}]}
+        result=retime(spec,self.cuts,'new.mp4','words.json')
+        scene=result['shots'][0]['scene']
+        self.assertEqual((scene['items'][0]['at'],scene['items'][0]['fade_at']),(2.5,3.5))
+        self.assertEqual(scene['motion_cues'][0]['at'],3)
+
 
 if __name__ == '__main__':
     unittest.main()

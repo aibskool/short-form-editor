@@ -39,6 +39,13 @@ def retime(spec, decision, source, words):
             item['start'], item['end'] = t(item['start']), t(item['end'])
             if item['end'] <= item['start']:
                 raise ValueError(f'{collection} item was entirely removed; make an editorial decision')
+            scene = item.get('scene', {}) if collection == 'shots' else {}
+            for element in scene.get('items', []):
+                for field in ('at', 'fade_at'):
+                    if field in element:
+                        element[field] = t(element[field])
+            for cue in scene.get('motion_cues', []):
+                cue['at'] = t(cue['at'])
     for collection in ('zooms', 'flashes', 'transitions'):
         for item in spec.get(collection, []):
             at = float(item['at'])

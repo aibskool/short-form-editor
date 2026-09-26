@@ -26,6 +26,18 @@ class ComparisonTests(unittest.TestCase):
             self.assertEqual(len(result['clips']), 4)
             self.assertTrue((root / 'review/index.html').is_file())
 
+    def test_shortened_calibration_requires_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);candidate=root/'short.mp4'
+            subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-f','lavfi',
+                            '-i','color=c=green:s=160x284:r=5:d=17','-c:v','mpeg4',str(candidate)],check=True)
+            references=[(name,candidate,0,10,'visual job') for name in ('Astra','Photographer','GovDeals')]
+            with self.assertRaisesRegex(ValueError,'must be 20 seconds'):
+                create(candidate,references,root/'strict',fps=2)
+            result=create(candidate,references,root/'tight',fps=2,allow_tightened=True)
+            self.assertTrue(result['tightened_from_20s'])
+            self.assertEqual(result['status'],'pending_human_review')
+
 
 if __name__ == '__main__':
     unittest.main()
