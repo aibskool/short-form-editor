@@ -69,6 +69,8 @@ Regions: `headline` (top band), `top`, `upper`, `stage` (between headline and th
 | `equation` | Hook tiles joined by operators; `?` slots are visible from the first frame and fill on each word; result line lands last | `terms[{label,icon,image,at}]`, `ops`, `result{text,accent_words,at}`, `slots` |
 | `cta` | Keyword CTA in six distinct treatments: `chip`, `stamp`, `type`, `bubble`, `underline`, `fan` (real resource pages fan out behind the keyword). The build fails if the keyword is never spoken. End it on the last frame and it holds there instead of fading out | `keyword`, `keyword_at`, `prefix`, `suffix`, `style`, `pages` |
 
+**Device framing.** Camera `moves` are absolute and zoom about 50% 35% of the screen, so a screen point `p` lands at `50 + (p - 50) * scale + x` across and `35 + (p - 35) * scale + y` down. Keep `35 - 35 * scale + y <= 0` and `35 + 65 * scale + y >= 100` (and the same across) or the frame's edge shows. The build warns when a move pushes a highlight, its label or a tap off the screen. Filmed screens drift, so check each highlight against the footage at its start and end. A device holding a video is shown with GSAP rather than clip timing, because HyperFrames rejects a timed `<video>` inside another timed element.
+
 Icons are original line glyphs (`inbox`, `bot`, `calendar`, `mail`, `chat`, `sheet`, `database`, `workflow`, `dollar`, `chart`, `trend_up`, `target`, `bolt`, `rocket`, `briefcase`, `clock`, `check`, `x`, `search`, `code`, `doc`, `globe`, `phone`, `send`, `eye`, `heart`, `star`, `lock`, `spark`, `wand`, `cursor`, `plug`, `gear`, `layers`, `megaphone`, `question`, `alert`, `home`, `brain`, `users`, `user`, `link`, `play`, `flame`, `arrow`). Brand logos only come from supplied image files.
 
 Legacy `editorial_graphics` still build and now render through the `statement` component (word reveal, exit animation), so the approved calibration timelines keep working.
@@ -88,7 +90,7 @@ Graphics with `"depth": "behind"` then sit between the room and his silhouette a
 
 ## 5. Spoken captions
 
-`spoken_captions.style`: `karaoke` (recommended: upcoming words grey, spoken words white, emphasis words turn `#49cf26` and pop on their word), `reveal` (words appear as spoken; avoid on light b-roll), or `phrase` (legacy whole-phrase pop). `emphasis` lists the spoken words to accent; `upcoming_color` changes the grey. Captions stay 1–3 words (`max_words`, `max_chars`, or reviewed `phrases`). They sit at `spoken_captions.y` (lower third) in presenter shots and just above the band in stage shots, gliding with a layout morph.
+`spoken_captions.style`: `karaoke` (recommended: upcoming words grey, spoken words white, emphasis words turn `#49cf26` and pop on their word), `reveal` (words appear as spoken; avoid on light b-roll), or `phrase` (legacy whole-phrase pop). `emphasis` lists the spoken words to accent; `upcoming_color` changes the grey. Captions stay 1–3 words (`max_words`, `max_chars`, or reviewed `phrases`). They sit at `spoken_captions.y` (lower third) in presenter shots and just above the band in stage shots, gliding with a layout morph. B-roll keeps the same anchor; over busy footage (a phone keyboard, a toolbar) give that shot a `caption_background` plate instead of moving the captions. Set `spoken_caption_visible: false` on a shot whose designed graphic already carries the line, so captions never hide under a panel.
 
 ## 6. Camera and transitions
 

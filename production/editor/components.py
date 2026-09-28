@@ -173,7 +173,10 @@ class Component:
         return self.end - self.start
 
     # --- framing -----------------------------------------------------------
-    def wrap(self, inner, extra_class="", inner_style=""):
+    def wrap(self, inner, extra_class="", inner_style="", timed=True):
+        """Outer box for a graphic. timed=False leaves the box out of HyperFrames' clip
+        timing and shows it with GSAP instead; a <video> that carries its own data-start
+        must not sit inside another timed element (lint: video_nested_in_timed_element)."""
         style = f"left:{self.x:.3f}%;top:{self.y:.3f}%;width:{self.w:.3f}%;"
         if self.h is not None:
             style += f"height:{self.h:.3f}%;"
@@ -188,8 +191,15 @@ class Component:
             self.a(f'tl.to("#{self.id}-scrim",{{opacity:0,duration:{min(.3, self.hold() / 3):.3f},ease:"power1.in"}},{max(self.start, self.end - .3):.4f});')
             self.a(f'tl.set("#{self.id}-scrim",{{opacity:0}},{self.end:.4f});')
         depth = " depth-behind" if self.depth == "behind" else ""
-        return (f'<div id="{self.id}" class="mg mg-{self.kind} clip{depth} {extra_class}" data-start="{self.start:.4f}" '
-                f'data-duration="{self.end - self.start:.4f}" data-beat="{esc(self.g.get("beat", ""))}" style="{style}">'
+        if timed:
+            timing = f'class="mg mg-{self.kind} clip{depth} {extra_class}" data-start="{self.start:.4f}" data-duration="{self.end - self.start:.4f}"'
+        else:
+            timing = f'class="mg mg-{self.kind}{depth} {extra_class}"'
+            style += "visibility:hidden;opacity:0;"
+            self.a(f'tl.set("#{self.id}",{{autoAlpha:1}},{self.start:.4f});')
+            if self.end < self.ctx.duration - 1e-3:
+                self.a(f'tl.set("#{self.id}",{{autoAlpha:0}},{self.end:.4f});')
+        return (f'<div id="{self.id}" {timing} data-beat="{esc(self.g.get("beat", ""))}" style="{style}">'
                 f'{scrim_markup}<div id="{self.id}-float" class="mg-float" style="position:relative;width:100%;height:100%">'
                 f'<div id="{self.body}" class="mg-body" style="position:relative;width:100%;height:100%;{body_zoom}{inner_style}">{inner}</div></div></div>')
 
@@ -787,12 +797,14 @@ class Device(Component):
             title = esc(g.get("title", ""))
             chrome = f'<div class="dv-bar"><i></i><i></i><i></i><span>{title}</span></div>'
         overlays = []
+        self._marks, self._taps = [], []
         for j, mark in enumerate(g.get("highlights", [])):
             rx, ry, rw, rh = (num(v, f"{self.id} highlight rect", 0, 100) for v in mark.get("rect", []))
             hid = f"{self.id}-h{j}"
             shape = mark.get("shape", "box")
             at = self.cue(mark.get("at"), f"highlight {j} at")
             until = self.cue(mark.get("end"), f"highlight {j} end", self.end - .05)
+            self._marks.append((j, at, until, (rx, ry, rw, rh), mark.get("label")))
             overlays.append(f'<div id="{hid}" class="dv-hl dv-hl-{esc(shape)}" style="left:{rx}%;top:{ry}%;width:{rw}%;height:{rh}%;opacity:0"></div>')
             self.a(f'tl.fromTo("#{hid}",{{opacity:0,scale:1.25}},{{opacity:1,scale:1,duration:.32,ease:"{self.feel["pop"]}"}},{at:.4f});')
             leave = max(at + .36, until - .2)
@@ -808,11 +820,13 @@ class Device(Component):
         for j, tap in enumerate(g.get("taps", [])):
             tx, ty = num(tap.get("x"), "tap x", 0, 100), num(tap.get("y"), "tap y", 0, 100)
             at = self.cue(tap.get("at"), f"tap {j} at")
+            self._taps.append((j, at, tx, ty))
             tid = f"{self.id}-t{j}"
             overlays.append(f'<div id="{tid}" class="dv-tap" style="left:{tx}%;top:{ty}%;opacity:0"></div>')
             self.a(f'tl.fromTo("#{tid}",{{opacity:.9,scale:.3}},{{opacity:0,scale:1.6,duration:.5,ease:"power2.out",immediateRender:false}},{at:.4f});')
             self.sound("tap", at, None)
-        media_layer = f'<div id="{self.id}-cam" class="dv-cam">{tag}{"".join(overlays)}</div>'
+        # The camera zooms past the screen edge on purpose; the screen clips it.
+        media_layer = f'<div id="{self.id}-cam" class="dv-cam" data-layout-allow-overflow>{tag}{"".join(overlays)}</div>'
         radius = {"phone": 56, "window": 22, "card": 28}[device]
         screen = f'<div class="dv-screen" style="height:{screen_h:.1f}px;border-radius:{(radius - 10) * k if device == "phone" else 0:.1f}px">{media_layer}</div>'
         badge = ""
@@ -822,10 +836,11 @@ class Device(Component):
             self.a(f'tl.fromTo("#{self.id}-badge",{{scale:0,rotation:-8}},{{scale:1,rotation:0,duration:.5,ease:"{self.feel["spring"]}"}},{badge_at:.4f});')
             self.sound("pop", badge_at, None)
         inner = f'<div class="dv dv-{device}" style="border-radius:{radius * k:.1f}px">{chrome}{screen}</div>{badge}'
-        markup = self.wrap(inner, inner_style="perspective:1600px")
+        markup = self.wrap(inner, inner_style="perspective:1600px", timed=image)
         self.choreograph()
         moves = g.get("moves", [])
         state = {"scale": 1, "x": 0, "y": 0}
+        camera_keys = [(float("-inf"), dict(state))]
         for j, move in enumerate(moves):
             at = self.cue(move.get("at"), f"move {j} at")
             dur = num(move.get("duration", .7), f"{self.id} move duration", .05, 8)
@@ -833,7 +848,9 @@ class Device(Component):
                       "xPercent": num(move.get("x", state["x"]), "move x", -90, 90),
                       "yPercent": num(move.get("y", state["y"]), "move y", -95, 95)}
             state = {"scale": target["scale"], "x": target["xPercent"], "y": target["yPercent"]}
+            camera_keys.append((at, dict(state)))
             self.a(f'tl.to("#{self.id}-cam",{{scale:{target["scale"]},xPercent:{target["xPercent"]},yPercent:{target["yPercent"]},duration:{dur:.3f},ease:"{move.get("ease", "power3.inOut")}"}},{at:.4f});')
+        self.check_framing(camera_keys, screen_h, width_px)
         scroll = g.get("scroll")
         if scroll:
             at = self.cue(scroll.get("start"), "scroll start", self.start + .4)
@@ -846,6 +863,43 @@ class Device(Component):
             self.a(f'tl.fromTo("#{self.id}-cam",{{scale:1}},{{scale:{num(g.get("push", 1.06), "push", 1, 1.4)},duration:{self.hold():.3f},ease:"sine.inOut"}},{self.start:.4f});')
         self.sfx(self.start)
         return markup, self.anims
+
+    def check_framing(self, keys, screen_h, width_px):
+        """Report highlights, labels and taps that a camera move has pushed off the screen.
+
+        The camera (transform-origin 50% 35%) maps a screen point p to
+        50 + (p - 50) * scale + x horizontally and 35 + (p - 35) * scale + y vertically.
+        Each mark is checked against the framing the camera is heading to when it shows.
+        """
+        k = self.px.n(1)
+
+        def camera(t):
+            return [state for at, state in keys if at <= t + 1e-6][-1]
+
+        def view(px_, py_, s):
+            return 50 + (px_ - 50) * s["scale"] + s["x"], 35 + (py_ - 35) * s["scale"] + s["y"]
+
+        for j, at, until, (rx, ry, rw, rh), label in self._marks:
+            for t in sorted({round(at + .32, 3), round(max(at + .32, until - .2), 3)}):
+                s = camera(t)
+                x0, y0 = view(rx, ry, s)
+                x1, y1 = view(rx + rw, ry + rh, s)
+                problems = []
+                if x0 < -1 or y0 < -1 or x1 > 101 or y1 > 101:
+                    problems.append(f"box spans x {x0:.0f} to {x1:.0f}%, y {y0:.0f} to {y1:.0f}%")
+                if label:
+                    label_w = (len(str(label)) * 32 * .47 + 36) * k / width_px * 100 * s["scale"]
+                    label_h = (32 * 1.25 + 28) * k / screen_h * 100 * s["scale"]
+                    if x0 < -1 or x0 + label_w > 101 or y1 + label_h > 101:
+                        problems.append(f'label "{label}" reaches x {x0 + label_w:.0f}%, y {y1 + label_h:.0f}%')
+                if problems:
+                    self.ctx.report.append(f"{self.id}: highlight {j} leaves the screen at {t:.2f}s "
+                                           f"({'; '.join(problems)}); move the camera or tighten the rect")
+                    break
+        for j, at, x, y in self._taps:
+            vx, vy = view(x, y, camera(at))
+            if not (2 <= vx <= 98 and 2 <= vy <= 98):
+                self.ctx.report.append(f"{self.id}: tap {j} lands off the screen at {at:.2f}s (x {vx:.0f}%, y {vy:.0f}%)")
 
 
 class Chart(Component):
@@ -976,7 +1030,8 @@ class Compare(Component):
             icon = icon_svg("x" if tone == "negative" else "check")
             sides.append(f'<div id="{sid}" class="cp-side cp-{tone}" data-layout-allow-occlusion><div class="cp-head"><span class="cp-ico">{icon}</span>{esc(data.get("title", ""))}</div><ul>{items}</ul><b id="{sid}-strike" class="cp-strike"></b></div>')
             self.a(f'tl.fromTo("#{sid}",{{opacity:0,y:{40 * k:.1f},scale:.94}},{{opacity:1,y:0,scale:1,duration:.45,ease:"{f["pop"]}"}},{at:.4f});')
-            self.a(f'tl.fromTo("#{sid} li",{{opacity:0,x:{-16 * k:.1f}}},{{opacity:1,x:0,duration:.3,stagger:.08,ease:"{f["enter"]}"}},{at + .15:.4f});')
+            if data.get("items"):  # a side can be a title alone; never tween an empty selector
+                self.a(f'tl.fromTo("#{sid} li",{{opacity:0,x:{-16 * k:.1f}}},{{opacity:1,x:0,duration:.3,stagger:.08,ease:"{f["enter"]}"}},{at + .15:.4f});')
             self.sound("pop", at, None)
         vs = f'<div id="{self.id}-vs" class="cp-vs">{esc(g.get("vs", "vs"))}</div>'
         inner = f'<div class="cp">{sides[0]}{vs}{sides[1]}</div>'

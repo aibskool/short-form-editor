@@ -104,7 +104,7 @@ def component_css(px):
 .ck-text{{font-size:{px(46)};font-weight:700;letter-spacing:-.02em;line-height:1.15}}
 .ck-strike{{position:absolute;left:{px(140)};right:4%;top:50%;height:{px(5)};background:var(--negative);transform:scaleX(0);transform-origin:0 50%;border-radius:{px(3)}}}
 .cp{{display:grid;grid-template-columns:1fr auto 1fr;gap:{px(16)};align-items:stretch}}
-.cp-side{{position:relative;border-radius:{px(30)};padding:{px(30)} {px(26)};background:var(--panel);border:{px(1.5)} solid var(--line);box-shadow:0 {px(20)} {px(50)} rgba(0,0,0,.5)}}
+.cp-side{{position:relative;border-radius:{px(30)};padding:{px(30)} {px(26)};background:var(--panel-solid);border:{px(1.5)} solid var(--line);box-shadow:0 {px(20)} {px(50)} rgba(0,0,0,.5)}}
 .cp-positive{{border-color:rgba(73,207,38,.55)}}
 .cp-head{{display:flex;align-items:center;gap:{px(14)};font-size:{px(42)};font-weight:800;letter-spacing:-.02em;margin-bottom:{px(14)}}}
 .cp-ico{{flex:none;width:{px(56)};height:{px(56)};border-radius:50%;display:grid;place-items:center}}
@@ -113,7 +113,7 @@ def component_css(px):
 .cp-positive .cp-ico{{background:rgba(73,207,38,.18);color:var(--accent)}}
 .cp ul{{list-style:none;margin:0;padding:0}}
 .cp li{{font-size:{px(36)};font-weight:600;color:var(--text2);padding:{px(11)} 0;border-top:{px(1)} solid rgba(255,255,255,.07);line-height:1.2}}
-.cp-vs{{align-self:center;font-family:var(--serif);font-style:italic;font-size:{px(72)};color:var(--accent)}}
+.cp-vs{{align-self:center;width:{px(96)};height:{px(96)};border-radius:50%;display:grid;place-items:center;background:var(--panel-solid);border:{px(1.5)} solid var(--line);font-family:var(--serif);font-style:italic;font-size:{px(60)};line-height:1;padding-bottom:{px(8)};box-sizing:border-box;color:var(--accent)}}
 .cp-strike{{position:absolute;left:6%;right:6%;top:62%;height:{px(6)};background:var(--negative);transform:scaleX(0);transform-origin:0 50%;border-radius:{px(3)};box-shadow:0 0 {px(12)} rgba(255,93,93,.6)}}
 .pr{{position:relative;border-radius:{px(34)};padding:{px(30)} {px(34)} {px(36)}}}
 .pr-head{{display:flex;align-items:center;gap:{px(12)};font-size:{px(28)};font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:{px(18)}}}

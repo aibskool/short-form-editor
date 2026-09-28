@@ -88,7 +88,7 @@ Paths resolve from the timeline JSON. Supported layouts are `presenter`, `stage`
 ```json
 {
   "id":"shot-04", "start":4.4, "end":6.8, "layout":"split",
-  "caption_y":44.7, "media":"broll/actual-readme.png",
+  "media":"broll/actual-readme.png",
   "media_crop":[660,705,2100,570], "background":"#f6f8fa", "media_zoom":1.03
 }
 ```

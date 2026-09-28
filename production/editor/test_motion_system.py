@@ -159,6 +159,37 @@ class ComponentTests(unittest.TestCase):
         _, anims, _ = self.render([{"type": "card", "start": .2, "end": 3.0, "title": "One task", "icon": "briefcase"}])
         self.assertTrue(any('tl.set("#g0-card-body",{opacity:0},3.0000)' in a for a in anims))
 
+    def test_device_framing_check_flags_marks_the_camera_pushes_off_screen(self):
+        c = ctx()
+        render_graphics([{"id": "d", "type": "device", "device": "card", "start": .2, "end": 5, "media": "ui.png",
+                          "moves": [{"at": 1.0, "scale": 2.0, "x": 0, "y": 0, "duration": .4}],
+                          "highlights": [{"rect": [5, 40, 90, 10], "at": 1.5, "end": 3, "label": "the whole row"},
+                                         {"rect": [40, 30, 20, 8], "at": 1.5, "end": 3}],
+                          "taps": [{"x": 5, "y": 90, "at": 2}]}], c)
+        self.assertTrue(any("highlight 0 leaves the screen" in r for r in c.report), c.report)
+        self.assertFalse(any("highlight 1" in r for r in c.report), c.report)
+        self.assertTrue(any("tap 0 lands off the screen" in r for r in c.report), c.report)
+
+    def test_video_devices_time_the_video_not_the_wrapper(self):
+        markup, anims, _ = self.render([{"id": "rec", "type": "device", "start": .5, "end": 4, "media": "screen.mp4",
+                                         "moves": [{"at": 1, "scale": 1.2}]}])
+        wrapper = markup[0].split(">", 1)[0]
+        self.assertNotIn("data-start", wrapper)  # HyperFrames lint: video_nested_in_timed_element
+        self.assertNotIn(" clip", wrapper)
+        self.assertIn('<video id="rec-media" class="clip" src="assets/screen.mp4" data-start="0.5000"', markup[0])
+        self.assertIn('tl.set("#rec",{autoAlpha:1},0.5000);', anims)
+        self.assertIn('tl.set("#rec",{autoAlpha:0},4.0000);', anims)
+        self.assertIn('class="dv-cam" data-layout-allow-overflow', markup[0])
+        still, _, _ = self.render([{"id": "shot", "type": "device", "start": .5, "end": 4, "media": "ui.png"}])
+        self.assertIn('data-start="0.5000"', still[0].split(">", 1)[0])
+
+    def test_compare_side_without_items_has_no_empty_list_tween(self):
+        _, anims, _ = self.render([{"id": "cmp", "type": "compare", "start": .2, "end": 4,
+                                    "left": {"title": "Generic template"},
+                                    "right": {"title": "Their business", "items": ["Real services"]}}])
+        self.assertFalse(any('"#cmp-left li"' in a for a in anims))
+        self.assertTrue(any('"#cmp-right li"' in a for a in anims))
+
     def test_sound_events_follow_visual_cues(self):
         c = ctx()
         render_graphics([{"type": "badge", "start": "@show", "end": 4, "text": "#1", "sfx": "pop"}], c)
@@ -258,6 +289,40 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(bright_caption_band(white, {"start": 0, "end": 1}, 83, False, .5))
             self.assertFalse(bright_caption_band(white, {"start": 0, "end": 1}, 83, True, .5))
             self.assertTrue(bright_caption_band(white, {"start": 0, "end": 1}, 40, True, .5))
+
+    def test_broll_captions_keep_one_anchor_and_busy_footage_gets_a_backing(self):
+        from edit import build
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x101010:size=90x160",
+                            "-frames:v", "1", str(root / "phone.png")], check=True)
+            spec = self.fixture(root, {"shots": [{"start": "@map", "end": "@show", "layout": "full_broll",
+                                                  "media": "phone.png", "media_zoom": 1.05, "caption_y": 44,
+                                                  "caption_background": "rgba(8,11,9,.86)"},
+                                                 {"start": "@show", "end": 6, "layout": "presenter"}]})
+            receipt = build(str(spec), str(root / "comp"))
+            html = (root / "comp/index.html").read_text()
+            self.assertNotIn('tl.set("#caption-anchor",{y:-', html)
+            self.assertIn('tl.set(".caption-text",{backgroundColor:"rgba(8,11,9,.86)"}', html)
+            self.assertTrue(any("caption_y is ignored" in w for w in receipt["motion_report"]["warnings"]))
+
+    def test_footage_growing_over_a_stage_keeps_the_stage_behind_it(self):
+        from edit import build
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0xeeeeee:size=90x160",
+                            "-frames:v", "1", str(root / "site.png")], check=True)
+            spec = self.fixture(root, {"shots": [
+                {"start": 0, "end": 2.0, "layout": "stage"},
+                {"start": 2.0, "end": 4.0, "layout": "full_broll", "media": "site.png", "media_zoom": 1.04,
+                 "enter": {"kind": "expand", "duration": .4}},
+                {"start": 4.0, "end": 6, "layout": "presenter"}]})
+            build(str(spec), str(root / "comp"))
+            html = (root / "comp/index.html").read_text()
+            # The stage backdrop and band hold until the expand covers the frame; no flash of the full presenter.
+            self.assertIn('id="stage-bg-0" class="clip stage-bg stage-dots" data-start="0.0000" data-duration="2.4000"', html)
+            self.assertIn('webkitMaskImage:"none",maskImage:"none"},2.4000);', html)
+            self.assertNotIn('webkitMaskImage:"none",maskImage:"none"},2.0000);', html)
 
     def test_legacy_editorial_graphics_render_as_kinetic_statements(self):
         from edit import build

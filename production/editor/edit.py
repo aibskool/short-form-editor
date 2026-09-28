@@ -390,6 +390,7 @@ def build(spec_path, project):
         graphic_markup, graphic_anims, graphic_meta = render_graphics(upgraded + spec.get("graphics", []), ctx)
     except CueError as error:
         raise ValueError(str(error)) from None
+    warnings.extend(ctx.report)
     behind = [m for m, meta in zip(graphic_markup, graphic_meta) if meta["depth"] == "behind"]
     front = [m for m, meta in zip(graphic_markup, graphic_meta) if meta["depth"] != "behind"]
     if behind and not matte_parts:
@@ -427,6 +428,11 @@ def build(spec_path, project):
                                 "(use a transition for anything else)")
         animations.append(f'tl.set("#presenter",{{top:{split_height if split else 0},height:{height-split_height if split else height}}},{start});')
         animations.append(f'tl.set("#caption-anchor",{{autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
+        if shot.get("caption_y") is not None:
+            # Captions keep one lower-third anchor across presenter and B-roll shots;
+            # only stage shots move it (to the seam above the presenter band).
+            warnings.append(f"shot {i}: caption_y is ignored; captions keep the spoken_captions.y anchor. Over busy "
+                            "footage set caption_background on the shot; in stage shots use stage.caption_y")
         backing = shot.get("caption_background") or captions.get("background", "rgba(0,0,0,0)")
         if not shot.get("caption_background") and layout in {"full_broll", "split"} and shot.get("media") and captions.get("auto_backing", True):
             if bright_caption_band(resolve(shot["media"], spec_path.parent), shot, caption_y, split, split_fraction):
@@ -462,6 +468,11 @@ def build(spec_path, project):
                 follow_motion = shot_motion(following.get("enter"), f"shot {i + 1} enter")
                 if follow_motion["kind"] == "morph":
                     tail = follow_motion["duration"]
+                elif following.get("layout") == "full_broll" and follow_motion["kind"] != "cut":
+                    # Full-frame footage grows over the stage (expand, iris, slide): keep the stage
+                    # backdrop and band behind it until it covers the frame, instead of flashing the
+                    # full presenter. (The band's frame sits above b-roll, so it still ends at the cut.)
+                    tail = min(follow_motion["duration"], (float(following["end"]) - float(following["start"])) * .45)
             backdrop = shot.get("backdrop", design["stage_backdrop"])
             if backdrop not in {"dots", "grid", "radial", "plain"}:
                 raise ValueError(f"shot {i} backdrop must be dots, grid, radial or plain")
@@ -494,8 +505,11 @@ def build(spec_path, project):
             animations.append(f'tl.to("#caption-anchor",{{y:0,duration:{d:.3f},ease:"{feel["move"]}"}},{start:.4f});')
             ctx.sound(shot.get("enter_sfx", "whoosh_short"), start, None, f"shot-{i}")
         else:
-            animations.append(f'tl.set("#presenter",{{clipPath:"{restore_clip}",webkitMaskImage:"none",maskImage:"none"}},{start});')
-            animations.append(f'tl.set("#presenter-camera",{{scale:{cam["scale"]},xPercent:{cam["xPercent"]},yPercent:{cam["yPercent"]}}},{start});')
+            restore_at = start
+            if previous_layout == "stage" and layout == "full_broll" and enter["kind"] != "cut":
+                restore_at = start + min(enter["duration"], (end - start) * .45)  # once the footage covers the frame
+            animations.append(f'tl.set("#presenter",{{clipPath:"{restore_clip}",webkitMaskImage:"none",maskImage:"none"}},{restore_at:.4f});')
+            animations.append(f'tl.set("#presenter-camera",{{scale:{cam["scale"]},xPercent:{cam["xPercent"]},yPercent:{cam["yPercent"]}}},{restore_at:.4f});')
             animations.append(f'tl.set("#caption-anchor",{{y:0}},{start});')
         if shot.get('zoom_to') is not None:
             zoom_to = finite_number(shot['zoom_to'], f'shot {i} zoom_to')

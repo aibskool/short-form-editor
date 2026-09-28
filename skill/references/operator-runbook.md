@@ -76,6 +76,19 @@ python3 production/finalize_render.py --input /absolute/work/NEW-RUN/raw.mp4 \
 python3 production/check_editorial.py --map /absolute/editorial-map.json
 ```
 
+**One line per clip (A01, A02, ...).** When Brandon films each line as its own take, transcribe the takes offline, cut each to its kept ranges, and assemble one master:
+
+```bash
+python3 production/intake/transcribe_parakeet.py --model-dir /absolute/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 \
+  --out /absolute/work/NEW-RUN/words /absolute/footage/A0*.mov
+python3 production/assemble_takes.py --edl /absolute/work/NEW-RUN/edl.json --output /absolute/work/NEW-RUN/master.mp4 \
+  --words-output /absolute/work/NEW-RUN/master.words.json --map-output /absolute/work/NEW-RUN/master.map.json
+python3 production/intake/transcribe_parakeet.py --model-dir /absolute/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 \
+  --out /absolute/work/NEW-RUN/asr-check /absolute/work/NEW-RUN/master.mp4
+```
+
+Parakeet runs offline through sherpa-onnx (`pip install sherpa-onnx`, model from the k2-fsa GitHub releases) on machines that cannot fetch the Whisper weights. Cue the edit from the master's own transcript: per-take timestamps can land late at the end of a take, and the assembler lists every word it dropped as cut. Transcode HEVC phone captures to H.264 before a build; Chrome cannot decode HEVC.
+
 Set `audio_policy.music_required:false` and omit `music` for every Brandon short-form build. Copy `<plugin>/templates/creative-review.json` to the pilot directory and fill observations, including fixed lower-third placement, transcript cleanup, word-cued graphics, negative-state color/opacity, transitions and a useful change within every two-second custom UI span.
 
 The intake requires a cached Whisper model and the Python packages in `production/requirements.txt`; read its setup before running. The editor's Node packages come from `npm ci` in `production/editor`. `prepare_take.py` currently uses macOS `h264_videotoolbox`; on another OS change only that encoder to available `libx264` after checking FFmpeg, then verify the output. It overwrites its named outputs: give it new paths. Do not repeatedly transcribe an unchanged batch.
