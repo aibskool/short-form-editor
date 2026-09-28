@@ -1,0 +1,363 @@
+{
+ "title": "Stage Explainer demo (stand-in presenter, drawn placeholder UI)",
+ "source": {
+  "path": "work/stage-explainer.mp4",
+  "object_position": "50% 40%"
+ },
+ "words_path": "work/stage-explainer.words.json",
+ "output": {
+  "width": 720,
+  "height": 1280,
+  "fps": 30
+ },
+ "audio_policy": {
+  "music_required": false
+ },
+ "design": {
+  "feel": "snap"
+ },
+ "spoken_captions": {
+  "style": "karaoke",
+  "font_size": 34,
+  "uppercase": true,
+  "max_words": 3,
+  "max_chars": 22,
+  "hold": 0.06,
+  "omit_terminal_punctuation": true,
+  "emphasis": [
+   "backwards",
+   "flip",
+   "painful",
+   "demo",
+   "agent",
+   "selling"
+  ]
+ },
+ "shots": [
+  {
+   "start": 0,
+   "end": "@Flip-0.05",
+   "layout": "presenter"
+  },
+  {
+   "start": "@Flip-0.05",
+   "end": "@Find-0.12",
+   "layout": "presenter",
+   "zoom": 1.16,
+   "y_percent": -2
+  },
+  {
+   "start": "@Find-0.12",
+   "end": "@the demo does-0.1",
+   "layout": "stage",
+   "enter": "morph"
+  },
+  {
+   "start": "@the demo does-0.1",
+   "end": "@prompt:end+0.5",
+   "layout": "presenter",
+   "enter": "morph"
+  }
+ ],
+ "camera": [
+  {
+   "kind": "push",
+   "at": 0.1,
+   "scale": 1.06,
+   "duration": 4.6
+  },
+  {
+   "kind": "shake",
+   "at": "@backwards",
+   "amount": 6,
+   "duration": 0.3
+  }
+ ],
+ "transitions": [
+  {
+   "kind": "zoom_blur",
+   "at": "@Flip-0.05",
+   "duration": 0.3
+  },
+  {
+   "kind": "light_leak",
+   "at": "@Comment-0.1",
+   "duration": 0.5
+  }
+ ],
+ "graphics": [
+  {
+   "id": "hook-head",
+   "type": "headline",
+   "start": 0.15,
+   "end": "@They-0.1",
+   "lines": [
+    "Chasing Your",
+    "First AI Client?"
+   ],
+   "accent": "First AI Client?",
+   "accent_style": "serif",
+   "size": 82,
+   "beat": "hook"
+  },
+  {
+   "id": "backwards",
+   "type": "statement",
+   "start": "@backwards",
+   "end": "@They-0.05",
+   "text": "backwards.",
+   "accent_words": [
+    "backwards"
+   ],
+   "region": "lower",
+   "y": 57,
+   "size": 150,
+   "align": "center",
+   "reveal": "pop",
+   "sfx": "pop",
+   "beat": "hook"
+  },
+  {
+   "id": "wrong-way",
+   "type": "checklist",
+   "start": "@build-0.15",
+   "end": "@Flip-0.1",
+   "region": "lower",
+   "y": 49,
+   "x": 8,
+   "w": 84,
+   "title": "What most people do",
+   "numbered": true,
+   "beat": "problem",
+   "items": [
+    {
+     "text": "Build the automation",
+     "at": "@build",
+     "state": "fail",
+     "done_at": "@first"
+    },
+    {
+     "text": "Hunt for a buyer",
+     "at": "@looking",
+     "state": "fail",
+     "done_at": "@buy"
+    }
+   ]
+  },
+  {
+   "id": "flip",
+   "type": "statement",
+   "start": "@Flip",
+   "end": "@Find-0.15",
+   "text": "Flip it.",
+   "accent_words": [
+    "Flip"
+   ],
+   "region": "upper",
+   "y": 8,
+   "size": 170,
+   "align": "center",
+   "reveal": "pop",
+   "exit": "scale",
+   "beat": "pivot"
+  },
+  {
+   "id": "pain-head",
+   "type": "headline",
+   "start": "@Find",
+   "end": "@Map-0.1",
+   "text": "Find The Pain First",
+   "accent": "Pain",
+   "accent_style": "box",
+   "size": 76,
+   "beat": "step-1"
+  },
+  {
+   "id": "pain-card",
+   "type": "card",
+   "start": "@one",
+   "end": "@Map-0.12",
+   "region": "stage",
+   "y": 25,
+   "x": 7,
+   "w": 86,
+   "icon": "briefcase",
+   "kicker": "Step 1",
+   "title": "One business. One painful manual task.",
+   "accent_words": [
+    "painful"
+   ],
+   "enter": "tilt",
+   "beat": "step-1",
+   "scale": 1.3
+  },
+  {
+   "id": "map-head",
+   "type": "headline",
+   "start": "@Map",
+   "end": "@Then-0.1",
+   "text": "Map The Workflow",
+   "accent": "Workflow",
+   "accent_style": "serif",
+   "size": 80,
+   "beat": "step-2"
+  },
+  {
+   "id": "map-flow",
+   "type": "flow",
+   "start": "@Map",
+   "end": "@Then-0.12",
+   "region": "stage",
+   "y": 21,
+   "h": 31,
+   "layout": "row",
+   "node_size": 210,
+   "beat": "step-2",
+   "nodes": [
+    {
+     "id": "lead",
+     "label": "New lead",
+     "sub": "form or DM",
+     "icon": "inbox",
+     "at": "@new"
+    },
+    {
+     "id": "agent",
+     "label": "Claude agent",
+     "sub": "qualifies + replies",
+     "icon": "bot",
+     "at": "@Claude",
+     "accent": true
+    },
+    {
+     "id": "call",
+     "label": "Booked call",
+     "sub": "on your calendar",
+     "icon": "calendar",
+     "at": "@booked",
+     "win_at": "@call"
+    }
+   ],
+   "links": [
+    {
+     "from": "lead",
+     "to": "agent",
+     "at": "@lead:end"
+    },
+    {
+     "from": "agent",
+     "to": "call",
+     "at": "@agent:end"
+    }
+   ],
+   "focus": [
+    {
+     "at": "@new",
+     "node": "lead"
+    },
+    {
+     "at": "@Claude",
+     "node": "agent"
+    },
+    {
+     "at": "@booked",
+     "node": "call"
+    }
+   ]
+  },
+  {
+   "id": "demo-head",
+   "type": "headline",
+   "start": "@Then#2",
+   "end": "@the demo does-0.1",
+   "text": "Show A 30-Second Demo",
+   "accent": "30-Second Demo",
+   "accent_style": "box",
+   "size": 72,
+   "beat": "step-3"
+  },
+  {
+   "id": "demo-ui",
+   "type": "device",
+   "device": "window",
+   "media": "assets/demo-ui.svg",
+   "title": "client-demo.app",
+   "start": "@show",
+   "end": "@the demo does-0.12",
+   "region": "stage",
+   "x": 10,
+   "y": 20,
+   "w": 80,
+   "aspect": 1.44,
+   "fit": "cover",
+   "position": "50% 0%",
+   "badge": "30 sec",
+   "badge_at": "@thirty",
+   "highlights": [
+    {
+     "rect": [
+      3.5,
+      20,
+      48.5,
+      39
+     ],
+     "at": "@demo",
+     "label": "the result they care about"
+    }
+   ],
+   "moves": [
+    {
+     "at": "@demo",
+     "scale": 1.28,
+     "x": 12,
+     "y": 4,
+     "duration": 0.6
+    }
+   ],
+   "beat": "step-3"
+  },
+  {
+   "id": "sells",
+   "type": "statement",
+   "start": "@the demo does",
+   "end": "@Comment-0.12",
+   "text": "The demo does the selling.",
+   "accent_words": [
+    "selling."
+   ],
+   "sync": "spoken",
+   "region": "upper",
+   "y": 9,
+   "size": 104,
+   "align": "center",
+   "beat": "payoff",
+   "scrim": true
+  },
+  {
+   "id": "cta",
+   "type": "cta",
+   "style": "fan",
+   "start": "@Comment",
+   "end": "@prompt:end+0.5",
+   "keyword": "AGENT",
+   "keyword_at": "@AGENT#2",
+   "prefix": "Comment",
+   "suffix": "I'll send you the exact prompt",
+   "y": 47,
+   "beat": "cta",
+   "pages": [
+    "Agent prompt",
+    "Setup checklist",
+    "Demo script"
+   ]
+  }
+ ],
+ "variation": {
+  "avoid": {
+   "hooks": [],
+   "cta_styles": [
+    "stamp"
+   ]
+  }
+ }
+}

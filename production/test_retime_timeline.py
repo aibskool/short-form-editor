@@ -10,7 +10,7 @@ class RetimeTests(unittest.TestCase):
                      'editorial_graphics': [{'claim_id':'claim-1','text':'PROOF','start':1,'end':4}],
                      'sfx': [{'at': 3.5, 'duration': .4}],
                      'zooms': [{'at': 1.5, 'duration': 2, 'scale': 1.1}],
-                     'transitions': [{'at': 3.0, 'duration': .25, 'kind': 'green_wipe'}]}
+                     'transitions': [{'at': 3.0, 'duration': .25, 'kind': 'whip'}]}
         self.cuts = {'source_duration': 5, 'cuts': [{'start': 2, 'end': 3}]}
 
     def test_retimes_all_boundaries_without_chopping_sound(self):
@@ -20,7 +20,7 @@ class RetimeTests(unittest.TestCase):
         self.assertEqual(result['editorial_graphics'], [{'claim_id':'claim-1','text':'PROOF','start':1,'end':3}])
         self.assertEqual(result['sfx'], [{'at': 2.5, 'duration': .4}])
         self.assertEqual(result['zooms'][0]['duration'], 1)
-        self.assertEqual(result['transitions'][0], {'at': 2.0, 'duration': .25, 'kind': 'green_wipe'})
+        self.assertEqual(result['transitions'][0], {'at': 2.0, 'duration': .25, 'kind': 'whip'})
         self.assertEqual(self.spec['shots'][0]['end'], 3)
 
     def test_rejects_stale_clock_and_preexisting_music(self):
@@ -37,6 +37,25 @@ class RetimeTests(unittest.TestCase):
         scene=result['shots'][0]['scene']
         self.assertEqual((scene['items'][0]['at'],scene['items'][0]['fade_at']),(2.5,3.5))
         self.assertEqual(scene['motion_cues'][0]['at'],3)
+
+
+    def test_motion_graphics_remap_numbers_and_keep_word_cues(self):
+        spec = {**self.spec, 'graphics': [
+            {'type': 'flow', 'start': 1.0, 'end': 4.5, 'nodes': [{'id': 'a', 'at': 3.5}, {'id': 'b', 'at': '@agent'}],
+             'links': [{'from': 'a', 'to': 'b', 'at': 4.0}], 'focus': [{'at': 1.5, 'node': 'a'}]},
+            {'type': 'headline', 'start': '@hook', 'end': '@then-0.1', 'text': 'Hook'},
+            {'type': 'stat', 'start': 0.5, 'end': 4.8, 'value': 41, 'count_at': 3.2}],
+            'camera': [{'kind': 'push', 'at': 3.5, 'scale': 1.05, 'duration': 1.0}]}
+        result = retime(spec, self.cuts, 'new.mp4', 'words.json')
+        flow, headline, stat = result['graphics']
+        self.assertAlmostEqual(stat['count_at'], 2.2)
+        self.assertEqual(stat['value'], 41)
+        self.assertEqual((flow['start'], flow['end']), (1.0, 3.5))
+        self.assertEqual([n['at'] for n in flow['nodes']], [2.5, '@agent'])
+        self.assertEqual(flow['links'][0]['at'], 3.0)
+        self.assertEqual(flow['focus'][0]['at'], 1.5)
+        self.assertEqual((headline['start'], headline['end']), ('@hook', '@then-0.1'))
+        self.assertEqual(result['camera'][0], {'kind': 'push', 'at': 2.5, 'scale': 1.05, 'duration': 1.0})
 
 
 if __name__ == '__main__':

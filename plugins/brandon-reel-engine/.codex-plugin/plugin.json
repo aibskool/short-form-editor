@@ -1,7 +1,7 @@
 {
   "name": "brandon-reel-engine",
-  "version": "0.5.0-beta.1",
-  "description": "Brandon Reel Engine: source-backed reels from Brandon footage, real proof, independent captions and editorial graphics.",
+  "version": "0.6.0-beta.1",
+  "description": "Brandon Reel Engine: reels from Brandon footage with a stage layout, word-cued motion graphics, independent captions and real proof.",
   "author": {
     "name": "Brandon Meaux (fork maintainer)"
   },

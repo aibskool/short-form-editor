@@ -72,6 +72,7 @@ class NativeMediaBackgroundTests(unittest.TestCase):
                 'title': 'Native contain background regression',
                 'source': {'path': str(red), 'segments': [{'start': 0, 'end': 1}]},
                 'output': {'width': WIDTH, 'height': HEIGHT, 'fps': 10},
+                'audio_policy': {'music_required': False},
                 'shots': [
                     {'id': 'blue-contained', 'start': 0, 'end': .5, 'layout': 'full_broll',
                      'media': str(blue), 'fit': 'contain', 'background': '#ffffff'},

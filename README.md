@@ -23,6 +23,8 @@ It combines **eleven focused skills** with a **local HyperFrames editing runtime
 
 The current visual target is based on Brandon's [Astra workflow](https://www.instagram.com/p/DdpOfqtgr8a/), [photographer website](https://www.instagram.com/p/DdsBCNtB6LW/) and [GovDeals](https://www.instagram.com/p/DdkZiwiuDPv/) reels, plus the **last tight-cut 20-second calibration export** that Brandon approved as the style target. Read the [observed style profile](skill/references/brandon-style-profile.md). It separates short lower-third spoken captions from independent large green/white editorial graphics. A full reel needs its own review against that approved calibration before claiming a match.
 
+**September 28, 2026 direction:** Brandon added a stage-style storytelling reel as the new reference. The [breakdown](skill/references/stage-reference-breakdown.md) times every beat of it and lists five ways to apply the style without repeating it; the [motion system](skill/references/motion-system.md) renders it: Brandon in a bottom band under a graphic canvas, 15 word-cued components (flows, device-framed proof, counters, charts, compares, typed prompts, CTAs and more), camera moves, whip and zoom-blur transitions and restrained synthesized sound. `production/editor/demo/` renders two stand-in examples.
+
 See the [migration inventory and acceptance checklist](docs/brandon-migration.md) for the exact legacy mappings, build gates and verification status.
 
 For local reference video files and a finished 20-second Brandon cut, use `python production/compare_style.py --candidate BRANDON.mp4 --reference Astra ASTRA.mp4 START END proof --reference Photographer PHOTOGRAPHER.mp4 START END website --reference GovDeals GOVDEALS.mp4 START END mechanism --out /absolute/review-directory`. Select intervals by the same visual job, then inspect the frame slider and listen to the originals. The tool records a pending review; it does not grade resemblance.
@@ -43,7 +45,7 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 | **Intake** | Word-timed transcription, take candidates, reviewed cuts and an editable source-to-output map. |
 | **Assets** | Relevant posts, GitHub READMEs, docs, screenshots, screen recordings and real resource previews with provenance. |
 | **Generation** | A bounded brief for missing explanatory images or motion, using an available provider; generated material stays distinguishable from evidence. |
-| **Editing** | A-roll, full-screen evidence and optional split; independent spoken captions and animated green/white editorial graphics, sound and deterministic renders. |
+| **Editing** | A-roll, stage sections, full-screen evidence and optional split; karaoke spoken captions and word-cued motion graphics, sound and deterministic renders. |
 | **Review** | Encoded-frame and audio review, both text tracks, animation, transitions, calibration comparison and timecoded repairs. |
 | **Giveaways** | Real prompts, checklists or resource packs that match the spoken promise and CTA keyword. |
 | **Delivery** | Skool post and ManyChat handoff packets, release files and a verifiable production record. Publication is a separate action. |
@@ -51,7 +53,8 @@ The [upstream Mobbin showcase](docs/showcase.md), the GIF below, and the [Direct
 ## What makes the edit different
 
 - **Story drives the visuals.** Use supplied screen captures where useful and animated authored graphics for uncaptured steps. Do not fact-check Brandon's recorded claims or require proof as an editing gate.
-- **Two text systems.** Short word-timed lower-third captions and larger animated green/white editorial graphics have separate timing, placement and meaning.
+- **Two text systems.** Short word-timed captions and larger animated green/white designed graphics have separate timing, placement and meaning.
+- **Motion lands on the word.** Graphic starts are written as spoken-word cues (`"@casino"`), so every pop, count, strike and draw happens on the word that names it and survives retiming.
 - **Cuts follow understanding.** A-roll, full-screen proof, illustrative footage and optional split are chosen by the claim; there is no fixed cut interval.
 - **The CTA is direct.** Brandon faces the camera and says the exact displayed keyword.
 - **Motion is required.** Animate every authored on-screen text/card/illustration and use purposeful transitions at appropriate boundaries, even when the assembly omits them. Never put disclaimers or production caveats on the video.
@@ -143,6 +146,7 @@ Useful starting points:
 - [Operator runbook](plugins/brandon-reel-engine/references/operator-runbook.md)
 - [Visual-evidence rules](plugins/brandon-reel-engine/references/visual-evidence.md)
 - [Shot recipes and opening motion](plugins/brandon-reel-engine/references/shot-recipes.md)
+- [Motion system reference](plugins/brandon-reel-engine/references/motion-system.md) and [stage reference breakdown](plugins/brandon-reel-engine/references/stage-reference-breakdown.md)
 - [Quality procedure](plugins/brandon-reel-engine/references/quality-procedure.md)
 - [Creative-review template](plugins/brandon-reel-engine/templates/creative-review.json)
 - [Asset-index schema](production/asset-index.schema.json) and [editorial-map schema](production/editorial-map.schema.json)

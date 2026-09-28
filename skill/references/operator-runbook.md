@@ -45,7 +45,7 @@ Do not read every source transcript or the entire repository into context. Load 
 
 ## Calibrate before choosing visuals
 
-For Brandon's supplied references, read [Brandon's style profile](brandon-style-profile.md) and inspect the actual reels. Compare presenter, screen proof, illustrative footage, spoken captions, editorial graphics and CTA separately. The Council profile in `production/reference/council-human/` is a historical upstream example; its private files are not bundled and its measured layout is not a target for Brandon.
+For Brandon's supplied references, read [Brandon's style profile](brandon-style-profile.md), including its September 28 stage direction and the [stage reference breakdown](stage-reference-breakdown.md), and inspect the actual reels. Compare presenter, screen proof, illustrative footage, spoken captions, editorial graphics and CTA separately. The Council profile in `production/reference/council-human/` is a historical upstream example; its private files are not bundled and its measured layout is not a target for Brandon.
 
 Save one comparison frame each for presenter, metaphor, UI/typing and source evidence when present. Record caption treatment, useful reading hold, framing and the action shown. Choose one short matching style sample before assembling the whole reel. An eight-second test with two mostly static information diagrams may improve semantic honesty but still fall short of this reference's motion and visual language.
 
@@ -99,7 +99,7 @@ python3 <plugin>/scripts/reel.py --project /absolute/checkout run retime -- \
 
 `pause-removals.json` has `{ "source_duration": OLD_OUTPUT_DURATION, "cuts": [{"start": REMOVED_START, "end": REMOVED_END}] }`, replacing the uppercase placeholders with measured seconds. Its cuts are ordered, disjoint removed intervals on the **old output clock**, not the original filming-master clock unless those clocks are identical. This removal list is separate from the keep EDL used to prepare the new A-roll. Its `source_duration` must match the old timeline's summed `source.segments` duration; the helper rejects a mismatch.
 
-The retimer remaps shots, nested scene item/fade/motion cues, labels, zooms, flashes, transitions and SFX onset times; points `source` at the tightened clip; and uses the new words. Recheck every effect after pause removal. Legacy music timelines must be migrated to the current no-background-music policy before building.
+The retimer remaps shots, nested scene item/fade/motion cues, `graphics` and `camera` times written as numbers, labels, zooms, flashes, transitions and SFX onset times; points `source` at the tightened clip; and uses the new words. Times written as word cues (`"@word"`) need no remapping: they re-resolve against the new word map on the next build, which is why the [motion system](motion-system.md) prefers them. Recheck every effect after pause removal. Legacy music timelines must be migrated to the current no-background-music policy before building.
 
 The helper does **not** retime actions baked into B-roll, source-video offsets, generated scene internals or the natural duration of an SFX file. Recheck typing, cursor clicks, results and effect tails against the new spoken anchors; manually trim/re-author affected visuals when needed. A fully removed shot/event requires an editorial decision rather than a silent deletion. The emitted `retime_review` is a work reminder, not proof of audiovisual sync.
 

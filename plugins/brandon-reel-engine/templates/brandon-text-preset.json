@@ -4,10 +4,17 @@
     "height": 1280,
     "fps": 30
   },
-  "spoken_captions": {
-    "font_size": 34,
-    "font_family": "Arial Black",
+  "design": {
     "accent": "#49cf26",
+    "feel": "snap",
+    "stage_backdrop": "dots"
+  },
+  "spoken_captions": {
+    "style": "karaoke",
+    "font_size": 34,
+    "font_family": "Archivo Black",
+    "accent": "#49cf26",
+    "upcoming_color": "#a3aba6",
     "uppercase": true,
     "hold": 0.06,
     "max_words": 3,
@@ -16,21 +23,31 @@
     "background": "rgba(0,0,0,0)",
     "emphasis": []
   },
-  "editorial_graphics": [
+  "stage": {
+    "band_top": 63.5,
+    "presenter_scale": 0.9,
+    "presenter_y": 42,
+    "edge": "card"
+  },
+  "graphics": [
     {
-      "start": 0,
-      "end": 2,
-      "claim_id": "hook",
-      "role": "hook",
-      "text": "Verified idea",
-      "accent_words": [
-        "Verified"
+      "id": "hook",
+      "type": "headline",
+      "start": 0.1,
+      "end": 2.4,
+      "lines": [
+        "Replace With The",
+        "Spoken Hook"
       ],
-      "x": 6,
-      "y": 14,
-      "width": 88,
-      "font_size": 76,
-      "animation": "rise"
+      "accent": "Spoken Hook",
+      "accent_style": "serif",
+      "beat": "hook"
     }
-  ]
+  ],
+  "variation": {
+    "avoid": {
+      "hooks": [],
+      "cta_styles": []
+    }
+  }
 }

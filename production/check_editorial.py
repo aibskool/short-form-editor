@@ -14,6 +14,13 @@ def normalized(text):
     return re.findall(r'[^\W_]+', str(text).casefold().replace("'", '').replace('’', ''))
 
 
+def displayed_text(item):
+    """Words a legacy editorial graphic or a motion component puts on screen."""
+    parts = [item.get(key, '') for key in ('text', 'keyword', 'title', 'value', 'label', 'prefix')]
+    parts += [line for line in item.get('lines', []) if isinstance(line, str)]
+    return ' '.join(str(part) for part in parts if part)
+
+
 def check(map_path):
     path = Path(map_path).resolve(); errors = []; review_status = None
     result = lambda: {'mechanical_ready': not errors, 'requires_semantic_review': True,
@@ -32,6 +39,11 @@ def check(map_path):
             return json.loads(target.read_text())
         words_data, timeline, inventory = load('words_path'), load('timeline_path'), load('asset_index_path')
         words = words_data if isinstance(words_data, list) else words_data['words']
+        cued = [f"{kind} {i}" for kind in ('shots', 'editorial_graphics') for i, item in enumerate(timeline.get(kind, []))
+                if isinstance(item.get('start'), str) or isinstance(item.get('end'), str)]
+        if cued:
+            errors.append(f"timeline: {', '.join(cued)} use word cues; point timeline_path at the build's resolved-timeline.json")
+            return result()
         shots = {s['id']: s for s in timeline['shots']}; assets = {a['id']: a for a in inventory['assets']}
         if len(shots) != len(timeline['shots']): errors.append('timeline: duplicate shot IDs')
         if len(assets) != len(inventory['assets']): errors.append('assets: duplicate asset IDs')
@@ -98,7 +110,8 @@ def check(map_path):
             keyword = cta['keyword'].strip()
             if keyword.casefold() not in normalized(' '.join(w.get('word', w.get('text', '')) for w in words)):
                 errors.append('cta: keyword not spoken in selected take')
-            if not any(keyword.casefold() in normalized(item.get('text', '')) for item in graphics):
+            shown = graphics + [g for g in timeline.get('graphics', []) if isinstance(g, dict)]
+            if not any(keyword.casefold() in normalized(displayed_text(item)) for item in shown):
                 errors.append('cta: keyword missing from editorial graphics')
             if cta['status'] in {'ready', 'delivered'}:
                 if not cta['resource_path'] or not (path.parent / cta['resource_path']).resolve().is_file():

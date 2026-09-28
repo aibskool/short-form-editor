@@ -11,7 +11,7 @@ The skills direct an agent; the helper commands execute specific local operation
 | `take` | Reviewed cuts, selected take and retimed word map | No automatic certification that a cut sounds natural |
 | `retime` | Remap supported outer cues after speech edits | Native actions inside clips and effect tails need review |
 | `capture` | Source captures through an isolated local Chrome session | Needs a Chrome executable and public source URLs; does not reuse signed-in cookies |
-| `build` | HyperFrames composition from timeline JSON | Requires actual media and the assets called for by the declared audio policy |
+| `build` | HyperFrames composition from timeline JSON, with word cues resolved and a `motion_report` | Requires actual media, a word map for `@` cues, and the assets called for by the declared audio policy |
 | `render` | Local deterministic HTML/media rendering | Requires Node/HyperFrames, browser dependencies and FFmpeg |
 | `finalize` | Audio mastering and encoded measurements | Signal metrics do not replace listening |
 | `check` | Editorial schema, time coverage, joins and render-hash checks | Cannot certify source truth or visual quality |
@@ -23,7 +23,7 @@ Use `python plugins/brandon-reel-engine/scripts/reel.py run ACTION -- --help` fo
 
 ## Editing controls
 
-Presenter-only, split and full-screen B-roll layouts; source in/out ranges; pixel crops; image/video fitting; directed camera moves; independent short spoken captions and larger green/white editorial graphics; timed source labels; resource previews; authored explanatory scenes; local SFX and purposeful transitions; no background music; final encode and loudness receipts.
+Presenter-only, stage (Brandon in a bottom band under a graphic canvas), split and full-screen B-roll layouts with animated morphs between them; source in/out ranges; pixel crops; image/video fitting; directed camera moves (push, punch, shake); independent short karaoke spoken captions and larger designed graphics; 15 word-cued motion components (headline, statement, card, stat, flow, orbit, device, chart, checklist, compare, prompt, spotlight, badge, equation, CTA); optional depth matte for a word behind Brandon; timed source labels; resource previews; authored explanatory scenes; synthesized, voice-relative SFX with automatic thinning; purposeful transitions (whip, zoom blur, full-frame light leak, iris/expand); no background music; a build `motion_report`; final encode and loudness receipts. Details: [motion system](../skill/references/motion-system.md).
 
 ## Source judgment
 

@@ -13,6 +13,11 @@ import math
 from pathlib import Path
 
 
+# Output-clock fields inside motion graphics (see production/editor/components.py).
+NESTED_TIME_KEYS = {'at', 'end', 'done_at', 'fade_at', 'dim_at', 'win_at', 'count_at', 'type_start', 'type_end',
+                    'send_at', 'draw_start', 'draw_end', 'badge_at', 'keyword_at', 'strike_at', 'start'}
+
+
 def retime(spec, decision, source, words):
     spec = copy.deepcopy(spec)
     if spec.get('music'):
@@ -33,30 +38,53 @@ def retime(spec, decision, source, words):
         value = float(value)
         return value - sum(max(0, min(value, c['end'])-c['start']) for c in cuts)
 
+    def remap(value):
+        # Word cues ("@word", {"word": ...}) re-resolve against the rebuilt word map.
+        return t(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else value
+
+    def remap_nested(node, skip=()):
+        """Remap every numeric output-clock time inside a motion graphic."""
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in skip:
+                    continue
+                if key in NESTED_TIME_KEYS:
+                    node[key] = remap(value)
+                elif isinstance(value, (dict, list)):
+                    remap_nested(value)
+        elif isinstance(node, list):
+            for value in node:
+                remap_nested(value)
+
     duration = t(total)
-    for collection in ('shots', 'labels', 'editorial_graphics'):
+    for collection in ('shots', 'labels', 'editorial_graphics', 'graphics'):
         for item in spec.get(collection, []):
-            item['start'], item['end'] = t(item['start']), t(item['end'])
-            if item['end'] <= item['start']:
+            item['start'], item['end'] = remap(item['start']), remap(item['end'])
+            numeric = all(isinstance(item[k], (int, float)) for k in ('start', 'end'))
+            if numeric and item['end'] <= item['start']:
                 raise ValueError(f'{collection} item was entirely removed; make an editorial decision')
+            if collection == 'graphics':
+                remap_nested(item, skip=('start', 'end'))
             scene = item.get('scene', {}) if collection == 'shots' else {}
             for element in scene.get('items', []):
                 for field in ('at', 'fade_at'):
                     if field in element:
-                        element[field] = t(element[field])
+                        element[field] = remap(element[field])
             for cue in scene.get('motion_cues', []):
-                cue['at'] = t(cue['at'])
-    for collection in ('zooms', 'flashes', 'transitions'):
+                cue['at'] = remap(cue['at'])
+    for collection in ('zooms', 'flashes', 'transitions', 'camera'):
         for item in spec.get(collection, []):
+            if not isinstance(item['at'], (int, float)):
+                continue
             at = float(item['at'])
-            if 'duration' in item:
+            if 'duration' in item and collection != 'camera':
                 item['duration'] = t(at + item['duration']) - t(at)
                 if item['duration'] <= 0:
                     raise ValueError(f'{collection} event was entirely removed; re-author it')
             item['at'] = t(at)
     # SFX maintain their natural duration; only the onset follows the new clock.
     for sound in spec.get('sfx', []):
-        sound['at'] = t(sound['at'])
+        sound['at'] = remap(sound['at'])
     spec['source']['path'] = str(Path(source).resolve())
     spec['source']['segments'] = [{'start': 0, 'end': duration}]
     spec['words_path'] = str(Path(words).resolve())
@@ -65,7 +93,8 @@ def retime(spec, decision, source, words):
         'speech_speed': 1, 'baked_visual_actions': 'must recheck against retimed speech',
         'music': 'none in Brandon short-form export',
         'spoken_captions': 'rebuilt from supplied retimed words; phrase word ranges preserved',
-        'editorial_graphics': 'outer cue times remapped; recheck claim and animation against encoded speech'
+        'editorial_graphics': 'outer cue times remapped; recheck claim and animation against encoded speech',
+        'graphics': 'numeric times remapped; @word cues re-resolve against the new word map'
     }
     return spec
 

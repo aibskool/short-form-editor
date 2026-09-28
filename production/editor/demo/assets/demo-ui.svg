@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 600" width="864" height="600">
+  <!-- Drawn placeholder app screen for the renderer demo. Not a capture of any real product. -->
+  <rect width="864" height="600" fill="#f3f5f4"/>
+  <rect width="864" height="58" fill="#ffffff"/>
+  <rect y="57" width="864" height="1" fill="#dde3df"/>
+  <rect x="28" y="17" width="24" height="24" rx="7" fill="#1f7a3a"/>
+  <text x="62" y="37" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="700" fill="#15201a">LeadDesk</text>
+  <text x="170" y="37" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6b776f">Pipeline</text>
+  <text x="252" y="37" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6b776f">Agent</text>
+  <circle cx="826" cy="29" r="15" fill="#c9d3cd"/>
+
+  <text x="34" y="104" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.4" fill="#6b776f">LATEST LEAD</text>
+  <rect x="34" y="124" width="410" height="226" rx="18" fill="#ffffff" stroke="#dbe2de"/>
+  <circle cx="84" cy="176" r="26" fill="#e3f6dc"/>
+  <path d="M72 177 l8 8 l16 -18" fill="none" stroke="#1f9a3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="126" y="170" font-family="Helvetica, Arial, sans-serif" font-size="27" font-weight="700" fill="#15201a">Call booked</text>
+  <text x="126" y="198" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#56625a">Maya R. · Example Dental</text>
+  <rect x="58" y="226" width="362" height="1" fill="#e5eae7"/>
+  <text x="58" y="262" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#15201a">Thursday · 10:00 · 15 min intro</text>
+  <rect x="58" y="286" width="170" height="42" rx="21" fill="#1f7a3a"/>
+  <text x="143" y="313" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Open invite</text>
+  <rect x="242" y="286" width="150" height="42" rx="21" fill="#ffffff" stroke="#c9d3cd"/>
+  <text x="317" y="313" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#15201a">Notes</text>
+
+  <rect x="34" y="372" width="410" height="196" rx="18" fill="#ffffff" stroke="#dbe2de"/>
+  <text x="58" y="408" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.4" fill="#6b776f">AGENT REPLY</text>
+  <text x="58" y="444" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#15201a">Hi Maya, thanks for reaching out about</text>
+  <text x="58" y="470" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#15201a">new-patient bookings. I have Thursday</text>
+  <text x="58" y="496" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#15201a">at 10:00 open for a quick intro call.</text>
+  <text x="58" y="540" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#1f7a3a" font-weight="700">Sent automatically</text>
+
+  <text x="474" y="104" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.4" fill="#6b776f">ACTIVITY</text>
+  <rect x="474" y="124" width="358" height="444" rx="18" fill="#ffffff" stroke="#dbe2de"/>
+  <g font-family="Helvetica, Arial, sans-serif">
+    <circle cx="506" cy="170" r="8" fill="#9aa59e"/>
+    <text x="526" y="167" font-size="17" font-weight="700" fill="#15201a">New lead</text>
+    <text x="526" y="190" font-size="14" fill="#6b776f">Website form · 9:14</text>
+    <rect x="505" y="182" width="2" height="74" fill="#e1e7e3"/>
+    <circle cx="506" cy="264" r="8" fill="#9aa59e"/>
+    <text x="526" y="261" font-size="17" font-weight="700" fill="#15201a">Lead qualified</text>
+    <text x="526" y="284" font-size="14" fill="#6b776f">Agent · 9:14</text>
+    <rect x="505" y="276" width="2" height="74" fill="#e1e7e3"/>
+    <circle cx="506" cy="358" r="8" fill="#9aa59e"/>
+    <text x="526" y="355" font-size="17" font-weight="700" fill="#15201a">Reply sent</text>
+    <text x="526" y="378" font-size="14" fill="#6b776f">Agent · 9:15</text>
+    <rect x="505" y="370" width="2" height="74" fill="#e1e7e3"/>
+    <circle cx="506" cy="452" r="9" fill="#1f9a3a"/>
+    <text x="526" y="449" font-size="17" font-weight="700" fill="#15201a">Call booked</text>
+    <text x="526" y="472" font-size="14" fill="#6b776f">Calendar · 9:21</text>
+  </g>
+</svg>

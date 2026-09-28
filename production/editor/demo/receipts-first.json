@@ -1,0 +1,357 @@
+{
+ "title": "Equation hook to receipts demo (stand-in presenter, drawn placeholder UI)",
+ "source": {
+  "path": "work/receipts-first.mp4",
+  "object_position": "50% 40%"
+ },
+ "words_path": "work/receipts-first.words.json",
+ "output": {
+  "width": 720,
+  "height": 1280,
+  "fps": 30
+ },
+ "audio_policy": {
+  "music_required": false
+ },
+ "design": {
+  "feel": "glide",
+  "stage_backdrop": "grid"
+ },
+ "spoken_captions": {
+  "style": "karaoke",
+  "font_size": 34,
+  "uppercase": true,
+  "max_words": 3,
+  "max_chars": 22,
+  "hold": 0.06,
+  "omit_terminal_punctuation": true,
+  "emphasis": [
+   "answered",
+   "minute",
+   "hand",
+   "forty",
+   "sleep",
+   "evenings",
+   "setup",
+   "workflow"
+  ]
+ },
+ "shots": [
+  {
+   "start": 0,
+   "end": "@Here's-0.1",
+   "layout": "presenter"
+  },
+  {
+   "start": "@Here's-0.1",
+   "end": "@Right-0.1",
+   "layout": "presenter",
+   "zoom": 1.04
+  },
+  {
+   "start": "@Right-0.1",
+   "end": "@Say-0.1",
+   "layout": "full_broll",
+   "media": "assets/inbox.svg",
+   "fit": "cover",
+   "object_position": "50% 0%",
+   "background": "#f7f8f7",
+   "enter": {
+    "kind": "expand",
+    "duration": 0.45
+   },
+   "media_motion": {
+    "from": {
+     "scale": 1.0,
+     "y_percent": 0
+    },
+    "to": {
+     "scale": 1.04,
+     "y_percent": -1
+    }
+   }
+  },
+  {
+   "start": "@Say-0.1",
+   "end": "@The old-0.1",
+   "layout": "stage"
+  },
+  {
+   "start": "@The old-0.1",
+   "end": "@Five-0.1",
+   "layout": "presenter",
+   "enter": "morph"
+  },
+  {
+   "start": "@Five-0.1",
+   "end": "@Comment-0.1",
+   "layout": "stage",
+   "enter": "morph",
+   "backdrop": "radial"
+  },
+  {
+   "start": "@Comment-0.1",
+   "end": "@setup:end+0.5",
+   "layout": "presenter",
+   "enter": "morph"
+  }
+ ],
+ "camera": [
+  {
+   "kind": "push",
+   "at": 0.1,
+   "scale": 1.05,
+   "duration": 3.6
+  },
+  {
+   "kind": "push",
+   "at": "@old+0.05",
+   "scale": 1.06,
+   "duration": 4.0
+  }
+ ],
+ "transitions": [
+  {
+   "kind": "whip",
+   "at": "@Say-0.1",
+   "duration": 0.34,
+   "direction": "left"
+  }
+ ],
+ "graphics": [
+  {
+   "id": "hook-eq",
+   "type": "equation",
+   "start": 0.2,
+   "end": "@Here's-0.12",
+   "region": "top",
+   "y": 5,
+   "beat": "hook",
+   "terms": [
+    {
+     "label": "Claude",
+     "icon": "bot",
+     "at": "@Claude"
+    },
+    {
+     "label": "One job",
+     "icon": "target",
+     "at": "@job"
+    }
+   ],
+   "result": {
+    "text": "every lead answered",
+    "accent_words": [
+     "answered"
+    ],
+    "at": "@answered",
+    "size": 80
+   }
+  },
+  {
+   "id": "prompt",
+   "type": "prompt",
+   "style": "chat",
+   "start": "@Here's",
+   "end": "@Right-0.12",
+   "region": "lower",
+   "y": 47,
+   "x": 6,
+   "w": 88,
+   "label": "Prompt",
+   "beat": "prompt",
+   "text": "Read every inbound lead, score it, and reply in under a minute.",
+   "type_start": "@Read",
+   "type_end": "@minute:end",
+   "send_at": "@minute:end+0.05"
+  },
+  {
+   "id": "by-hand",
+   "type": "spotlight",
+   "shape": "box",
+   "start": "@answer",
+   "end": "@Say-0.15",
+   "x": 3,
+   "y": 21.5,
+   "w": 94,
+   "h": 36.5,
+   "label": "answered by hand",
+   "beat": "pain"
+  },
+  {
+   "id": "week-head",
+   "type": "headline",
+   "start": "@Say",
+   "end": "@The old-0.12",
+   "text": "Forty Leads A Week",
+   "accent": "Forty Leads",
+   "accent_style": "underline",
+   "size": 80,
+   "beat": "math"
+  },
+  {
+   "id": "week-stat",
+   "type": "stat",
+   "start": "@Say",
+   "end": "@The old-0.12",
+   "region": "stage",
+   "y": 17,
+   "value": 40,
+   "from": 0,
+   "count_at": "@forty",
+   "count_duration": 0.8,
+   "label": "leads a week",
+   "size": 200,
+   "beat": "math"
+  },
+  {
+   "id": "week-chart",
+   "type": "chart",
+   "start": "@week",
+   "end": "@The old-0.12",
+   "region": "stage",
+   "x": 7,
+   "y": 36,
+   "w": 86,
+   "h": 17,
+   "points": [
+    0,
+    6,
+    12,
+    19,
+    25,
+    33,
+    40
+   ],
+   "draw_start": "@agent",
+   "draw_end": "@forty:end",
+   "title": "Replies the agent sends",
+   "beat": "math",
+   "pills": [
+    {
+     "index": 6,
+     "text": "all 40",
+     "at": "@forty:end"
+    }
+   ]
+  },
+  {
+   "id": "old-new",
+   "type": "compare",
+   "start": "@old",
+   "end": "@Five-0.12",
+   "region": "lower",
+   "y": 44,
+   "x": 6,
+   "w": 88,
+   "scrim": true,
+   "beat": "contrast",
+   "left": {
+    "title": "Old way",
+    "items": [
+     "Reply by hand",
+     "Hours later",
+     "Costs evenings"
+    ],
+    "at": "@old"
+   },
+   "right": {
+    "title": "New way",
+    "items": [
+     "Agent replies",
+     "Under a minute",
+     "One setup"
+    ],
+    "at": "@new"
+   },
+   "strike_at": "@evenings",
+   "win_at": "@setup"
+  },
+  {
+   "id": "tools-head",
+   "type": "headline",
+   "start": "@Five",
+   "end": "@Comment-0.12",
+   "text": "Five Tools, One Workflow",
+   "accent": "One Workflow",
+   "accent_style": "color",
+   "size": 80,
+   "beat": "system"
+  },
+  {
+   "id": "tools",
+   "type": "orbit",
+   "start": "@Five",
+   "end": "@Comment-0.12",
+   "region": "stage",
+   "y": 15,
+   "x": 2,
+   "w": 96,
+   "box_h": 40,
+   "scale": 1.2,
+   "beat": "system",
+   "center": {
+    "label": "One workflow"
+   },
+   "items": [
+    {
+     "label": "Inbox",
+     "icon": "inbox"
+    },
+    {
+     "label": "CRM",
+     "icon": "database"
+    },
+    {
+     "label": "Agent",
+     "icon": "bot"
+    },
+    {
+     "label": "Calendar",
+     "icon": "calendar"
+    },
+    {
+     "label": "Chat",
+     "icon": "chat"
+    }
+   ]
+  },
+  {
+   "id": "tools-badge",
+   "type": "badge",
+   "variant": "number",
+   "text": "5",
+   "start": "@tools",
+   "end": "@Comment-0.12",
+   "x": 4,
+   "y": 58.5,
+   "w": 20,
+   "size": 60,
+   "beat": "system"
+  },
+  {
+   "id": "cta",
+   "type": "cta",
+   "style": "stamp",
+   "start": "@Comment",
+   "end": "@setup:end+0.5",
+   "keyword": "FLOW",
+   "keyword_at": "@FLOW",
+   "prefix": "Comment",
+   "suffix": "I'll send you the setup",
+   "region": "lower",
+   "y": 55,
+   "beat": "cta"
+  }
+ ],
+ "variation": {
+  "avoid": {
+   "hooks": [
+    "headline"
+   ],
+   "cta_styles": [
+    "fan"
+   ]
+  }
+ }
+}

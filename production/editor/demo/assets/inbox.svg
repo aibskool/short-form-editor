@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <!-- Drawn placeholder inbox for the renderer demo. Not a capture of any real account. -->
+  <rect width="1080" height="1920" fill="#f7f8f7"/>
+  <g font-family="Helvetica, Arial, sans-serif">
+    <text x="72" y="170" font-size="40" fill="#5f6a63">Mail</text>
+    <text x="72" y="262" font-size="86" font-weight="700" fill="#141a16">Inbox</text>
+    <text x="1008" y="262" text-anchor="end" font-size="36" fill="#5f6a63">14 unread</text>
+    <rect x="72" y="306" width="936" height="84" rx="42" fill="#e9ecea"/>
+    <text x="124" y="361" font-size="36" fill="#8a948e">Search</text>
+
+    <g id="row1">
+      <circle cx="96" cy="492" r="12" fill="#2f6fde"/>
+      <text x="136" y="486" font-size="42" font-weight="700" fill="#141a16">Website form</text>
+      <text x="1008" y="486" text-anchor="end" font-size="32" fill="#6b776f">9:14</text>
+      <text x="136" y="540" font-size="36" fill="#26302a">New enquiry: pricing for 3 locations?</text>
+      <text x="136" y="590" font-size="32" fill="#7a857e">Hi, we saw your post and wanted to know…</text>
+      <rect x="136" y="638" width="872" height="2" fill="#e3e7e4"/>
+    </g>
+    <g id="row2">
+      <circle cx="96" cy="722" r="12" fill="#2f6fde"/>
+      <text x="136" y="716" font-size="42" font-weight="700" fill="#141a16">Instagram DM</text>
+      <text x="1008" y="716" text-anchor="end" font-size="32" fill="#6b776f">8:52</text>
+      <text x="136" y="770" font-size="36" fill="#26302a">Do you set this up for clinics?</text>
+      <text x="136" y="820" font-size="32" fill="#7a857e">Saw the reel about booking calls…</text>
+      <rect x="136" y="868" width="872" height="2" fill="#e3e7e4"/>
+    </g>
+    <g id="row3">
+      <circle cx="96" cy="952" r="12" fill="#2f6fde"/>
+      <text x="136" y="946" font-size="42" font-weight="700" fill="#141a16">Contact form</text>
+      <text x="1008" y="946" text-anchor="end" font-size="32" fill="#6b776f">Yesterday</text>
+      <text x="136" y="1000" font-size="36" fill="#26302a">Quote request: follow-up automation</text>
+      <text x="136" y="1050" font-size="32" fill="#7a857e">We lose leads after hours. Can you…</text>
+      <rect x="136" y="1098" width="872" height="2" fill="#e3e7e4"/>
+    </g>
+    <g id="row4">
+      <text x="136" y="1176" font-size="42" font-weight="700" fill="#141a16">Referral</text>
+      <text x="1008" y="1176" text-anchor="end" font-size="32" fill="#6b776f">Yesterday</text>
+      <text x="136" y="1230" font-size="36" fill="#26302a">Intro: a friend who runs two gyms</text>
+      <text x="136" y="1280" font-size="32" fill="#7a857e">Connecting you two, she needs help with…</text>
+      <rect x="136" y="1328" width="872" height="2" fill="#e3e7e4"/>
+    </g>
+    <g id="row5">
+      <text x="136" y="1406" font-size="42" font-weight="700" fill="#141a16">Website form</text>
+      <text x="1008" y="1406" text-anchor="end" font-size="32" fill="#6b776f">Mon</text>
+      <text x="136" y="1460" font-size="36" fill="#26302a">Still interested? Following up</text>
+      <text x="136" y="1510" font-size="32" fill="#7a857e">Didn't hear back last week, just checking…</text>
+      <rect x="136" y="1558" width="872" height="2" fill="#e3e7e4"/>
+    </g>
+    <g id="row6">
+      <text x="136" y="1636" font-size="42" font-weight="700" fill="#141a16">Instagram DM</text>
+      <text x="1008" y="1636" text-anchor="end" font-size="32" fill="#6b776f">Sun</text>
+      <text x="136" y="1690" font-size="36" fill="#26302a">How much for the lead agent?</text>
+      <text x="136" y="1740" font-size="32" fill="#7a857e">Looking for something like what you…</text>
+    </g>
+  </g>
+</svg>

@@ -27,9 +27,9 @@ def kinetic_markup(scene, ident, start, end, width, height):
         accent = ' kinetic-accent' if item.get('accent') else ' kinetic-negative' if item.get('negative') else ''
         onset = cue(item.get('at'), start, end, start + .22 + j*beat, f'item {j} at')
         visual_events.append(onset)
-        rows.append(f'<div id="{ident}-row-{j}" class="kinetic-row{accent}"><span class="kinetic-index">{j+1:02}</span><span class="kinetic-name">{label}</span><strong id="{ident}-value-{j}">{value}</strong><i id="{ident}-bar-{j}"></i><b id="{ident}-strike-{j}" class="kinetic-strike"></b></div>')
+        rows.append(f'<div id="{ident}-row-{j}" class="kinetic-row{accent}"><span class="kinetic-index">{j+1:02}</span><span class="kinetic-name">{label}</span><strong id="{ident}-value-{j}">{value}</strong><i id="{ident}-edge-{j}" class="kinetic-edge"></i><b id="{ident}-strike-{j}" class="kinetic-strike"></b></div>')
         animations.append(f'tl.fromTo("#{ident}-row-{j}",{{opacity:0,y:42,scale:.94}},{{opacity:1,y:0,scale:1,duration:.22,ease:"power3.out"}},{onset});')
-        animations.append(f'tl.fromTo("#{ident}-bar-{j}",{{scaleX:0}},{{scaleX:1,duration:.36,ease:"power2.out"}},{onset});')
+        # A static accent edge replaces the old bottom bar that grew like a timer (Brandon review).
         if item.get('count_to') is not None:
             count = int(item['count_to'])
             if not 0 <= count <= 100:
@@ -77,6 +77,6 @@ CSS = '''
 .kinetic-tag{font-size:25px;letter-spacing:.14em;font-weight:800;color:#49cf26;text-transform:uppercase;min-height:34px}
 .kinetic-content h2{font-size:62px;line-height:1.02;letter-spacing:-.045em;margin:14px 0 40px;max-width:100%}
 .kinetic-rows{display:flex;flex-direction:column;gap:16px}.kinetic-row{position:relative;display:flex;align-items:center;gap:19px;min-height:90px;padding:14px 20px;background:#20262b;border-radius:13px;box-shadow:0 9px 25px #0008;font-size:31px;overflow:hidden}
-.kinetic-row i{position:absolute;left:0;right:0;bottom:0;height:5px;background:#49cf26;transform-origin:left}.kinetic-row.kinetic-accent{background:#245c35}.kinetic-row.kinetic-negative{background:#303238;border-left:3px solid #a9434d}.kinetic-index{font-size:21px;color:#8bba99;font-weight:800}.kinetic-name{flex:1;font-weight:750}.kinetic-row strong{font-size:48px;color:#f3f5f2;white-space:nowrap}.kinetic-row.kinetic-accent strong{color:#49cf26}.kinetic-row.kinetic-negative strong{color:#a9a9a9}.kinetic-strike{position:absolute;left:6%;right:6%;top:50%;height:3px;background:#ce5d66;transform-origin:left;transform:scaleX(0);box-shadow:0 0 9px #ce5d66}
+.kinetic-row i.kinetic-edge{position:absolute;left:0;top:20%;bottom:20%;width:5px;border-radius:0 3px 3px 0;background:transparent}.kinetic-row.kinetic-accent i.kinetic-edge{background:#49cf26;box-shadow:0 0 10px #49cf2688}.kinetic-row.kinetic-accent{background:#245c35}.kinetic-row.kinetic-negative{background:#303238;border-left:3px solid #a9434d}.kinetic-index{font-size:21px;color:#8bba99;font-weight:800}.kinetic-name{flex:1;font-weight:750}.kinetic-row strong{font-size:48px;color:#f3f5f2;white-space:nowrap}.kinetic-row.kinetic-accent strong{color:#49cf26}.kinetic-row.kinetic-negative strong{color:#a9a9a9}.kinetic-strike{position:absolute;left:6%;right:6%;top:50%;height:3px;background:#ce5d66;transform-origin:left;transform:scaleX(0);box-shadow:0 0 9px #ce5d66}
 .kinetic-source{font-size:21px;color:#cbd3ce;margin-top:32px;min-height:26px}
 '''
