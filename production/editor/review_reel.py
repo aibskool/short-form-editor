@@ -921,15 +921,22 @@ def mix_analysis(b, video, rate=32000, _fallback=True):
         mixed = np.zeros(0)
     if mixed.size < rate or float(np.max(np.abs(mixed))) < 1e-5:
         return {"note": "the render has no audible audio stream to measure", "events": []}
-    voice = np.zeros_like(mixed)
+    clips = []
     for src, start, dur, media_start in tags:
         try:
             seg = decode_audio(b.project / src, rate, media_start, dur)
         except subprocess.CalledProcessError:
             return {"note": f"could not read the voice source {src}; listen instead", "events": []}
-        a = int(round(float(start) * rate))
-        seg = seg[:max(0, len(voice) - a)]
-        voice[a:a + len(seg)] = seg
+        clips.append((int(round(float(start) * rate)), seg))
+
+    def place(clips):
+        track = np.zeros_like(mixed)
+        for a, seg in clips:
+            a = max(0, a)
+            seg = seg[:max(0, len(track) - a)]
+            track[a:a + len(seg)] = seg
+        return track
+    voice = place(clips)
     if float(np.max(np.abs(voice))) < 1e-5:
         return {"note": "the voice source is silent where the reel uses it; listen instead", "events": []}
     n = min(len(mixed), rate * 15)
@@ -937,7 +944,18 @@ def mix_analysis(b, video, rate=32000, _fallback=True):
     lags = np.arange(-n + 1, n)
     keep = np.abs(lags) <= int(.1 * rate)
     lag = int(lags[keep][np.argmax(corr[keep])])
-    voice = np.roll(voice, lag)
+    # The renderer rounds each clip's placement (to whole milliseconds), and a fraction of a
+    # millisecond is enough to decorrelate speech, so refine every clip on its own.
+    reach, refined = int(.003 * rate), []
+    for a, seg in clips:
+        a += lag
+        length = min(len(seg), len(mixed) - a - reach, rate * 10)
+        if a - reach >= 0 and length > rate // 4:
+            window = mixed[a - reach:a + length + reach]
+            fit = correlate(window, seg[:length], mode="valid", method="fft")  # one value per offset
+            a += int(np.argmax(fit)) - reach
+        refined.append((a, seg))
+    voice = place(refined)
     quiet = np.ones(len(mixed), dtype=bool)
     for a, z in sfx_spans(b):
         quiet[int(max(0, a - .05) * rate):int((z + .15) * rate)] = False

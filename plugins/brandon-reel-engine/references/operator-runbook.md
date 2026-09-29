@@ -87,6 +87,8 @@ python3 production/intake/transcribe_parakeet.py --model-dir /absolute/sherpa-on
   --out /absolute/work/NEW-RUN/asr-check /absolute/work/NEW-RUN/master.mp4
 ```
 
+Takes filmed at different distances come out at different voice levels; set `"level_lufs": -23` in the EDL's `output` and the assembler gains each take's kept speech to that loudness (at most 8 dB either way, listed per take in the receipt's `levels`). A take can pin its own `"gain_db"` instead.
+
 Parakeet runs offline through sherpa-onnx (`pip install sherpa-onnx`, model from the k2-fsa GitHub releases) on machines that cannot fetch the Whisper weights. Cue the edit from the master's own transcript: per-take timestamps can land late at the end of a take, and the assembler lists every word it dropped as cut. Transcode HEVC phone captures to H.264 before a build; Chrome cannot decode HEVC.
 
 Set `audio_policy.music_required:false` and omit `music` for every Brandon short-form build. Copy `<plugin>/templates/creative-review.json` to the pilot directory and fill observations, including fixed lower-third placement, transcript cleanup, word-cued graphics, negative-state color/opacity, transitions and a useful change within every two-second custom UI span.

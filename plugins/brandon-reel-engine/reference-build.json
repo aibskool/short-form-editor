@@ -40,8 +40,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/operator-runbook.md",
-      "source_sha256": "7fbffc36b5462c835c0825d6ebaebdfd7f2d781beb8f9177ec27de3619024363",
-      "packaged_sha256": "7fbffc36b5462c835c0825d6ebaebdfd7f2d781beb8f9177ec27de3619024363"
+      "source_sha256": "c732161d7feccfdc36d5d4073854da010ddaf2ca6092a74021ad0eab72b85000",
+      "packaged_sha256": "c732161d7feccfdc36d5d4073854da010ddaf2ca6092a74021ad0eab72b85000"
     },
     {
       "path": "plugins/brandon-reel-engine/references/pipeline-contract.md",
@@ -55,8 +55,8 @@
     },
     {
       "path": "plugins/brandon-reel-engine/references/quality-procedure.md",
-      "source_sha256": "d59118d83aba0eeb696c20ffee08b0844cc439c61afe4ab19919a729d2f1a8f0",
-      "packaged_sha256": "d59118d83aba0eeb696c20ffee08b0844cc439c61afe4ab19919a729d2f1a8f0"
+      "source_sha256": "9aea5fd1976664ee4d79aa6977cf2b2f0e6737b80985e813e39ba5919d1f3c7b",
+      "packaged_sha256": "9aea5fd1976664ee4d79aa6977cf2b2f0e6737b80985e813e39ba5919d1f3c7b"
     },
     {
       "path": "plugins/brandon-reel-engine/references/research-contract.md",
