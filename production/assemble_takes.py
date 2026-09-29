@@ -9,9 +9,13 @@ use one source and one words file.
     python3 production/assemble_takes.py --edl edl.json --output master.mp4 --words-output master.words.json
 
 edl.json (paths relative to it):
-    {"output": {"width": 1440, "height": 2560, "fps": 30, "crf": 16},
+    {"output": {"width": 1440, "height": 2560, "fps": 30, "crf": 16, "level_lufs": -23},
      "takes": [{"source": "A01.mov", "words": "words/A01.words.json", "keep": [[0.13, 4.42], [4.70, 6.62]]},
                {"source": "A02.mov", "words": "words/A02.words.json", "keep": [[0.0, 5.36]]}]}
+
+"level_lufs" evens the voice across takes filmed at different distances or energy:
+each take's kept speech is measured and gained to that integrated loudness (at most
+8 dB either way; the receipt lists every gain). A take may set its own "gain_db".
 
 Words keep their spoken text; a word belongs to the kept range where it starts
 (or that holds most of it) and is clamped to that range. For the tightest cue
@@ -21,10 +25,12 @@ records where every master second came from. Listen to every join before renderi
 import argparse
 import json
 import math
+import re
 import subprocess
 from pathlib import Path
 
 FADE = 0.008
+MAX_LEVEL_DB = 8.0
 
 
 def probe_duration(path):
@@ -39,6 +45,35 @@ def read_words(path):
         w for s in data.get("segments", []) for w in s.get("words", [])]
     return [{"word": str(w.get("word", w.get("text", ""))).strip(), "start": float(w["start"]), "end": float(w["end"])}
             for w in words if str(w.get("word", w.get("text", ""))).strip()]
+
+
+def take_loudness(source, ranges):
+    """Integrated loudness (LUFS) of a take's kept ranges, or None when too quiet to measure."""
+    parts = "".join(f"[0:a]atrim={a:.4f}:{b:.4f},asetpts=PTS-STARTPTS[p{i}];" for i, (a, b) in enumerate(ranges))
+    joined = "".join(f"[p{i}]" for i in range(len(ranges)))
+    graph = f"{parts}{joined}concat=n={len(ranges)}:v=0:a=1,ebur128[out]"
+    result = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(source), "-filter_complex", graph,
+                             "-map", "[out]", "-f", "null", "-"], capture_output=True, text=True)
+    found = re.findall(r"I:\s*(-?\d+\.\d) LUFS", result.stderr)
+    value = float(found[-1]) if found else None
+    return value if value is not None and value > -60 else None
+
+
+def take_gains(edl, pieces):
+    """dB gain per take: its own "gain_db", else toward output.level_lufs when set."""
+    target = edl.get("output", {}).get("level_lufs")
+    gains = {}
+    for t, take in enumerate(edl["takes"]):
+        if take.get("gain_db") is not None:
+            gains[t] = {"gain_db": float(take["gain_db"]), "measured_lufs": None}
+            continue
+        if target is None:
+            continue
+        spans = [p for p in pieces if p["take"] == t]
+        measured = take_loudness(spans[0]["source"], [(p["source_start"], p["source_end"]) for p in spans]) if spans else None
+        gain = 0.0 if measured is None else max(-MAX_LEVEL_DB, min(MAX_LEVEL_DB, float(target) - measured))
+        gains[t] = {"gain_db": round(gain, 2), "measured_lufs": measured}
+    return gains
 
 
 def plan(edl, base):
@@ -110,14 +145,17 @@ def assemble(edl_path, output, words_output, map_output=None):
     width, height, fps = int(out.get("width", 1080)), int(out.get("height", 1920)), int(out.get("fps", 30))
     crf = int(out.get("crf", 16))
     pieces, total = plan(edl, base)
+    gains = take_gains(edl, pieces)
     args, filters = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"], []
     for i, p in enumerate(pieces):
         seconds = p["frames"] / fps
+        gain = gains.get(p["take"], {}).get("gain_db", 0.0)
+        level = f"volume={gain:.2f}dB," if gain else ""
         args += ["-ss", f"{p['source_start']:.4f}", "-t", f"{seconds + 0.2:.4f}", "-i", p["source"]]
         filters.append(f"[{i}:v]fps={fps},trim=end_frame={p['frames']},setpts=PTS-STARTPTS,"
                        f"scale={width}:{height}:flags=lanczos:force_original_aspect_ratio=increase,"
                        f"crop={width}:{height},setsar=1,format=yuv420p[v{i}]")
-        filters.append(f"[{i}:a]atrim=end={seconds:.5f},asetpts=PTS-STARTPTS,aresample=48000,"
+        filters.append(f"[{i}:a]atrim=end={seconds:.5f},asetpts=PTS-STARTPTS,aresample=48000,{level}"
                        f"aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d={FADE},"
                        f"afade=t=out:st={max(0, seconds - FADE):.5f}:d={FADE}[a{i}]")
     joined = "".join(f"[v{i}][a{i}]" for i in range(len(pieces)))
@@ -131,6 +169,7 @@ def assemble(edl_path, output, words_output, map_output=None):
     Path(words_output).write_text(json.dumps({"words": words}, indent=1) + "\n")
     receipt = {"edl": str(edl_path), "output": str(Path(output).resolve()), "duration": round(total, 4),
                "fps": fps, "size": [width, height], "pieces": pieces, "words": len(words), "dropped_words": dropped,
+               "levels": {Path(edl["takes"][t]["source"]).stem: g for t, g in sorted(gains.items())},
                "note": "cuts are frame-aligned with 8 ms audio fades; listen to every join"}
     if map_output:
         Path(map_output).write_text(json.dumps(receipt, indent=1) + "\n")

@@ -11,10 +11,11 @@ from pathlib import Path
 import assemble_takes
 
 
-def clip(path, seconds, color):
+def clip(path, seconds, color, volume=1.0):
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"color=c={color}:size=90x160:rate=30",
                     "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=48000", "-t", str(seconds),
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(path)], check=True)
+                    "-af", f"volume={volume}", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+                    str(path)], check=True)
 
 
 class AssembleTakesTests(unittest.TestCase):
@@ -50,6 +51,21 @@ class AssembleTakesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ordered"):
                 edl["takes"][0]["keep"] = [[1.5, 2.0], [0.4, 1.0]]
                 assemble_takes.plan(edl, root)
+
+    def test_level_lufs_evens_the_voice_across_takes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            clip(root / "A01.mov", 2, "red", volume=1.0)
+            clip(root / "A02.mov", 2, "blue", volume=0.35)   # about 9 dB quieter
+            edl = {"output": {"width": 90, "height": 160, "fps": 30, "crf": 30, "level_lufs": -23},
+                   "takes": [{"source": "A01.mov", "keep": [[0.2, 1.8]]}, {"source": "A02.mov", "keep": [[0.2, 1.8]]}]}
+            (root / "edl.json").write_text(json.dumps(edl))
+            receipt = assemble_takes.assemble(root / "edl.json", root / "master.mp4", root / "master.words.json")
+            levels = receipt["levels"]
+            self.assertGreater(levels["A02"]["gain_db"], levels["A01"]["gain_db"] + 6)
+            first = assemble_takes.take_loudness(root / "master.mp4", [(0.1, 1.5)])
+            second = assemble_takes.take_loudness(root / "master.mp4", [(1.7, 3.1)])
+            self.assertLess(abs(first - second), 1.0)
 
 
 if __name__ == "__main__":

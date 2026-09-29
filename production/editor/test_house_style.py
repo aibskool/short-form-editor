@@ -271,6 +271,48 @@ class ReviewTests(unittest.TestCase):
             markdown = review_reel.to_markdown(result)
             self.assertIn("## Fix first", markdown)
 
+    def test_effect_levels_survive_sub_millisecond_clip_placement(self):
+        # HyperFrames places each voice clip on a whole millisecond. A reel cut at 39.5867 s
+        # came back 0.3 ms late, which decorrelated the rebuilt voice and hid every effect level.
+        import numpy as np
+        import wave
+        import review_reel
+        rate = 48000
+
+        def write(path, samples):
+            with wave.open(str(path), "wb") as out:
+                out.setnchannels(1)
+                out.setsampwidth(2)
+                out.setframerate(rate)
+                out.writeframes((np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes())
+        rng = np.random.default_rng(7)
+        t = np.arange(int(8.5 * rate)) / rate
+        noise = np.fft.rfft(rng.normal(0, .12, t.size))
+        noise[np.fft.rfftfreq(t.size, 1 / rate) > 4000] = 0      # speech-band, like a voice
+        speech = np.fft.irfft(noise, t.size) * 3 * (.55 + .45 * np.sin(2 * np.pi * 4 * t) ** 2)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            write(root / "voice.wav", speech)
+            late = 4 * rate + int(.0003 * rate)          # the second clip lands 0.3 ms late
+            mix = np.zeros(8 * rate)
+            mix[:4 * rate] = speech[:4 * rate]
+            mix[late:] = speech[int(4.2 * rate):int(4.2 * rate) + 8 * rate - late]
+            bubble = .25 * np.sin(2 * np.pi * 900 * np.arange(int(.12 * rate)) / rate) * np.hanning(int(.12 * rate))
+            mix[2 * rate:2 * rate + bubble.size] += bubble
+            write(root / "render.wav", mix)
+
+            class Built:
+                project = root
+                style = style.load()
+                sfx = [{"kind": "bubble", "at": 2.0}]
+                html = ('<audio id="voice-0" src="voice.wav" data-start="0.000000" data-duration="4.000000" data-media-start="0.0">'
+                        '<audio id="voice-1" src="voice.wav" data-start="4.000000" data-duration="4.000000" data-media-start="4.2">'
+                        '<audio id="sfx-0" src="bubble.wav" data-start="2.0" data-duration="0.12">')
+            result = review_reel.mix_analysis(Built(), root / "render.wav")
+            self.assertLess(result["gain_spread"], .03, result)
+            self.assertEqual([e["kind"] for e in result["events"]], ["bubble"])
+            self.assertLess(result["events"][0]["effect_lu"], -3)
+
     def test_render_measure_tracks_presence_and_silence(self):
         import review_reel
         with tempfile.TemporaryDirectory() as folder:
@@ -296,6 +338,46 @@ class HardeningTests(unittest.TestCase):
                  "words_path": f"{name}.words.json", "output": {"width": 360, "height": 640, "fps": 30}}
         (root / f"{name}.draft.json").write_text(json.dumps(draft))
         return plan_reel(root / f"{name}.draft.json", assets, seed=seed), words
+
+    def test_light_layers_are_hard_killed_where_their_fade_ends(self):
+        # HyperFrames lint (gsap_exit_missing_hard_kill) failed a real reel when a light leak's
+        # fade ended on another clip's start with no tl.set after it.
+        import edit
+
+        class Quiet:
+            def sound(self, *args, **kwargs):
+                pass
+
+        for kind in ("flash", "blur_flash", "light_leak"):
+            _, motion, _ = edit.frame_transition({"kind": kind, "at": 24.3667, "duration": .4}, 3, 60, Scale(720, 1280), Quiet())
+            self.assertIn('tl.set("#transition-3",{opacity:0},24.7667);', "".join(motion), kind)
+
+    def test_source_cuts_land_on_whole_milliseconds(self):
+        # The renderer places audio clips on a millisecond grid; a cut at 39.5867 s put the
+        # voice 0.3 ms away from where the picture and the review expected it.
+        from edit import build
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source_video(root / "src.mp4", 4)
+            spec = {"source": {"path": "src.mp4", "segments": [{"start": 0, "end": 1.23456}, {"start": 1.5333, "end": 3.0}]},
+                    "output": {"width": 360, "height": 640, "fps": 30}, "audio_policy": {"music_required": False},
+                    "shots": [{"start": 0, "end": 2.70, "layout": "presenter"}]}
+            (root / "timeline.json").write_text(json.dumps(spec))
+            build(str(root / "timeline.json"), str(root / "comp"))
+            html = (root / "comp/index.html").read_text()
+            self.assertIn('id="voice-1" src="assets/media-000.mp4" data-start="1.235000" data-duration="1.467000" '
+                          'data-media-start="1.533"', html)
+
+    def test_any_exit_ending_on_a_clip_start_gets_a_matching_hard_kill(self):
+        # The same lint failed a split hero whose line exits ended on an A-roll clip start;
+        # the builder now adds the kill for any exit that lands within 50 ms of a clip start.
+        import edit
+        script = ('tl.to("#hero-l0",{x:-150,opacity:0,duration:.3,ease:"power3.in"},51.22);'
+                  'tl.to(["#w0","#w1"],{yPercent:-60,opacity:0,duration:.2,stagger:.05},2.0);tl.set(["#w0","#w1"],{opacity:0},2.26);'
+                  'tl.fromTo("#far",{opacity:1},{opacity:0,duration:.4,filter:"blur(8px)"},3.0);'
+                  'tl.to("#half",{opacity:.5,duration:.4},3.5);')
+        markup = '<video class="clip" data-start="51.5201"></video><div data-start="2.25"></div><div data-start="3.9"></div>'
+        self.assertEqual(edit.boundary_hard_kills(script, markup), ['tl.set("#hero-l0",{opacity:0},51.5200);'])
 
     def test_a_spoken_w_number_is_a_word_not_an_index(self):
         words = [{"word": w, "start": i * .4, "end": i * .4 + .3} for i, w in enumerate("send the W2 form today".split())]

@@ -15,6 +15,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from motion_scenes import scene_markup, CSS as MOTION_CSS
@@ -333,6 +334,9 @@ def build(spec_path, project):
     source_info = probe(source_path)
     source_duration = float(source_info["format"]["duration"])
     segments = raw_spec["source"].get("segments") or [{"start": 0, "end": source_duration}]
+    # HyperFrames places each audio clip on a whole millisecond; cutting on that grid keeps
+    # every voice clip exactly where the picture and the review expect it.
+    segments = [{**s, "start": round(float(s["start"]), 3), "end": round(float(s["end"]), 3)} for s in segments]
     for segment in segments:
         if not 0 <= float(segment["start"]) < float(segment["end"]) <= source_duration + 0.05:
             raise ValueError("source segment lies outside the source video")
@@ -860,9 +864,11 @@ def build(spec_path, project):
     helpers = ('function __fmt(v,d,c,p,s){let u="";const a=Math.abs(v);if(c){if(a>=1e9){v/=1e9;u="B"}else if(a>=1e6){v/=1e6;u="M"}else if(a>=1e3){v/=1e3;u="K"}}'
                'return p+Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d})+u+s;}'
                f'gsap.registerPlugin({",".join(GSAP_PLUGINS)});CustomWiggle.create("shake",{{wiggles:7,type:"easeOut"}});')
+    stage = f'{filters}<div id="backdrop">{"".join(backdrops)}</div><div id="frame">{"".join(parts)}</div>{"".join(audio)}'
+    animations.extend(boundary_hard_kills("".join(animations), stage))
     markup = (f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title","Brandon reel edit"))}</title>{scripts}<style>{css}</style></head>'
               f'<body><div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">'
-              f'{filters}<div id="backdrop">{"".join(backdrops)}</div><div id="frame">{"".join(parts)}</div>{"".join(audio)}</div>'
+              f'{stage}</div>'
               f'<script>{helpers}const tl=gsap.timeline({{paused:true}});{FROMTO_GUARD}{"".join(animations)}window.__timelines=window.__timelines||{{}};window.__timelines.main=tl;</script></body></html>')
     (project/"index.html").write_text(markup)
     (project/"timeline.json").write_text(json.dumps(raw_spec,indent=2)+"\n")
@@ -916,7 +922,6 @@ def build(spec_path, project):
 def voice_loudness(path, segments, phone=False, band=None):
     """Integrated loudness (LUFS) of the kept speech; SFX levels are set relative to it.
     phone=True measures through a phone-speaker band (``band`` Hz, default the house style's)."""
-    import re
     filters = "".join(f"[0:a]atrim={float(s['start'])}:{float(s['end'])},asetpts=PTS-STARTPTS[a{i}];" for i, s in enumerate(segments))
     joined = "".join(f"[a{i}]" for i in range(len(segments)))
     shaping = ""
@@ -1046,6 +1051,8 @@ def frame_transition(transition, i, duration, px, ctx):
         else:
             peak = .45 if kind == "blur_flash" else float(transition.get("opacity", .32))
             motion.append(f'tl.fromTo("#transition-{i}",{{opacity:0}},{{opacity:{peak},duration:{length*.35}}},{at});tl.to("#transition-{i}",{{opacity:0,duration:{length*.65}}},{at+length*.35});')
+        # A hard kill where the fade ends, so seeking past it never leaves the layer lit.
+        motion.append(f'tl.set("#transition-{i}",{{opacity:0}},{at + length:.4f});')
         if transition.get("sfx"):
             ctx.sound(transition["sfx"], at, None, f"transition-{i}")
     elif kind == "whip":
@@ -1121,6 +1128,102 @@ def frame_transition(transition, i, duration, px, ctx):
     if kind in {"whip", "zoom_blur", "push_in", "match_move", "shape_wipe"} and at - half < 0:
         raise ValueError(f"transition {i} needs {half:.2f}s before its cut")
     return markup, motion, {"kind": kind, "at": round(at, 3), "duration": length}
+
+
+BOUNDARY_EPSILON = .05  # HyperFrames' scene-boundary tolerance
+
+
+def _call_args(script, open_paren):
+    """Top-level arguments of the call whose "(" sits at open_paren, and the index after ")"."""
+    args, depth, quote, start, k = [], 1, None, open_paren + 1, open_paren + 1
+    while k < len(script):
+        c = script[k]
+        if quote:
+            if c == "\\":
+                k += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "\"'`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append(script[start:k].strip())
+                return args, k + 1
+        elif c == "," and depth == 1:
+            args.append(script[start:k].strip())
+            start = k + 1
+        k += 1
+    return None, len(script)
+
+
+def _literal_targets(text):
+    """Number of elements a GSAP target literal names ("#a" or ["#a","#b"]), or None if not a literal."""
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    if isinstance(value, str):
+        return 1
+    if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+        return len(value)
+    return None
+
+
+def _object_number(obj, key):
+    found = re.search(rf'(?:^|[{{,])\s*{key}\s*:\s*(-?[\d.]+)\s*(?=[,}}])', obj)
+    return float(found.group(1)) if found else None
+
+
+def boundary_hard_kills(script, markup):
+    """tl.set hard kills for exits that finish on another clip's start.
+
+    HyperFrames rejects a fade to opacity 0 that ends within 50 ms of a clip start
+    unless a tl.set with the same target hides it there, because a seek that lands
+    after the fade would otherwise keep stale state. Caption clips start on almost
+    every word, so any exit can land on one; this adds the kill wherever it is missing.
+    """
+    boundaries = sorted({float(v) for v in re.findall(r'data-start="(-?[\d.]+)"', markup)})
+    exits, kills = [], []
+    for match in re.finditer(r'tl\.(to|fromTo|set)\(', script):
+        args, _ = _call_args(script, match.end() - 1)
+        if not args:
+            continue
+        method = match.group(1)
+        wanted = {"to": 3, "fromTo": 4, "set": 3}[method]
+        if len(args) != wanted or _literal_targets(args[0]) is None:
+            continue
+        try:
+            position = float(args[-1])
+        except ValueError:
+            continue
+        values = args[-2]
+        hidden = next((key for key in ("opacity", "autoAlpha") if _object_number(values, key) == 0), None)
+        if not hidden:
+            continue
+        target = json.dumps(json.loads(args[0]), separators=(",", ":"))
+        if method == "set":
+            kills.append((target, position))
+            continue
+        if re.search(r'\b(keyframes|repeat|yoyo)\s*:', values):
+            continue
+        duration = _object_number(values, "duration")
+        stagger = _object_number(values, "stagger") or 0.0
+        end = position + (.5 if duration is None else duration) + stagger * (_literal_targets(args[0]) - 1)
+        exits.append((target, end, hidden))
+    added = []
+    for target, end, hidden in exits:
+        near = [b for b in boundaries if abs(end - b) <= BOUNDARY_EPSILON]
+        if not near:
+            continue
+        if any(t == target and any(abs(p - b) <= BOUNDARY_EPSILON for b in near) for t, p in kills):
+            continue
+        kills.append((target, end))
+        added.append(f'tl.set({target},{{{hidden}:0}},{end:.4f});')
+    return added
 
 
 def motion_report(layout_spans, duration, graphics, kept, dropped, transitions, resolver, caption_y, stage_captions, warnings):
