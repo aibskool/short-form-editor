@@ -13,7 +13,7 @@ Anchors: V1, V3, V4, V10, V15, V21, V24, V26.
 3. [Install/connect/upload] [input].
 4. So when you [concrete task], it [specific behavior].
 5. [One useful example with visible input and output].
-6. You can also [second capability, only if verified and relevant].
+6. You can also [a second capability, if it helps the viewer].
 7. [Optional catch, limit, setup requirement, or better use case].
 8. So [practical payoff linked to the initial problem].
 9. Comment [KEYWORD] and I’ll send you the [existing setup/file/list].
@@ -88,7 +88,7 @@ Anchors: V13, plus V8's free stack and V1's concise capability explanation.
 
 Anchor: V30; related step-by-step format V20 and V22.
 
-1. [Named person or attributed source] got [verified result] with [specific workflow].
+1. [Named person or source] got [the result as they report it] with [specific workflow].
 2. And it started with [surprisingly ordinary input].
 3. First, they [capture/create that input].
 4. Then [second asset or preparation step].
@@ -98,11 +98,11 @@ Anchor: V30; related step-by-step format V20 and V22.
 8. So [recap of the unexpectedly small set of ingredients].
 9. Comment [KEYWORD] and I’ll send you the [recreated workflow].
 
-Separate views from followers, revenue from profit, and reported results from reproduced results. If the number cannot be verified, write an outcome-led workflow reel without the number or select a different story.
+Keep a third party's numbers in their own terms: views are not followers, revenue is not profit, and what someone reports is not something we reproduced. Brandon's own numbers go into the script as he states them.
 
 ## Service / money idea
 
-Anchors: V5, V17, V20, V23. Their historical income claims are not independently validated by this corpus.
+Anchors: V5, V17, V20, V23.
 
 1. [Named tools] can turn [input] into [specific service deliverable].
 2. [Who would need it and why].
@@ -111,10 +111,10 @@ Anchors: V5, V17, V20, V23. Their historical income claims are not independently
 5. [Build the finished customer-facing deliverable].
 6. [Quality check or recurring update step].
 7. Package [exact components] as [service].
-8. [Evidence-backed pricing/result, or explicitly framed illustrative arithmetic outside the spoken script].
+8. [Brandon's price or result as he states it, or example arithmetic said as an example].
 9. Comment [KEYWORD] and I’ll send you the [workflow/offer template].
 
-Default to a service concept without income promises. A real case-study source can justify a reported result. Do not turn a hypothetical price × customer count into earned monthly revenue.
+Use the prices and results Brandon gives. When the draft itself supplies the arithmetic (price × customers), say it as an example, not as money already earned.
 
 ## Short reaction promo (separate format)
 
@@ -133,12 +133,12 @@ angle: A concrete outcome for a named viewer
 source_urls: []
 event_date: null
 checked_at: YYYY-MM-DD
-freshness: recent-event | evergreen | unverified
-verified_claims: []
-reported_claims: []
+freshness: recent-event | evergreen
+claims: []            # Brandon's stated facts, used as he states them
+reported_claims: []   # a third party's numbers, in their own terms
 unknowns: []
 mechanism_beats: []
-visual_proof: []
+visuals: []
 hook_options: []
 selected_hook: ""
 keyword: ONEWORD

@@ -1,0 +1,39 @@
+{
+  "name": "Approved 20-second calibration",
+  "file": "Brandon-Reel-Engine-20s-review.mp4",
+  "sha256": "1eebe82724fdeedb19fd92cf7cb87d47bdb1d864d13dcbdcbef55ad5d33037ae",
+  "duration": 17.066667,
+  "approved": "2026-09-26",
+  "privacy": "The video is private and never enters this repository; only these measurements do.",
+  "provenance": "Measured frame by frame on the encoded export and recorded in skill/references/brandon-style-profile.md (Approved calibration grammar). To refresh the render metrics from the file, run: python3 production/editor/review_reel.py --measure /path/to/Brandon-Reel-Engine-20s-review.mp4 --out production/editor/reference/calibration-20s.render.json",
+  "metrics": {
+    "first_scene_change_s": 0.95,
+    "scene_changes_s": [0.95, 6.5, 14.27],
+    "transitions_per_10s": 1.76,
+    "transitions_per_10s_range": [0.8, 3.5],
+    "caption_px_1080": 51,
+    "title_px_1080": 93,
+    "graphics_per_10s_range": [1.2, 4.5],
+    "custom_ui_change_every_s": 2.0,
+    "music": false
+  },
+  "compared": {
+    "first_change": "Something designed moves before the first second; the calibration's first scene change lands at 0.95 s with hero words rising before it.",
+    "transition_rate": "About three purposeful section changes in 17 s.",
+    "caption_scale": "Low captions at least the calibration's 34 px on a 720 frame (51 px on the 1080 grid). The house size is larger (66 px).",
+    "title_scale": "Designed titles at least the calibration's 62 px on a 720 frame (93 px on the 1080 grid).",
+    "graphic_density": "A designed graphic or state change every few seconds, word-cued, never a static slide."
+  },
+  "not_compared": {
+    "presenter_share": "The calibration spends most of its length in full-screen grid panels. Brandon later asked to stay on camera behind most graphics, so presenter presence follows style_spec.json layout limits instead.",
+    "green_wipe_and_row_bars": "Retired after his review (green half-frame flash, timer-bar look).",
+    "karaoke_captions": "Retired on September 28: captions stay white with selective green, no per-word color change."
+  },
+  "keep": [
+    "Hero words rise beside Brandon in large white/green type while the short caption stays low",
+    "Small uppercase green kicker, large white title, spacious rows with green winning states",
+    "Counts start from zero on the spoken number; weak outcomes dim to about 30% or take a restrained red strike",
+    "A comparison value stays hidden until its spoken cue",
+    "Original voice carries the scene; selected quiet effects mark state changes; no music"
+  ]
+}

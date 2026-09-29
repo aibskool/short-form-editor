@@ -6,27 +6,13 @@ width, so a 720x1280 proxy and a 1080x1920 final share the same layout.
 from pathlib import Path
 import shutil
 
+import style
+
 HERE = Path(__file__).resolve().parent
 
-DEFAULT_DESIGN = {
-    "accent": "#49cf26",        # Brandon's requested accent (not sampled from a reference)
-    "accent_ink": "#06140a",    # text placed on an accent box
-    "text": "#ffffff",
-    "text_2": "#d3dad5",
-    "muted": "#8b958f",
-    "negative": "#ff5d5d",       # restrained red for strikes and failed states only
-    "warm": "#ffc53d",          # optional second highlight; needs a deliberate reason
-    "canvas": "#050706",
-    "panel": "rgba(15,19,17,0.90)",
-    "panel_solid": "#0f1311",
-    "line": "rgba(255,255,255,0.11)",
-    "display_font": "Inter Tight",
-    "serif_font": "Instrument Serif",
-    "caption_font": "Archivo Black",
-    "mono_font": "JetBrains Mono",
-    "feel": "snap",
-    "stage_backdrop": "dots",
-}
+# Colors, fonts and feel come from the house style spec (style_spec.json), so a
+# change there reaches every future build.
+DEFAULT_DESIGN = style.design_defaults()
 
 # Timing personalities. Components read these instead of hard-coding eases so a
 # reel can change feel without re-authoring every graphic.
@@ -50,8 +36,10 @@ FONT_FILES = {
 }
 
 
-def design_tokens(spec):
-    design = dict(DEFAULT_DESIGN)
+def design_tokens(spec, house=None):
+    """Design tokens: the house style (with the timeline's "style" overrides when given),
+    then the timeline's own "design" keys."""
+    design = style.design_defaults(house) if house else dict(DEFAULT_DESIGN)
     supplied = spec.get("design", {})
     if not isinstance(supplied, dict):
         raise ValueError("design must be an object")
@@ -72,7 +60,7 @@ def install_fonts(assets):
     fonts.mkdir(exist_ok=True)
     faces, missing = [], []
     for family, files in FONT_FILES.items():
-        for package, name, weight, style in files:
+        for package, name, weight, font_style in files:
             source = HERE / "node_modules/@fontsource" / package / "files" / name
             if not source.is_file():
                 missing.append(f"@fontsource/{package}/{name}")
@@ -81,7 +69,7 @@ def install_fonts(assets):
             if not target.exists():
                 shutil.copy2(source, target)
             faces.append(f"@font-face{{font-family:'{family}';src:url('assets/fonts/{name}') format('woff2');"
-                         f"font-weight:{weight};font-style:{style};font-display:block;}}")
+                         f"font-weight:{weight};font-style:{font_style};font-display:block;}}")
         # The OFL travels with the font files it covers.
         license_file = HERE / "node_modules/@fontsource" / files[0][0] / "LICENSE"
         if license_file.is_file():
@@ -111,6 +99,7 @@ def base_css(design, scale):
     return f"""
 :root{{--accent:{d['accent']};--accent-ink:{d['accent_ink']};--text:{d['text']};--text2:{d['text_2']};--muted:{d['muted']};
 --negative:{d['negative']};--warm:{d['warm']};--canvas:{d['canvas']};--panel:{d['panel']};--panel-solid:{d['panel_solid']};--line:{d['line']};
+--card-light:{d['card_light']};--card-light-ink:{d['card_light_ink']};
 --display:'{d['display_font']}','Inter Tight',Arial,sans-serif;--serif:'{d['serif_font']}',Georgia,serif;--mono:'{d['mono_font']}',Menlo,monospace;}}
 #frame{{position:absolute;inset:0;overflow:hidden;transform-origin:50% 45%}}
 .mg{{position:absolute;z-index:9;pointer-events:none;font-family:var(--display);color:var(--text);box-sizing:border-box}}
@@ -118,6 +107,7 @@ def base_css(design, scale):
 .mg.depth-behind{{z-index:3}}
 .mg-scrim{{position:absolute;inset:-18% -14%;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.62),rgba(0,0,0,.34) 55%,rgba(0,0,0,0) 100%);z-index:-1;opacity:0}}
 .mg-scrim.band{{inset:-30% -40%;border-radius:0;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.58) 35%,rgba(0,0,0,.58) 65%,rgba(0,0,0,0))}}
+.mg-scrim.plate{{inset:-10% -3%;border-radius:{px(30)};background:rgba(7,9,8,.86);box-shadow:0 {px(24)} {px(70)} rgba(0,0,0,.55),inset 0 0 0 {px(2)} rgba(255,255,255,.08)}}
 .w{{display:inline-block;overflow:hidden;vertical-align:bottom;padding:0 .02em .06em;margin-bottom:-.06em}}
 .wi{{display:inline-block;will-change:transform}}
 .accent-c{{color:var(--accent)}}

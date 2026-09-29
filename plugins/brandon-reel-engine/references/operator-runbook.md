@@ -1,6 +1,6 @@
 # Operator runbook: finish one reel without inventing the process
 
-Use this when editing Brandon's original footage. Read [the observed style profile](brandon-style-profile.md). Work one reel and one stage at a time. The goal is a reviewable video built around his recorded story and visual rhythm.
+Use this when editing Brandon's original footage. Read the [house style](house-style.md) (the current defaults and how an edit uses them) and [the observed style profile](brandon-style-profile.md). Work one reel and one stage at a time. The goal is a reviewable video built around his recorded story and visual rhythm.
 
 ## Resolve the job
 
@@ -35,17 +35,17 @@ The command shapes below and linked playbooks implement these steps. The [qualit
 | Intake | `production/intake/README.md` | Download complete selected recording, verify bytes/hash, transcribe/index, inspect take and CTA | Correct source and complete selected performance are identified |
 | Select/edit speech | `production/prepare_take.py --help` and existing pilot EDL | Remove false starts and repeated lines; preserve the speaker's claim; retime words | Edited A-roll and words refer to the same source/timebase |
 | Calibrate the reference | Existing measured reference profile and selected reference frames; see below | Compare presenter, metaphor, screen/typing and caption treatments | Record a concrete visual target and unacceptable deviations before sourcing |
-| Visual plan | [asset playbook](asset-playbook.md) and [shot recipes](shot-recipes.md) | Map every spoken beat, plan the strongest opening action/variety and effect accents | No unassigned beat; proof/illustration distinguished; opening and audio plan recorded |
-| Obtain assets | [asset playbook](asset-playbook.md); [generation recipes](generation-recipes.md) only for a real gap | Capture actual moving sources first where useful; obtain SFX; author only missing explanations | Selected visual/audio files opened, checked, indexed and hashed; no music and documented SFX |
-| Assemble | [shot recipes](shot-recipes.md), `production/editor/README.md` | Build timeline, useful motion, short captions, no music and selected action accents; inspect and render | Playable MP4 has the intended voice and SFX, not only an audio stream |
-| Judge/revise | [quality procedure](quality-procedure.md) | Inspect opening energy/diversity, useful motion, meaning, reading time and audible mix | Review names the exact render, voice/SFX observations and motion checks; limits explicit |
+| Obtain assets | [asset playbook](asset-playbook.md); [generation recipes](generation-recipes.md) only for a real gap | Capture actual moving sources first where useful; author original graphics for the rest; write `assets.json` (tags, quality, moments) | Selected files opened, checked and listed in `assets.json`; no music |
+| Plan | [house style](house-style.md), [shot recipes](shot-recipes.md) | `reel.py run plan` → beat map and draft timeline; sharpen hero wording in his words and the footage choices | Every beat has a role and treatment; hook, showpieces and payoff named |
+| Assemble | [motion system](motion-system.md), `production/editor/README.md` | Build, answer `motion_report`, `reel.py run review`, check, snapshot, render | Playable MP4; timeline review has no fail |
+| Judge/revise | [quality procedure](quality-procedure.md) | `reel.py run review -- --video RAW.mp4`, then watch at 1× with sound on headphones and a phone speaker | Review names the exact render; no fail; warnings answered; limits explicit |
 | Deliver | `production/delivery/README.md`, Skool/ManyChat references | Package video, assets, editable files, giveaway and verified task/release links | User can open the video; publishing/delivery states are reported separately |
 
 Do not read every source transcript or the entire repository into context. Load the selected take, current beat/asset list, relevant recipe, and current failing receipt. For a revision, read its changed beat plus the preceding/following beats.
 
 ## Calibrate before choosing visuals
 
-For Brandon's supplied references, read [Brandon's style profile](brandon-style-profile.md), including its September 28 stage direction and the [stage reference breakdown](stage-reference-breakdown.md), and inspect the actual reels. Compare presenter, screen proof, illustrative footage, spoken captions, editorial graphics and CTA separately. The Council profile in `production/reference/council-human/` is a historical upstream example; its private files are not bundled and its measured layout is not a target for Brandon.
+For Brandon's supplied references, read the [house style](house-style.md), [Brandon's style profile](brandon-style-profile.md) and, for the optional stage layout, the [stage reference breakdown](stage-reference-breakdown.md), and inspect the actual reels. Compare presenter, screen recordings, illustrative footage, spoken captions, editorial graphics and CTA separately. The Council profile in `production/reference/council-human/` is a historical upstream example; its private files are not bundled and its measured layout is not a target for Brandon.
 
 Save one comparison frame each for presenter, metaphor, UI/typing and source evidence when present. Record caption treatment, useful reading hold, framing and the action shown. Choose one short matching style sample before assembling the whole reel. An eight-second test with two mostly static information diagrams may improve semantic honesty but still fall short of this reference's motion and visual language.
 
@@ -128,4 +128,4 @@ If a tool fails, read the error once, check its documented input, make a specifi
 
 ## Smaller-model handoff prompt
 
-> Use Brandon Reel Engine, resolve the project with its runner, and read the operator runbook and style profile. Resume the existing reel stage. Preserve original speech; map each spoken claim to face-to-camera A-roll, actual readable screen proof, contextual footage or kinetic graphics. Keep short spoken captions independent from large green/white editorial graphics. Choose hooks and cuts by meaning, not a fixed interval or split. Finish the real audio plan and encoded review, record the exact hash, and leave style matching pending until Brandon reviews a 20-second calibration render.
+> Use Brandon Reel Engine, resolve the project with its runner, and read the operator runbook and style profile. Resume the existing reel stage. Preserve original speech; plan the beats with the planner, keep Brandon full size most of the reel, and map each beat to face-to-camera A-roll with kinetic type, a readable full-frame screen, contextual footage or an original motion graphic. Keep short spoken captions independent from large green/white editorial graphics. Choose hooks and cuts by meaning, not a fixed interval or split. Finish the real audio plan and encoded review, record the exact hash, and leave style matching pending until Brandon reviews a 20-second calibration render.

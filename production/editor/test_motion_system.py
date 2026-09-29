@@ -193,8 +193,10 @@ class ComponentTests(unittest.TestCase):
     def test_sound_events_follow_visual_cues(self):
         c = ctx()
         render_graphics([{"type": "badge", "start": "@show", "end": 4, "text": "#1", "sfx": "pop"}], c)
-        self.assertEqual(c.sfx_events[0]["kind"], "pop")
-        self.assertAlmostEqual(c.sfx_events[0]["at"], WORDS[5]["start"], places=1)
+        # "pop" now means the house pop-up role: a bubble pop that lands as the badge reaches full size.
+        self.assertEqual(c.sfx_events[0]["kind"], "bubble")
+        self.assertEqual(c.sfx_events[0]["role"], "popup")
+        self.assertAlmostEqual(c.sfx_events[0]["at"], WORDS[5]["start"] + .07, places=2)
 
 
 class SoundTests(unittest.TestCase):
@@ -210,7 +212,7 @@ class SoundTests(unittest.TestCase):
     def test_plan_keeps_restraint(self):
         events = [{"kind": "thud", "at": t, "source": "g"} for t in (1, 2, 6, 11, 16)]
         kept, dropped = sfx_kit.plan(events, 20)
-        self.assertEqual([e["at"] for e in kept], [1, 6, 11])
+        self.assertEqual([e["at"] for e in kept], [1, 11])  # house policy: two impacts, 8 s apart
         events = [{"kind": "whoosh", "at": 1.0, "source": "g"}, {"kind": "whoosh_short", "at": 1.5, "source": "g"},
                   {"kind": "typing", "at": 1.02, "source": "g", "duration": 1},
                   {"kind": "pop", "at": 3.0, "source": "g"}, {"kind": "tick", "at": 3.05, "source": "g"},
@@ -256,9 +258,10 @@ class BuildTests(unittest.TestCase):
             self.assertIn('<div id="backdrop"><div id="stage-bg-1"', html)
             self.assertIn("seen=new WeakMap()", html)
             self.assertIn("@font-face{font-family:'Inter Tight'", html)
-            self.assertIn('class="caption clip karaoke"', html)
+            self.assertIn('class="caption clip karaoke"', html)  # the retired style still builds, with a warning
             self.assertEqual(receipt["graphics"], 2)
             report = receipt["motion_report"]
+            self.assertTrue(any("changes color on every word" in w for w in report["warnings"]))
             self.assertGreater(report["layout_seconds"]["stage"], 1)
             self.assertEqual(report["presenter_visible_ratio"], 1.0)
             self.assertGreater(report["sfx_kept"], 0)

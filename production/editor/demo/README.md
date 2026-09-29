@@ -1,6 +1,6 @@
 # Motion system demo
 
-Two timelines that render every motion component without private footage. They double as a regression check after renderer changes: build them, run `hyperframes check`, render, and look at the frames.
+Two timelines that render the earlier motion components (the stage layout, flows, devices, charts and the rest) without private footage; their captions use the house `pop` style. The presenter-first house style itself is what `plan_reel.py` drafts from real footage (see `skill/references/house-style.md`); `test_house_style.py` plans and builds two synthetic stories with it. They double as a regression check after renderer changes: build them, run `hyperframes check`, render, and look at the frames.
 
 | Timeline | Recipe | Shows |
 | --- | --- | --- |

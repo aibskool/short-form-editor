@@ -21,15 +21,18 @@ from motion_scenes import scene_markup, CSS as MOTION_CSS
 from editorial_scenes import artifact_markup, CSS as ARTIFACT_CSS
 from kinetic_scenes import kinetic_markup, CSS as KINETIC_CSS
 from hyperframes_cli import run as run_hyperframes
-from cues import CueResolver, CueError
+from cues import CueResolver, CueError, emphasis_key
 from design import design_tokens, install_fonts, Scale, base_css, FEELS
 from components import Ctx, render_graphics
 from component_css import component_css
+from motion_kit import motion_css, screen_css, screen_markup
 import sfx_kit
+import style
 
 HERE = Path(__file__).resolve().parent
+STYLE = style.load()
 GSAP_PLUGINS = ("DrawSVGPlugin", "MotionPathPlugin", "CustomEase", "CustomWiggle")
-TRANSITIONS = {"blur_flash", "light_leak", "flash", "whip", "zoom_blur"}
+TRANSITIONS = {"blur_flash", "light_leak", "flash", "whip", "zoom_blur", "push_in", "match_move", "shape_wipe", "punch"}
 SHOT_MOTIONS = {"cut", "fade", "slide_up", "slide_down", "slide_left", "slide_right", "iris", "zoom", "expand", "morph"}
 # Later fromTo tweens on an element+property must not pre-apply their start state at
 # build time (that would override the earlier entrance while the playhead is before it).
@@ -40,6 +43,10 @@ FROMTO_GUARD = ('(function(){const seen=new WeakMap();const orig=tl.fromTo.bind(
                 'for(const el of els){let s=seen.get(el);if(!s){s=new Set();seen.set(el,s);}props.forEach(k=>s.add(k));}'
                 'if(again&&v&&v.immediateRender===undefined){v=Object.assign({},v,{immediateRender:false});}'
                 'return orig(t,f,v,p);};})();')
+# Presenter framings (scale, xPercent, yPercent) that keep Brandon full size. The camera
+# pivots at 50% 38%, so each stays inside the source frame (no exposed edges).
+PRESENTER_FRAMES = {"center": (1.0, 0, 0), "tight": (1.14, 0, 3), "close": (1.26, 0, 6),
+                    "space_left": (1.14, 6.5, 1.5), "space_right": (1.14, -6.5, 1.5)}
 STAGE_DEFAULTS = {"band_top": 63.5, "inset": 2.2, "bottom": 2.0, "radius": 36, "edge": "card",
                   "presenter_scale": .9, "presenter_x": 0, "presenter_y": 42, "caption_y": None}
 COMPLEX_GRAPHICS = {"flow", "orbit", "device", "chart", "checklist", "compare", "prompt", "stat", "card"}
@@ -143,6 +150,42 @@ def caption_groups(words, max_words=4, max_chars=27):
     if current:
         groups.append(current)
     return groups
+
+
+def choose_emphasis(groups, emphasis, captions, defaults):
+    """Pick which caption words turn green: listed (or planner-stressed) words, at most
+    emphasis_max_per_group per group and never closer than emphasis_min_gap seconds."""
+    per_group = int(captions.get("emphasis_max_per_group", defaults["emphasis_max_per_group"]))
+    min_gap = float(captions.get("emphasis_min_gap", defaults["emphasis_min_gap"]))
+    chosen, last = set(), -1e9
+    for i, group in enumerate(groups):
+        picked = 0
+        for k, word in enumerate(group):
+            key = emphasis_key(word["word"])
+            if picked >= per_group or not (word.get("emphasis") or (key and key in emphasis)):
+                continue
+            if float(word["start"]) - last < min_gap:
+                continue
+            chosen.add((i, k))
+            picked += 1
+            last = float(word["start"])
+    return chosen
+
+
+def caption_visibility(spans, duration):
+    """GSAP sets that hide the caption anchor during the merged spans and show it otherwise."""
+    merged = []
+    for a, b in sorted((max(0.0, float(a)), min(duration, float(b))) for a, b in spans if float(b) > float(a)):
+        if merged and a <= merged[-1][1] + 1e-3:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    lines = ['tl.set("#caption-anchor",{autoAlpha:1},0);']
+    for a, b in merged:
+        lines.append(f'tl.set("#caption-anchor",{{autoAlpha:0}},{a:.4f});')
+        if b < duration - 1e-3:
+            lines.append(f'tl.set("#caption-anchor",{{autoAlpha:1}},{b:.4f});')
+    return lines
 
 
 def phrase_groups(words, phrases):
@@ -310,7 +353,7 @@ def build(spec_path, project):
     policy = spec.get("audio_policy", {})
     if policy.get("music_required") is not False:
         raise ValueError("audio_policy.music_required must be false for Brandon short-form exports")
-    design = design_tokens(spec)
+    design = design_tokens(spec, style.load(spec.get("style")))
     feel = FEELS[design["feel"]]
     px = Scale(width, height)
     split_fraction = float(output.get("split_fraction", 0.5))
@@ -323,14 +366,20 @@ def build(spec_path, project):
     if not isinstance(captions, dict):
         raise ValueError("spoken_captions must be an object")
     legacy_graphics = validate_editorial_graphics(spec.get("editorial_graphics", []), duration)
-    font_size = float(captions.get("font_size", width * 0.048))
-    caption_y = finite_number(captions.get('y', 83), 'spoken_captions.y')
-    if not 65 <= caption_y <= 90:
-        raise ValueError('spoken_captions.y must stay in the lower third')
-    caption_style = captions.get("style", "phrase")
-    if caption_style not in {"phrase", "reveal", "karaoke"}:
-        raise ValueError("spoken_captions.style must be phrase, reveal or karaoke")
-    accent = captions.get("accent", design["accent"])
+    house = style.load(spec.get("style"))
+    cap_defaults = style.caption_defaults(house)
+    font_size = float(captions.get("font_size", cap_defaults["font_px"] * width / 1080))
+    caption_y = finite_number(captions.get('y', cap_defaults["y"]), 'spoken_captions.y')
+    if not 60 <= caption_y <= 90:
+        raise ValueError('spoken_captions.y must stay in the lower part of the frame (60-90)')
+    caption_style = captions.get("style", cap_defaults["style"])
+    if caption_style not in {"pop", "phrase", "reveal", "karaoke"}:
+        raise ValueError("spoken_captions.style must be pop, phrase, reveal or karaoke")
+    if caption_style in cap_defaults.get("forbid_styles", []):
+        warnings_early = [f"spoken_captions.style {caption_style!r} changes color on every word; the house style uses 'pop'"]
+    else:
+        warnings_early = []
+    accent = captions.get("accent", cap_defaults["emphasis_color"])
     position = spec["source"].get("object_position", "50% 40%")
     font_name = captions.get("font_family", design["caption_font"])
     font_css = install_fonts(assets)
@@ -345,7 +394,7 @@ def build(spec_path, project):
         shutil.copy2(HERE / f"node_modules/gsap/dist/{plugin}.min.js", assets / f"{plugin}.min.js")
 
     parts, animations, audio, cursor = [], [], [], 0.0
-    warnings = []
+    warnings = list(warnings_early)
     source = media(str(source_path))
     has_audio = any(stream.get("codec_type") == "audio" for stream in source_info["streams"])
     aroll, matte_parts = [], []
@@ -375,7 +424,32 @@ def build(spec_path, project):
                                    f'data-duration="{hi - lo:.6f}" data-media-start="{lo - matte_offset:.6f}" muted playsinline></video>')
             cursor += b - a
 
-    ctx = Ctx(px, design, feel, resolver, width, height, fps, duration, media)
+    ctx = Ctx(px, design, feel, resolver, width, height, fps, duration, media, house=house)
+
+    def still(asset_rel, at=0.0, blur=0):
+        """A frame of an asset as a (pre-blurred, darkened) JPEG: cheap backdrops and
+        reflections instead of decoding the same video two or three times."""
+        source_file = project / asset_rel
+        is_img = source_file.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".avif"}
+        at = max(0.0, float(at))
+        if not is_img:
+            # Grabbing past the end of a clip yields no frame: clamp to its last tenth of a second.
+            try:
+                at = min(at, max(0.0, float(probe(source_file)["format"]["duration"]) - .1))
+            except (KeyError, ValueError, subprocess.CalledProcessError):
+                pass
+        target = assets / f"still-{Path(asset_rel).stem}-{int(round(at * 1000))}-{int(blur)}.jpg"
+        if not target.exists():
+            chain = "scale=540:-2" + (f",gblur=sigma={blur},eq=brightness=-0.10:saturation=1.15" if blur else "")
+            for grab in ([at, 0.0] if at > 0 and not is_img else [at]):
+                args = ["ffmpeg", "-v", "error", "-y"] + ([] if is_img else ["-ss", f"{grab:.3f}"])
+                subprocess.run(args + ["-i", str(source_file), "-frames:v", "1", "-vf", chain, "-q:v", "3", str(target)], check=True)
+                if target.exists() and target.stat().st_size > 0:
+                    break
+            else:
+                raise ValueError(f"could not grab a frame of {asset_rel} at {at:.2f}s for a backdrop or reflection")
+        return target.relative_to(project).as_posix()
+    ctx.still = still
 
     # Legacy editorial graphics render through the kinetic statement component.
     upgraded = []
@@ -399,6 +473,7 @@ def build(spec_path, project):
                  + (f'<div id="depth-layer">{"".join(behind)}</div>' if behind else "") + "".join(matte_parts) + '</div></div>')
 
     shots = spec.get("shots", [])
+    caption_hidden_shots = []
     backdrops = []
     layout_spans = []
     stage_caption_positions = []
@@ -409,7 +484,7 @@ def build(spec_path, project):
         if not 0 <= start < end <= duration + 0.05:
             raise ValueError(f"shot {i} lies outside output timeline")
         layout = shot.get("layout", "presenter")
-        if layout not in {"split", "full_broll", "presenter", "stage"}:
+        if layout not in {"split", "full_broll", "presenter", "stage", "screen"}:
             raise ValueError(f"unknown shot layout: {layout}")
         layout_spans.append((start, min(end, duration), layout))
         split = layout == "split"
@@ -427,17 +502,21 @@ def build(spec_path, project):
                 warnings.append(f"shot {i}: {', '.join(ignored)} ignored; {layout} shots change by cut or by an enter morph "
                                 "(use a transition for anything else)")
         animations.append(f'tl.set("#presenter",{{top:{split_height if split else 0},height:{height-split_height if split else height}}},{start});')
-        animations.append(f'tl.set("#caption-anchor",{{autoAlpha:{1 if shot.get("spoken_caption_visible", True) else 0}}},{start});')
+        if not shot.get("spoken_caption_visible", True):
+            caption_hidden_shots.append((start, end))
         if shot.get("caption_y") is not None:
             # Captions keep one lower-third anchor across presenter and B-roll shots;
             # only stage shots move it (to the seam above the presenter band).
             warnings.append(f"shot {i}: caption_y is ignored; captions keep the spoken_captions.y anchor. Over busy "
                             "footage set caption_background on the shot; in stage shots use stage.caption_y")
         backing = shot.get("caption_background") or captions.get("background", "rgba(0,0,0,0)")
-        if not shot.get("caption_background") and layout in {"full_broll", "split"} and shot.get("media") and captions.get("auto_backing", True):
-            if bright_caption_band(resolve(shot["media"], spec_path.parent), shot, caption_y, split, split_fraction):
+        if not shot.get("caption_background") and layout in {"full_broll", "split", "screen"} and shot.get("media") and captions.get("auto_backing", True):
+            # A screen plane is dense UI moving under the captions: it always gets the backing.
+            if layout == "screen" or bright_caption_band(resolve(shot["media"], spec_path.parent), shot, caption_y, split,
+                                                         split_fraction):
                 backing = "rgba(8,11,9,.86)"
-                warnings.append(f"shot {i}: bright media under the captions; dark caption backing applied")
+                if layout != "screen":
+                    warnings.append(f"shot {i}: bright media under the captions; dark caption backing applied")
         animations.append(f'tl.set(".caption-text",{{backgroundColor:"{backing}"}},{start});')
         if layout == "stage":
             st = stage_settings(spec, shot, i)
@@ -494,6 +573,12 @@ def build(spec_path, project):
         # Any non-stage shot restores the full-frame presenter.
         restore_clip = "inset(0% 0% 0% 0% round 0px)"
         cam = {"scale": shot.get("zoom", 1), "xPercent": shot.get("x_percent", 0), "yPercent": shot.get("y_percent", 0)}
+        if shot.get("frame"):
+            # Presenter-first framings: stay full size, reframe to open negative space for a graphic.
+            frame = shot["frame"]
+            if frame not in PRESENTER_FRAMES:
+                raise ValueError(f"shot {i} frame must be one of {', '.join(PRESENTER_FRAMES)}")
+            cam = dict(zip(("scale", "xPercent", "yPercent"), PRESENTER_FRAMES[frame]))
         if morph and previous_layout != "stage":
             warnings.append(f"shot {i}: enter morph needs a stage shot right before it; this shot cuts in")
         if morph and previous_layout == "stage":
@@ -509,7 +594,11 @@ def build(spec_path, project):
             if previous_layout == "stage" and layout == "full_broll" and enter["kind"] != "cut":
                 restore_at = start + min(enter["duration"], (end - start) * .45)  # once the footage covers the frame
             animations.append(f'tl.set("#presenter",{{clipPath:"{restore_clip}",webkitMaskImage:"none",maskImage:"none"}},{restore_at:.4f});')
-            animations.append(f'tl.set("#presenter-camera",{{scale:{cam["scale"]},xPercent:{cam["xPercent"]},yPercent:{cam["yPercent"]}}},{restore_at:.4f});')
+            if shot.get("frame_move") == "glide" and previous_layout == "presenter":
+                glide = min(.7, (end - start) * .4)
+                animations.append(f'tl.to("#presenter-camera",{{scale:{cam["scale"]},xPercent:{cam["xPercent"]},yPercent:{cam["yPercent"]},duration:{glide:.3f},ease:"{feel["move"]}"}},{restore_at:.4f});')
+            else:
+                animations.append(f'tl.set("#presenter-camera",{{scale:{cam["scale"]},xPercent:{cam["xPercent"]},yPercent:{cam["yPercent"]}}},{restore_at:.4f});')
             animations.append(f'tl.set("#caption-anchor",{{y:0}},{start});')
         if shot.get('zoom_to') is not None:
             zoom_to = finite_number(shot['zoom_to'], f'shot {i} zoom_to')
@@ -522,6 +611,23 @@ def build(spec_path, project):
         rect = f'width:{width}px;height:{split_height if split else height}px;'
         timing = f'data-start="{start}" data-duration="{end-start}" data-track-index="2"'
         inner = []
+        if layout == "screen":
+            if not shot.get("media"):
+                raise ValueError(f"shot {i} screen layout needs media (a capture)")
+            path = media(shot["media"])
+            is_image = Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg", ".avif"}
+            try:
+                screen, motion = screen_markup(shot, i, start, end, ctx, path, is_image, width, height)
+            except CueError as error:
+                raise ValueError(str(error)) from None
+            # A timed canvas fill sits first so nothing of the presenter shows around the plane.
+            fill = (f'<div id="screen-fill-{i}" class="clip" data-start="{start}" data-duration="{end-start}" data-track-index="1" '
+                    f'style="position:absolute;left:0;top:0;{rect}background:{escape(design["canvas"])};"></div>')
+            parts.append(f'<div id="shot-{i}" class="clip shot-wrap" data-start="{start}" data-duration="{end-start}" style="position:absolute;left:0;top:0;{rect}z-index:2;">{fill}{screen}</div>')
+            animations.extend(motion)
+            animations.extend(shot_transition(f"#shot-{i}", enter, start, end, "enter", feel, px, width, height))
+            animations.extend(shot_transition(f"#shot-{i}", exit_motion, start, end, "exit", feel, px, width, height))
+            continue
         if shot.get("media"):
             path = media(shot["media"])
             image = Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg", ".avif"}
@@ -590,13 +696,18 @@ def build(spec_path, project):
                                     f'({a:.2f}-{b:.2f}s); start it after the morph so the two moves do not fight')
 
     phrases = captions.get("phrases", [])
-    groups = phrase_groups(words, phrases) if phrases else caption_groups(words, int(captions.get("max_words",4)), int(captions.get("max_chars",27)))
-    emphasis = {w.lower().strip(".,!?:;") for w in captions.get("emphasis", [])}
+    groups = phrase_groups(words, phrases) if phrases else caption_groups(
+        words, int(captions.get("max_words", cap_defaults["max_words"])), int(captions.get("max_chars", cap_defaults["max_chars"])))
+    emphasis = {emphasis_key(w) for w in captions.get("emphasis", [])} - {""}
+    emphasized_ids = choose_emphasis(groups, emphasis, captions, cap_defaults)
+    uppercase = captions.get("uppercase", cap_defaults["uppercase"])
+    omit_punct = captions.get("omit_terminal_punctuation", cap_defaults["omit_terminal_punctuation"])
+    hold = float(captions.get("hold", cap_defaults["hold"]))
     parts.append('<div id="caption-anchor">')
     for i, group in enumerate(groups):
         start = group[0]["start"]
         next_start = groups[i+1][0]["start"] if i+1<len(groups) else duration
-        end = min(next_start, group[-1]["end"] + float(captions.get("hold",0.12)))
+        end = min(next_start, group[-1]["end"] + hold)
         phrase = phrases[i] if phrases else {}
         breaks = [0, *phrase.get("line_breaks", []), len(group)]
         lines = []
@@ -604,26 +715,41 @@ def build(spec_path, project):
             connector = j == 0 and phrase.get("lead_in", False)
             spans = []
             for k, word in enumerate(group[a:b], start=a):
-                text = word["word"].strip(".,!?:;") if captions.get("omit_terminal_punctuation", False) else word["word"]
-                emphasized = word.get("emphasis") or text.lower().strip(".,!?:;") in emphasis
-                text = text.upper() if captions.get("uppercase",True) and not connector else text
+                text = word["word"].strip(".,!?:;") if omit_punct else word["word"]
+                emphasized = (i, k) in emphasized_ids
+                text = text.upper() if uppercase and not connector else text
                 wid = f"caption-{i}-w{k}"
                 spans.append(f'<span id="{wid}" class="{"emphasis" if emphasized else "word"}">{escape(text)}</span>')
-                spoken = resolver.frame(word["start"])
+                spoken = max(start, resolver.frame(word["start"]))
                 if caption_style == "karaoke":
                     color = accent if emphasized else "#ffffff"
-                    animations.append(f'tl.to("#{wid}",{{color:"{color}",duration:.06,ease:"none"}},{max(start, spoken):.4f});')
+                    animations.append(f'tl.to("#{wid}",{{color:"{color}",duration:.06,ease:"none"}},{spoken:.4f});')
                 elif caption_style == "reveal":
-                    animations.append(f'tl.fromTo("#{wid}",{{opacity:0,y:{px.n(10):.1f}}},{{opacity:1,y:0,duration:.1,ease:"power2.out"}},{max(start, spoken):.4f});')
-                if emphasized:
-                    animations.append(f'tl.fromTo("#{wid}",{{scale:1.22}},{{scale:1,duration:.3,ease:"{feel["pop"]}",immediateRender:false}},{max(start, spoken):.4f});')
+                    animations.append(f'tl.fromTo("#{wid}",{{opacity:0,y:{px.n(10):.1f}}},{{opacity:1,y:0,duration:.1,ease:"power2.out"}},{spoken:.4f});')
+                elif caption_style == "pop" and k > 0:
+                    # Later words keep their space (no re-centering jump) and pop in when spoken;
+                    # an emphasized word pops a little bigger in the same tween.
+                    grow = 1.3 if emphasized else .82
+                    animations.append(f'tl.fromTo("#{wid}",{{opacity:0,scale:{grow},y:{px.n(6):.1f}}},{{opacity:1,scale:1,y:0,duration:{.3 if emphasized else .12},ease:"back.out(2)"}},{spoken:.4f});')
+                if emphasized and not (caption_style == "pop" and k > 0):
+                    animations.append(f'tl.fromTo("#{wid}",{{scale:{1.14 if caption_style == "pop" else 1.22}}},{{scale:1,duration:.3,ease:"{feel["pop"]}",immediateRender:false}},{spoken:.4f});')
             line_id = f'caption-{i}-line-{j}'
             lines.append(f'<span id="{line_id}" class="caption-line {"connector" if connector else ""}">{" ".join(spans)}</span>')
             if j and phrase.get("progressive", True):
                 animations.append(f'tl.fromTo("#{line_id}",{{opacity:0,y:6}},{{opacity:1,y:0,duration:0.07,ease:"power2.out"}},{group[a]["start"]});')
-        klass = " karaoke" if caption_style == "karaoke" else ""
+        klass = {"karaoke": " karaoke", "pop": " pop"}.get(caption_style, "")
         parts.append(f'<div id="caption-{i}" class="caption clip{klass}" data-start="{start}" data-duration="{max(.01,end-start)}" data-track-index="5"><div class="caption-text">{"".join(lines)}</div></div>')
-        animations.append(f'tl.fromTo("#caption-{i} .caption-text",{{scale:0.94,y:{px.n(8):.1f}}},{{scale:1,y:0,duration:0.12,ease:"power2.out"}},{start});')
+        if caption_style == "pop":
+            animations.append(f'tl.fromTo("#caption-{i} .caption-text",{{scale:.86,y:{px.n(12):.1f},opacity:0}},{{scale:1,y:0,opacity:1,duration:0.16,ease:"back.out(1.8)"}},{start});')
+        else:
+            animations.append(f'tl.fromTo("#caption-{i} .caption-text",{{scale:0.94,y:{px.n(8):.1f}}},{{scale:1,y:0,duration:0.12,ease:"power2.out"}},{start});')
+    # Captions step aside while hero text says the same words, and wherever a shot hides them.
+    hide_spans = [(a, b) for a, b in caption_hidden_shots]
+    if captions.get("hide_under_hero", cap_defaults["hide_under_hero"]):
+        for meta in graphic_meta:
+            if meta.get("hides_captions"):
+                hide_spans.append((meta["start"], meta["end"]))
+    animations.extend(caption_visibility(hide_spans, duration))
     parts.append('</div>')
     parts.extend(front)
     animations.extend(graphic_anims)
@@ -658,11 +784,15 @@ def build(spec_path, project):
         sfx_events.extend(ctx.sfx_events)
     file_events = [e for e in sfx_events if e["kind"] == "file"]
     synth_events = [e for e in sfx_events if e["kind"] != "file"]
-    kept, dropped = sfx_kit.plan(synth_events, duration, spec.get("sfx_policy"))
+    kept, dropped = sfx_kit.plan(synth_events, duration, spec.get("sfx_policy"), words=words, house=house)
+    band = house["sound"]["phone_band_hz"]
     voice_lufs = voice_loudness(source_path, segments) if has_audio and kept else None
-    matched = {}
+    voice_phone = voice_loudness(source_path, segments, phone=True, band=band) if has_audio and kept else None
+    matched, phone_check = {}, {}
     kept = sorted(kept + file_events, key=lambda e: e["at"])
     sound_tracks = {}
+    variants = int(house["sound"].get("bubble_variants") or sfx_kit.VARIANTS)
+    last_variant = None
     for i, event in enumerate(kept):
         if event["kind"] == "file":
             path = media(event["path"])
@@ -672,22 +802,32 @@ def build(spec_path, project):
             kind = event["kind"]
             variable = kind in {"typing", "ticker"}
             length_hint = round(float(event.get("duration") or 1.0), 2) if variable else None
-            name = f"sfx-{kind}{'-' + str(length_hint).replace('.', '_') if variable else ''}.wav"
-            target = assets / name
+            variant = 0
+            if kind in sfx_kit.BUBBLES:
+                # Stable per moment, and never the same pitch/texture twice in a row.
+                variant = sfx_kit.variant_for(event, variants)
+                if variant == last_variant and variants > 1:
+                    variant = (variant + 1) % variants
+                last_variant = event["variant"] = variant
+            suffix = ('-' + str(length_hint).replace('.', '_')) if variable else (f"-v{variant}" if kind in sfx_kit.BUBBLES else "")
+            target = assets / f"sfx-{kind}{suffix}.wav"
             if not target.exists():
-                sfx_kit.write(kind, target, length_hint)
+                sfx_kit.write(kind, target, length_hint, variant=variant)
             path = target.relative_to(project).as_posix()
             length = float(probe(target)["format"]["duration"])
-            if kind not in matched:
-                matched[kind] = sfx_kit.matched_gain(kind, target, voice_lufs)
-            gain = event.get("gain") if event.get("gain") is not None else matched[kind]
+            # Each file (bubble variants differ in pitch and texture) is leveled on its own.
+            level_key = target.name
+            if level_key not in matched:
+                matched[level_key] = sfx_kit.matched_gain(kind, target, voice_lufs, house["sound"]["voice_offset_lu"])
+                phone_check[level_key] = sfx_kit.phone_offset(target, matched[level_key], voice_phone, band)
+            gain = event.get("gain") if event.get("gain") is not None else matched[level_key]
         if not 0 <= float(gain) <= 1:
             raise ValueError(f"SFX gain must be between 0 and 1 (event at {event['at']})")
         length = min(length, max(.02, duration - event["at"]))
         track = sound_tracks.setdefault(path, 12 + len(sound_tracks))
         audio.append(f'<audio id="sfx-{i}" src="{path}" data-start="{event["at"]:.4f}" data-duration="{length:.4f}" data-track-index="{track}" data-volume="{float(gain):.3f}"></audio>')
 
-    css = f'''{font_css}{base_css(design, px)}{MOTION_CSS}{ARTIFACT_CSS}{KINETIC_CSS}{component_css(px)}
+    css = f'''{font_css}{base_css(design, px)}{MOTION_CSS}{ARTIFACT_CSS}{KINETIC_CSS}{component_css(px)}{motion_css(px)}{screen_css(px)}
     *{{box-sizing:border-box}} body{{margin:0;background:#111}} #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;background:{escape(design["canvas"])}}}
     #presenter{{position:absolute;inset:0;width:{width}px;height:{height}px;overflow:hidden;z-index:1}} #presenter-camera{{position:relative;width:100%;height:100%;transform-origin:50% 38%}}
     #depth-layer{{position:absolute;inset:0;z-index:1}} .matte{{z-index:2}}
@@ -705,7 +845,7 @@ def build(spec_path, project):
     .caption-text{{display:inline-block;max-width:100%;border-radius:.16em;padding:.07em .12em;font-family:"{font_name}","Archivo Black","Arial Black",Arial,sans-serif;font-weight:900;font-size:{font_size}px;line-height:1.06;letter-spacing:-0.02em;color:white;-webkit-text-stroke:{width*.0035}px #222;paint-order:stroke fill;text-shadow:0 {width*.003}px {width*.004}px #111;}}
     .caption-line{{display:block}} .caption-line.connector{{font-family:Arial,sans-serif;font-size:.72em;font-weight:500;line-height:1.18;letter-spacing:0;-webkit-text-stroke:{width*.0017}px #222;}}
     .caption .word,.caption .emphasis{{display:inline-block}}
-    .emphasis{{color:{accent}}} .karaoke .word,.karaoke .emphasis{{color:{escape(captions.get("upcoming_color", "#a3aba6"))}}} .graphic{{background:#efede8;color:#171719;font-family:Arial,sans-serif}}
+    .emphasis{{color:{accent}}} .pop .emphasis{{text-shadow:0 0 {width*.02:.1f}px rgba(73,207,38,.5),0 {width*.003}px {width*.004}px #111}} .karaoke .word,.karaoke .emphasis{{color:{escape(captions.get("upcoming_color", "#a3aba6"))}}} .graphic{{background:#efede8;color:#171719;font-family:Arial,sans-serif}}
     .editorial-graphic{{position:absolute;z-index:9;max-height:75%;overflow:hidden;color:white;font-family:Arial,sans-serif;font-weight:900;line-height:1.02;letter-spacing:-.035em;text-shadow:0 2px 10px #000b;pointer-events:none;}}
     .editorial-white{{color:#fff}} .editorial-accent{{color:{design["accent"]};text-shadow:0 0 18px #49cf2666,0 2px 10px #000b}}
     .editor-label{{position:absolute;z-index:8;font:700 30px Arial,sans-serif;letter-spacing:.08em;color:#fff;background:#1d1c20;padding:12px 18px;border-radius:6px;}}
@@ -741,14 +881,29 @@ def build(spec_path, project):
                            "sequence": [g["type"] for g in sorted(graphic_meta, key=lambda g: g["start"])]}
     report["cta_styles"] = ctas
     report["timeline"] = [{k: g[k] for k in ("id", "type", "start", "end", "beat")} for g in sorted(graphic_meta, key=lambda g: g["start"])]
+    # Full per-graphic facts and the caption/sound plan, for review_reel.py.
+    report["graphics_meta"] = sorted(graphic_meta, key=lambda g: g["start"])
+    report["captions"] = {"style": caption_style, "font_px_1080": round(font_size * 1080 / width, 1), "groups": len(groups),
+                          "max_words": max((len(g) for g in groups), default=0), "emphasized": len(emphasized_ids),
+                          "emphasis_times": sorted(round(groups[i][k]["start"], 3) for i, k in emphasized_ids),
+                          "hidden_spans": [[round(a, 3), round(b, 3)] for a, b in hide_spans]}
+    report["sfx_events"] = [{"kind": e["kind"], "at": round(float(e["at"]), 3), "role": e.get("role"), "source": e.get("source", ""),
+                             "variant": e.get("variant") if e["kind"] in sfx_kit.BUBBLES else None} for e in kept]
     avoid = spec.get("variation", {}).get("avoid", {})
     if first and first in avoid.get("hooks", []):
         report["warnings"].append(f"hook treatment {first!r} repeats a recent reel (variation.avoid.hooks)")
-    for style in ctas:
-        if style in avoid.get("cta_styles", []):
-            report["warnings"].append(f"CTA style {style!r} repeats a recent reel (variation.avoid.cta_styles)")
-    report["sfx_levels"] = {"voice_integrated_lufs": voice_lufs, "gains": matched,
-                            "basis": "each sound's loudest 400 ms sits VOICE_OFFSET LU under the voice; confirm by listening"}
+    for cta_style in ctas:
+        if cta_style in avoid.get("cta_styles", []):
+            report["warnings"].append(f"CTA style {cta_style!r} repeats a recent reel (variation.avoid.cta_styles)")
+    limit = house["sound"]["phone_max_lu_over_voice"]
+    loud_on_phone = {k: v for k, v in phone_check.items() if v is not None and v > limit}
+    for kind, offset in loud_on_phone.items():
+        report["warnings"].append(f"{kind} peaks {offset:+.1f} LU against the voice on a phone speaker band "
+                                  f"(limit {limit} LU); lower it or move it off the words")
+    report["sfx_levels"] = {"voice_integrated_lufs": voice_lufs, "voice_phone_band_lufs": voice_phone, "gains": matched,
+                            "phone_band_offset_lu": phone_check,
+                            "basis": "each sound's loudest 400 ms sits the house voice offset under the voice (full band); "
+                                     "phone_band_offset_lu repeats the check through a 300 Hz-8 kHz phone-speaker band. Confirm by listening."}
     receipt = {"project":str(project),"duration":duration,"width":width,"height":height,"fps":fps,"words":len(words),
                "caption_groups":len(groups),"caption_style":caption_style,"editorial_graphics":len(legacy_graphics),
                "graphics":len(graphic_meta),"shots":len(shots),"original_audio_preserved":has_audio,
@@ -758,12 +913,17 @@ def build(spec_path, project):
     return receipt
 
 
-def voice_loudness(path, segments):
-    """Integrated loudness (LUFS) of the kept speech; SFX levels are set relative to it."""
+def voice_loudness(path, segments, phone=False, band=None):
+    """Integrated loudness (LUFS) of the kept speech; SFX levels are set relative to it.
+    phone=True measures through a phone-speaker band (``band`` Hz, default the house style's)."""
     import re
     filters = "".join(f"[0:a]atrim={float(s['start'])}:{float(s['end'])},asetpts=PTS-STARTPTS[a{i}];" for i, s in enumerate(segments))
     joined = "".join(f"[a{i}]" for i in range(len(segments)))
-    graph = f"{filters}{joined}concat=n={len(segments)}:v=0:a=1,ebur128[out]"
+    shaping = ""
+    if phone:
+        lo, hi = band or STYLE["sound"]["phone_band_hz"]
+        shaping = f"highpass=f={lo}:poles=2,highpass=f={lo}:poles=2,lowpass=f={hi}:poles=2,"
+    graph = f"{filters}{joined}concat=n={len(segments)}:v=0:a=1,{shaping}ebur128[out]"
     result = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-filter_complex", graph,
                              "-map", "[out]", "-f", "null", "-"], capture_output=True, text=True)
     found = re.findall(r"I:\s*(-?\d+\.\d) LUFS", result.stderr)
@@ -773,8 +933,9 @@ def voice_loudness(path, segments):
     return value if value > -60 else None
 
 
-def bright_caption_band(path, shot, caption_y, split, split_fraction):
-    """Sample the media where captions sit; light UI needs a caption backing."""
+def bright_caption_band(path, shot, caption_y, split, split_fraction, whole=False):
+    """Sample the media where captions sit; light UI needs a caption backing. A 2.5D screen
+    plane moves under the captions, so whole=True judges the capture's overall brightness."""
     try:
         suffix = path.suffix.lower()
         if suffix in {".png", ".jpg", ".jpeg", ".webp", ".svg", ".avif"}:
@@ -788,6 +949,8 @@ def bright_caption_band(path, shot, caption_y, split, split_fraction):
         return False
     if len(raw) < 90 * 160:
         return False
+    if whole:
+        return sum(raw) / len(raw) > 140
     if split:
         seam = split_fraction * 100
         if caption_y - 3 >= seam:
@@ -894,27 +1057,75 @@ def frame_transition(transition, i, duration, px, ctx):
         travel = px.n(140) * sign
         blur = "60 0" if axis == "x" else "0 60"
         motion.append(f'tl.set("#frame",{{filter:"url(#whip-blur)"}},{at - half:.4f});')
-        motion.append(f'tl.fromTo("#whip-blur-g",{{attr:{{stdDeviation:"0 0"}}}},{{attr:{{stdDeviation:"{blur}"}},duration:{half:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
-        motion.append(f'tl.fromTo("#frame",{{{axis}:0}},{{{axis}:{travel:.1f},duration:{half:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#whip-blur-g",{{attr:{{stdDeviation:"0 0"}}}},{{attr:{{stdDeviation:"{blur}"}},duration:{half - .004:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#frame",{{{axis}:0}},{{{axis}:{travel:.1f},duration:{half - .004:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
         motion.append(f'tl.set("#frame",{{{axis}:{-travel:.1f}}},{at:.4f});')
         motion.append(f'tl.to("#frame",{{{axis}:0,duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
         motion.append(f'tl.to("#whip-blur-g",{{attr:{{stdDeviation:"0 0"}},duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
         motion.append(f'tl.set("#frame",{{filter:"none"}},{at + half:.4f});')
         ctx.sound(transition.get("sfx", "whoosh"), max(0, at - half), None, f"transition-{i}")
     elif kind == "zoom_blur":
-        motion.append(f'tl.fromTo("#frame",{{scale:1,filter:"blur(0px)"}},{{scale:1.14,filter:"blur({px.n(14):.1f}px)",duration:{half:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#frame",{{scale:1,filter:"blur(0px)"}},{{scale:1.14,filter:"blur({px.n(14):.1f}px)",duration:{half - .004:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
         motion.append(f'tl.set("#frame",{{scale:.9}},{at:.4f});')
         motion.append(f'tl.to("#frame",{{scale:1,filter:"blur(0px)",duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
         motion.append(f'tl.set("#frame",{{filter:"none"}},{at + half:.4f});')
         ctx.sound(transition.get("sfx", "whoosh_short"), max(0, at - half), None, f"transition-{i}")
-    if kind in {"whip", "zoom_blur"} and at - half < 0:
+    elif kind == "push_in":
+        # A tracked push into what the viewer should look at next (a card, a screen, a tag);
+        # the incoming shot continues the same forward motion.
+        tx, ty = (finite_number(v, f"transition {i} target") for v in transition.get("target", [50, 45]))
+        depth = finite_number(transition.get("depth", 2.4), f"transition {i} depth")
+        motion.append(f'tl.set("#frame",{{transformOrigin:"{tx:.1f}% {ty:.1f}%"}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#frame",{{scale:1,filter:"blur(0px)"}},{{scale:{depth:.2f},filter:"blur({px.n(10):.1f}px)",duration:{half - .004:.3f},ease:"power3.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.set("#frame",{{transformOrigin:"50% 45%",scale:.74,filter:"blur({px.n(8):.1f}px)"}},{at:.4f});')
+        motion.append(f'tl.to("#frame",{{scale:1,filter:"blur(0px)",duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
+        motion.append(f'tl.set("#frame",{{filter:"none"}},{at + half:.4f});')
+        ctx.sound(transition.get("sfx", "travel"), max(0, at - half), None, f"transition-{i}")
+    elif kind == "match_move":
+        # Carry one motion vector across the cut: the outgoing shot leaves in the direction of
+        # travel and the incoming one arrives from the opposite side still moving that way.
+        direction = transition.get("direction", "left")
+        if direction not in {"left", "right", "up", "down"}:
+            raise ValueError(f"transition {i} direction must be left, right, up or down")
+        prop = "xPercent" if direction in {"left", "right"} else "yPercent"
+        sign = -1 if direction in {"left", "up"} else 1
+        blur = "34 0" if prop == "xPercent" else "0 34"
+        motion.append(f'tl.set("#frame",{{filter:"url(#whip-blur)"}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#whip-blur-g",{{attr:{{stdDeviation:"0 0"}}}},{{attr:{{stdDeviation:"{blur}"}},duration:{half - .004:.3f},ease:"power2.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.fromTo("#frame",{{{prop}:0}},{{{prop}:{sign * 58},duration:{half - .004:.3f},ease:"power3.in",immediateRender:false}},{at - half:.4f});')
+        motion.append(f'tl.set("#frame",{{{prop}:{-sign * 58}}},{at:.4f});')
+        motion.append(f'tl.to("#frame",{{{prop}:0,duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
+        motion.append(f'tl.to("#whip-blur-g",{{attr:{{stdDeviation:"0 0"}},duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
+        motion.append(f'tl.set("#frame",{{filter:"none"}},{at + half:.4f});')
+        ctx.sound(transition.get("sfx", "travel"), max(0, at - half), None, f"transition-{i}")
+    elif kind == "shape_wipe":
+        # A shape grows from where the eye already is (a graphic, a button) and clears to the
+        # next shot; its color can carry over from the outgoing shot.
+        ox, oy = (finite_number(v, f"transition {i} origin") for v in transition.get("origin", [50, 50]))
+        color = str(transition.get("color", "#0b0e0c"))
+        if color.lower() in {"#49cf26", "green", "accent"}:
+            raise ValueError("shape_wipe cannot be accent green (it reads as the retired green flash); carry a color from the shot or use the dark canvas")
+        ex, ey = 100 - ox, 100 - oy
+        markup.append(f'<div id="transition-{i}" class="clip fx-layer" data-start="{at - half:.4f}" data-duration="{length:.4f}" data-track-index="8" '
+                      f'style="background:{escape(color)};clip-path:circle(0% at {ox:.1f}% {oy:.1f}%)"></div>')
+        motion.append(f'tl.fromTo("#transition-{i}",{{clipPath:"circle(0% at {ox:.1f}% {oy:.1f}%)"}},{{clipPath:"circle(150% at {ox:.1f}% {oy:.1f}%)",duration:{half:.3f},ease:"power3.in"}},{at - half:.4f});')
+        motion.append(f'tl.set("#transition-{i}",{{clipPath:"circle(150% at {ex:.1f}% {ey:.1f}%)"}},{at:.4f});')
+        motion.append(f'tl.to("#transition-{i}",{{clipPath:"circle(0% at {ex:.1f}% {ey:.1f}%)",duration:{half:.3f},ease:"power3.out"}},{at:.4f});')
+        ctx.sound(transition.get("sfx", "travel"), max(0, at - half), None, f"transition-{i}")
+    elif kind == "punch":
+        # An energetic hard cut: the incoming shot lands slightly pushed in and settles.
+        motion.append(f'tl.fromTo("#frame",{{scale:{finite_number(transition.get("scale", 1.1), f"transition {i} scale"):.3f}}},'
+                      f'{{scale:1,duration:{max(.12, length):.3f},ease:"power3.out",immediateRender:false}},{at:.4f});')
+        if transition.get("sfx"):
+            ctx.sound(transition["sfx"], at, None, f"transition-{i}")
+    if kind in {"whip", "zoom_blur", "push_in", "match_move", "shape_wipe"} and at - half < 0:
         raise ValueError(f"transition {i} needs {half:.2f}s before its cut")
     return markup, motion, {"kind": kind, "at": round(at, 3), "duration": length}
 
 
 def motion_report(layout_spans, duration, graphics, kept, dropped, transitions, resolver, caption_y, stage_captions, warnings):
     """Mechanical balance checks; the encoded render still needs human review."""
-    seconds = {"presenter": 0.0, "stage": 0.0, "split": 0.0, "full_broll": 0.0}
+    seconds = {"presenter": 0.0, "stage": 0.0, "split": 0.0, "full_broll": 0.0, "screen": 0.0}
     covered = 0.0
     for start, end, layout in layout_spans:
         seconds[layout] += max(0, end - start)
@@ -934,7 +1145,8 @@ def motion_report(layout_spans, duration, graphics, kept, dropped, transitions, 
         if g["type"] in COMPLEX_GRAPHICS and hold < 2.0:
             report["warnings"].append(f'{g["id"]}: {g["type"]} holds {hold:.2f}s; complex panels generally need 2-3s to read')
         x, y, w, h = g["box"]
-        if h is not None and y < caption_y + 7 and y + h > caption_y - 1 and g["type"] not in {"badge", "spotlight"}:
+        if (h is not None and y < caption_y + 7 and y + h > caption_y - 1 and g["type"] not in {"badge", "spotlight"}
+                and not g.get("hides_captions")):
             report["warnings"].append(f'{g["id"]}: box {y:.0f}-{y + h:.0f}% may collide with spoken captions at {caption_y}%')
         for a, b, seam in stage_captions:
             if (h is not None and g["start"] < b and g["end"] > a and y < seam + 5 and y + h > seam + .5
@@ -963,7 +1175,7 @@ def motion_report(layout_spans, duration, graphics, kept, dropped, transitions, 
                 report["warnings"].append(f'three {run_type} graphics in a row near {g["start"]:.1f}s; vary the treatment')
         else:
             run_type, run_length = g["type"], 1
-    enters = [g["enter"] for g in ordered if g["type"] not in {"headline"}]
+    enters = [g["enter"] for g in ordered if g["type"] not in {"headline", "hero", "reveal", "particles", "cta"}]
     for i in range(len(enters) - 3):
         if len(set(enters[i:i + 4])) == 1:
             report["warnings"].append(f'four consecutive graphics share the "{enters[i]}" entrance; vary entrances')

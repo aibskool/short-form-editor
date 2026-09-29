@@ -297,7 +297,8 @@
             "generated_concept",
             "original_diagram",
             "original_presenter"
-          ]
+          ],
+          "description": "Optional description of where a visual came from, kept so older maps validate. Never a gate: an authored graphic can illustrate any narrated step."
         },
         "truth_status": {
           "enum": [
@@ -305,7 +306,8 @@
             "source_only",
             "illustrative",
             "unknown"
-          ]
+          ],
+          "description": "Legacy field kept so older maps validate. Optional, never checked, never a reason to hold, soften or cut a narrated claim."
         },
         "visible_content": {
           "type": "string",
@@ -328,7 +330,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Legacy field kept so older maps validate. Optional, never checked, never a reason to hold, soften or cut a narrated claim."
         },
         "evidence_refs": {
           "type": "array",
@@ -336,7 +339,8 @@
             "type": "string",
             "minLength": 1
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "Legacy field kept so older maps validate. Optional, never checked, never a reason to hold, soften or cut a narrated claim."
         },
         "limitations": {
           "type": "array",
@@ -344,7 +348,8 @@
             "type": "string",
             "minLength": 1
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "Legacy field kept so older maps validate. Optional, never checked, never a reason to hold, soften or cut a narrated claim."
         },
         "on_screen_label": {
           "anyOf": [
@@ -355,7 +360,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Legacy field kept so older maps validate. Optional, never checked, never a reason to hold, soften or cut a narrated claim."
         },
         "rejected_alternatives": {
           "type": "array",
@@ -427,11 +433,14 @@
           "minLength": 1
         },
         "primary_job": {
+          "description": "What the visual does for the viewer. 'proof' is the legacy name for a demonstration and carries no evidence requirement.",
           "enum": [
-            "proof",
+            "demonstration",
+            "result",
             "explanation",
             "metaphor",
-            "presenter"
+            "presenter",
+            "proof"
           ]
         },
         "visual": {
@@ -817,7 +826,8 @@
                   "$ref": "#/$defs/score"
                 },
                 "evidence_honesty": {
-                  "$ref": "#/$defs/score"
+                  "$ref": "#/$defs/score",
+                  "description": "Legacy score kept so older reviews validate; not required and not a gate."
                 },
                 "timing_readability": {
                   "$ref": "#/$defs/score"
@@ -942,7 +952,8 @@
                     ]
                   },
                   "evidence_honesty": {
-                    "$ref": "#/$defs/score"
+                    "$ref": "#/$defs/score",
+                    "description": "Legacy score kept so older reviews validate; not required and not a gate."
                   },
                   "timing_readability": {
                     "allOf": [
@@ -1005,13 +1016,16 @@
       ]
     },
     "failureCode": {
+      "description": "Craft failures a reviewer can hold an edit on. Brandon's narration is authoritative, so no code asks footage to prove a claim.",
       "enum": [
-        "contradictory_evidence",
-        "false_product_proof",
         "false_source_or_reuse",
         "required_content_illegible",
-        "unsupported_visual_claim",
-        "meaning_or_cta_lost"
+        "meaning_or_cta_lost",
+        "claim_softened_or_cut",
+        "disclaimer_on_screen",
+        "presenter_lost",
+        "off_word_timing",
+        "retired_pattern"
       ]
     }
   },

@@ -1,12 +1,12 @@
 # Asset playbook: where to look and what to keep
 
-Use this during research and again after word timing is locked. Read [visual evidence](visual-evidence.md) for provenance rules. An asset is useful only if it helps the viewer understand this particular spoken point.
+Use this during research and again after word timing is locked. Read [choosing visuals](visual-evidence.md) and the [house style](house-style.md). An asset is useful only if it helps the viewer understand this particular spoken point.
 
 ## Choose the visual job first
 
-For each beat, fill this sentence before searching: **“When Brandon says ___, the viewer needs to see ___ because ___.”** Assign proof, explanation, metaphor or presenter. Then follow the first applicable row:
+For each beat, fill this sentence before searching: **“When Brandon says ___, the viewer needs to see ___ because ___.”** Assign demonstration, result, explanation, metaphor or presenter. The table below is for picking sources when a story cites someone else's work; it never limits what Brandon says. His narration is the input, and an original motion graphic can illustrate any step he describes. Then follow the first applicable row:
 
-| Spoken point | Search/capture target | What must be visible | What it establishes |
+| Spoken point | Search/capture target | What must be visible | What it shows |
 |---|---|---|---|
 | A launch or announced feature | Original maker post, official changelog/release | Author/product, date/version, exact feature clause | The source announced/documented it |
 | A GitHub tool or open source workflow | Official repository, README section, release, license | Owner/name then the relevant heading/command; required qualifications | Repository contents/terms, not an executed result |
@@ -14,18 +14,18 @@ For each beat, fill this sentence before searching: **“When Brandon says ___, 
 | “Type/connect/click/upload” | Real app recording of that exact action | Recognizable app, actual input, visible action and resulting state | The recorded action; typing alone is not success |
 | Someone's statement or testimonial | Original tweet/post/interview | Exact quote, identity/date and context | That person said it, not that the claim is universally true |
 | A saved resource or giveaway | Brandon's actual file/page/repository | Title, useful excerpt, real contents | The resource exists and contains the excerpt |
-| An abstract relationship | First inspect a relevant real source diagram; otherwise author/generate a simple illustration | Correct entities/counts and one relationship | Explanation, not empirical proof |
+| An abstract relationship | First inspect a relevant real source diagram; otherwise author/generate a simple illustration | Correct entities/counts and one relationship | The relationship, made easy to follow |
 | A transition, opinion, warning or CTA | Presenter, perhaps a single keyword | Face/gesture and concise caption | Brandon's delivery; B-roll is optional |
 
 ## Search in this order
 
 1. **Eden:** search the subject/product plus synonyms. Open the saved item, then its original link. Use `saved-resources.md`; retain the saved-item ID. Bookmarks are also giveaway candidates. Do not mistake the save date for the event date.
-2. **User assets:** inspect the supplied Drive folder, previous reel's asset index and this reel's own resource files. Reuse only assets relevant to the new claim. A prior Council illustration does not prove a new tool works.
+2. **User assets:** inspect the supplied Drive folder, previous reel's asset index and this reel's own resource files. Reuse only assets relevant to the new story; a prior reel's illustration rarely fits a new one.
 3. **Primary web:** use exact queries such as `PRODUCT official release FEATURE`, `site:github.com/OWNER/REPO FEATURE`, `site:docs.PRODUCT.com FEATURE`, or the original author's post plus distinctive phrase. Use installed web/Firecrawl tools. Open results rather than using search snippets as evidence.
-4. **Visual search:** search the named physical thing/action for original images, screenshots, clips or an appropriate meme. Follow the result to its source and inspect reuse terms. Stock footage illustrates a concept; it cannot validate product behavior. A meme should reinforce the line without creating another reading task.
-5. **Generate/author:** only after identifying the actual missing visual job. Read `generation-recipes.md`. Do not generate fake tweets, repos, benchmark tables, app output or testimonials to fill an evidence gap.
+4. **Visual search:** search the named physical thing/action for original images, screenshots, clips or an appropriate meme. Follow the result to its source and inspect reuse terms. Stock footage illustrates a concept. A meme should reinforce the line without creating another reading task.
+5. **Generate/author:** only after identifying the actual missing visual job. Read `generation-recipes.md`. Do not generate tweets, repos, benchmark tables or testimonials that pose as real third-party records; an original graphic of Brandon's point is always fine.
 
-Timebox an ordinary beat to three distinct searches and inspection of the most promising results. If nothing useful appears, change the treatment: show an actual resource excerpt, use the presenter, or make a narrow illustration. Do not turn a weak source into proof because the search took time. Save rejected leads with a short reason so the next agent does not repeat the search.
+Timebox an ordinary beat to three distinct searches and inspection of the most promising results. If nothing useful appears, change the treatment: show an actual resource excerpt, use the presenter, or make a narrow illustration. Do not keep a weak source because the search took time. Save rejected leads with a short reason so the next agent does not repeat the search.
 
 ## Prefer motion when selecting B-roll
 
@@ -33,13 +33,13 @@ For equally relevant, readable candidates, prefer an actual moving clip over a s
 
 Prioritize the first 3–5 seconds when allocating the strongest assets. Give the editor several relevant ways to see the hook: an action, a tight detail and a wider/result view where available. Build diversity from different source types, views, regions, scales and actions; do not merely collect multiple nearly identical screens. Search for clips that can work full-screen as well as split-screen. Record whether the important action and source context survive a vertical crop. Full-screen moving B-roll is a preferred option whenever it improves visual impact or clarity.
 
-Keep a static original when it provides stronger proof than available motion. Attach a proposed slow zoom/reframe and the detail that must stay visible; a useful still with deliberate camera motion is better than irrelevant video. A captured still does not become evidence of real app interaction when animated. If a genuine recording cannot be obtained, use the honest still treatment or an identified illustration and keep that limitation in the asset index.
+Keep a static original when it reads better than the available motion. Attach a proposed slow zoom/reframe and the detail that must stay visible; a useful still with deliberate camera motion is better than irrelevant video. When no recording exists, animate the still or build an original motion graphic of the step.
 
-For each selected visual, add a short `motion_note` in its existing notes field (or the source shortlist): `kind` (recorded action / camera move on still / intentional still / authored illustration), `visible_action`, `usable_source_range`, `vertical_crop_limits`, and `suggested_layout`. These are editorial notes, not new required renderer keys. Mark opening candidates and reject repetitive or motionless clips that offer no stronger proof.
+For each selected visual, add a short `motion_note` in its existing notes field (or the source shortlist): `kind` (recorded action / camera move on still / intentional still / authored illustration), `visible_action`, `usable_source_range`, `vertical_crop_limits`, and `suggested_layout`. These are editorial notes, not new required renderer keys. Mark opening candidates and reject repetitive or motionless clips that add nothing.
 
 ## Music and effects are production assets
 
-For Brandon short-form, source only claim-relevant picture and selected effects. Do not source or mix a music bed; Brandon adds it on the platform. Record the source, license, hash and intended cue for each SFX. Use real screen captures for claimed actions/results, and do not put internal provenance caveats into the rendered picture. Kinetic cards and illustrations need animated entrances or internal changes; use purposeful transitions at selected boundaries.
+For Brandon short-form, source only claim-relevant picture and selected effects. Do not source or mix a music bed; Brandon adds it on the platform. Record the source, license, hash and intended cue for each SFX. Use screen captures where they show the action clearly and original motion graphics where they don't, and never put provenance caveats into the rendered picture. Kinetic cards and illustrations need animated entrances or internal changes; use purposeful transitions at selected boundaries.
 
 ## Reject noun matches before editing
 
@@ -52,9 +52,9 @@ Before selecting a shot, record these four answers in its asset request:
 3. **Alternative:** compare one stronger treatment, such as a mechanism diagram, actual resource excerpt, recorded action or simple physical metaphor. Prefer the one with the clearest immediate takeaway, not the most official-looking page.
 4. **Phone check:** inspect the presentation crop at the planned on-screen size. Read the required words, or identify the visual action. If you cannot, tighten/change the crop or replace the shot before rendering.
 
-The first lower-tier trial failed these checks: it inserted a whole Wikipedia Judge page for an AI evaluation beat, and an INVESTOR title/question card for a business-evaluation beat. Both files rendered correctly; neither provided the intended concrete visual explanation. Preserve that distinction. For an investor metaphor, a concise financial action/asset is more useful than a second text summary. For evaluation, a relevant source diagram can explain the mechanism, but must not imply this particular prompt was executed.
+The first lower-tier trial failed these checks: it inserted a whole Wikipedia Judge page for an AI evaluation beat, and an INVESTOR title/question card for a business-evaluation beat. Both files rendered correctly; neither provided the intended concrete visual explanation. Preserve that distinction. For an investor metaphor, a concise financial action/asset is more useful than a second text summary. For evaluation, a relevant source diagram or an original diagram can explain the mechanism.
 
-Do not keep a source just to satisfy an asset quota. A strong presenter beat or clearly identified illustration is better than irrelevant “proof.” Generated metaphors are allowed when useful; fabricated evidence is not.
+Do not keep a source just to satisfy an asset quota. A strong presenter beat or an original illustration is better than an irrelevant source. Generated metaphors are welcome; fake third-party records (a tweet, review or receipt dressed as real) are not.
 
 ## Capture a public page
 
@@ -76,7 +76,7 @@ For an authenticated post or app, use the connected browser/appropriate CLI. Rea
 
 Write a five-line recording brief: **start state, exact input, action, expected observable result, stop state**. Prepare the smallest harmless example that demonstrates the script. Record the app itself at readable resolution. Pause roughly half a second before the action and at least one second after the result, giving the editor trim handles. Make deliberate cursor movements; hide unrelated windows and notifications.
 
-An API transcript or a recreated HTML composer is not a screen recording. If browser recording is unavailable, capture honest before/after screenshots and cut between them, or label the authored explanation. If the request needs genuine interaction proof and no recording can be made, keep that shot unresolved; do not claim execution.
+An API transcript or a recreated HTML composer is not a screen recording, so don't present one as a capture of someone else's product. If browser recording is unavailable, cut between before/after screenshots or build an original motion graphic of the step Brandon describes; the beat stays in the edit either way.
 
 If a recorded action takes 20 seconds but the line lasts three, preserve the action and result, remove dead waiting with a visible cut, then hold the result. Do not silently retime a measured benchmark or imply its sped-up footage shows real elapsed time.
 
@@ -94,6 +94,6 @@ ffmpeg -ss IN -i /absolute/master.mp4 -t LENGTH \
 
 Keep enough usable duration for the entire intended shot. Freeze a final frame only when it is an intentional still hold; do not hide a too-short clip or loop an app result. Source in/out refers to the master; timeline start/end refers to the final reel. Keep those fields distinct.
 
-Each selected asset needs: stable ID, local path, hash, source URL/master ID, capture/generation method, source bounds/crop if derived, representation, supported claim, limitations, reuse basis, and inspected status. Keep alternatives in the source shortlist; the active asset index must name what is actually rendered. `production/pilots/council-v2/asset-index.json` and `proof-sources.json` show the distinction.
+Each selected asset needs: stable ID, local path, hash, source URL/master ID, capture/generation method, source bounds/crop if derived, the beat it illustrates, reuse basis and inspected status. For the planner, also list it in `assets.json` with tags, quality, aspect and moments (see [house style](house-style.md)). Keep alternatives in the source shortlist; the active asset index must name what is actually rendered. `production/pilots/council-v2/asset-index.json` and `proof-sources.json` show the distinction.
 
 For giveaways, link an original public resource with attribution or create an original guide/adaptation within its terms. A saved bookmark is not permission to redistribute a paid/private file. Show the actual final promised resource at the CTA, then keep its hash tied to the Skool/ManyChat handoff.

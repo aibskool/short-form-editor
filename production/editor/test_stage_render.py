@@ -44,7 +44,7 @@ class StageRenderTests(unittest.TestCase):
             (root / "words.json").write_text(json.dumps(words))
             spec = {"source": {"path": str(source), "segments": [{"start": 0, "end": 3}]}, "words_path": "words.json",
                     "output": {"width": W, "height": H, "fps": 30}, "audio_policy": {"music_required": False},
-                    "spoken_captions": {"style": "karaoke"},
+                    "spoken_captions": {"style": "pop"},
                     "shots": [{"start": 0, "end": 1, "layout": "stage", "backdrop": "plain"},
                               {"start": 1, "end": 3, "layout": "presenter"}],
                     "graphics": [{"type": "badge", "start": "@three", "end": .95, "text": "#1", "x": 5, "y": 8, "w": 40,

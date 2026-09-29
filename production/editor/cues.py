@@ -8,7 +8,7 @@ Any time field in the new motion system accepts either seconds or a cue:
     "@first client"             start of the first consecutive "first client"
     "@casino:end"               end of that word (or phrase)
     "@casino+0.12" / "@casino-0.1"   offset in seconds (applied after the edge)
-    "@w14"                      start of mapped word index 14
+    "@w14"                      start of mapped word index 14 (when "w14" is not itself spoken)
     {"word": "casino", "n": 2, "edge": "end", "offset": 0.1}
     {"word_index": 14, "edge": "start"}
 
@@ -25,6 +25,12 @@ _TOKEN = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.UNICODE)
 def normalize(text):
     """Lowercase tokens without punctuation; keeps apostrophe contractions."""
     return [t.replace("’", "'") for t in _TOKEN.findall(str(text).casefold())]
+
+
+def emphasis_key(text):
+    """The one key caption emphasis compares on, in the planner and the builder: casefolded,
+    letters, digits, $ and % only ("$5,000." matches "$5000", "“Website”" matches "website")."""
+    return re.sub(r"[^\w$%]", "", str(text).casefold())
 
 
 class CueError(ValueError):
@@ -122,8 +128,9 @@ class CueResolver:
             # "@GPT-5" or "@24-7": a trailing number that belongs to a spoken word is not an offset.
             if match["offset"] and not match["n"] and not match["edge"] and self.occurrences(body + match["offset"]):
                 body, offset = body + match["offset"], 0.0
+            # "@w14" is word index 14 unless "w14" is itself a spoken word ("the W2 form").
             index_match = re.fullmatch(r"w(\d+)", body)
-            if index_match:
+            if index_match and not self.occurrences(body):
                 first = last = int(index_match[1])
             else:
                 first, last = self._phrase(body, int(match["n"] or 1), None if match["n"] else after,

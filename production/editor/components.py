@@ -10,6 +10,15 @@ import math
 import re
 
 from icons import icon_svg, ICON_NAMES
+import style
+
+ROLES = {"popup", "popup_soft", "travel", "section", "reveal", "tap", "type", "count", "strike", "highlight"}
+# Kinds that components used to request directly now map to roles in the house style.
+ROLE_OF_KIND = {"pop": "popup", "tick": "highlight", "tap": "tap", "draw": "highlight", "deny": "strike",
+                "typing": "type", "ticker": "count", "paper": "travel", "thud": "reveal", "stamp": "reveal",
+                "whoosh_short": "travel", "whoosh": "section"}
+LANDING_ROLES = {"popup", "popup_soft", "tap"}
+LANDING_DELAY = .07
 
 REGIONS = {
     # x, y, w (percent of frame). Heights are content-driven unless h is set.
@@ -51,10 +60,11 @@ def num(value, label, low=None, high=None):
 class Ctx:
     """Shared build context handed to every component."""
 
-    def __init__(self, px, design, feel, resolver, width, height, fps, duration, media):
+    def __init__(self, px, design, feel, resolver, width, height, fps, duration, media, house=None):
         self.px, self.design, self.feel, self.resolver = px, design, feel, resolver
         self.width, self.height, self.fps, self.duration = width, height, fps, duration
         self.media = media
+        self.house = house or style.load()  # the timeline's merged house style
         self.sfx_events = []
         self.report = []
 
@@ -62,11 +72,26 @@ class Ctx:
         return self.resolver.frame(self.resolver.resolve(value, label, after, strict))
 
     def sound(self, kind, at, gain=None, source="", duration=None):
-        if kind:
-            event = {"kind": kind, "at": round(float(at), 4), "gain": gain, "source": source}
-            if duration is not None:
-                event["duration"] = duration
-            self.sfx_events.append(event)
+        """Queue a sound by semantic role ("popup", "travel", "section", "reveal", "tap",
+        "type", "count", "strike", "highlight") or by kind. Older component kinds map to
+        roles, and the house style spec decides the actual sound (or silence) per role:
+        pop-ups get the bubble family, travel and sections quiet whooshes, reveals a
+        restrained impact."""
+        if not kind:
+            return
+        role = kind if kind in ROLES else ROLE_OF_KIND.get(kind)
+        if role:
+            kind = style.sound_role(role, self.house)
+            if not kind:
+                return
+            if role in LANDING_ROLES:
+                at = float(at) + LANDING_DELAY  # a pop lands when the graphic reaches full size
+        event = {"kind": kind, "at": round(float(at), 4), "gain": gain, "source": source}
+        if role:
+            event["role"] = role
+        if duration is not None:
+            event["duration"] = duration
+        self.sfx_events.append(event)
 
 
 def words_markup(text, accent=(), accent_class="accent-c", serif_accent=False):
@@ -89,7 +114,7 @@ class Component:
     default_region = "center"
     default_enter = "pop"
     default_exit = "fade"
-    default_sfx = "pop"
+    default_sfx = "popup"
 
     def __init__(self, spec, index, ctx):
         self.g, self.ctx, self.index = spec, ctx, index
@@ -185,7 +210,7 @@ class Component:
         scrim = self.g.get("scrim", False)
         scrim_markup = ""
         if scrim:
-            klass = "mg-scrim band" if scrim == "band" else "mg-scrim"
+            klass = {"band": "mg-scrim band", "plate": "mg-scrim plate"}.get(scrim, "mg-scrim")
             scrim_markup = f'<div id="{self.id}-scrim" class="{klass}" data-layout-allow-overflow></div>'
             self.a(f'tl.fromTo("#{self.id}-scrim",{{opacity:0}},{{opacity:1,duration:{min(.35, self.hold() / 3):.3f},ease:"power1.out"}},{self.start:.4f});')
             self.a(f'tl.to("#{self.id}-scrim",{{opacity:0,duration:{min(.3, self.hold() / 3):.3f},ease:"power1.in"}},{max(self.start, self.end - .3):.4f});')
@@ -257,6 +282,26 @@ class Component:
 
     def render(self):
         raise NotImplementedError
+
+    # Hero text repeats the spoken words in large type, so the short captions step aside
+    # while it is up ("captions": "keep" or "hide" overrides the default per graphic).
+    caption_default = "keep"
+
+    def hides_captions(self):
+        choice = self.g.get("captions", self.caption_default)
+        if choice not in {"keep", "hide"}:
+            raise ValueError(f"{self.id} captions must be keep or hide")
+        return choice == "hide"
+
+    showpiece_variants = ()
+
+    def meta_box(self):
+        """Frame-percent box the review uses for collisions (x, y, w, h or None)."""
+        return [self.x, self.y, self.w, self.h]
+
+    def showpiece(self):
+        """True for art-directed moments the acceptance review counts (hook, reveal, payoff)."""
+        return bool(self.g.get("showpiece")) or self.g.get("variant") in self.showpiece_variants
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +401,7 @@ class Statement(Component):
     default_enter = "rise"
     default_exit = "blur"
     default_sfx = None
+    caption_default = "hide"
 
     def render(self):
         g = self.g
@@ -549,7 +595,7 @@ class Flow(Component):
     kind = "flow"
     default_region = "stage"
     default_enter = "none"
-    default_sfx = "pop"
+    default_sfx = "popup"
 
     LAYOUTS = {"row", "column", "triangle", "hub", "custom", "zigzag"}
 
@@ -712,7 +758,7 @@ class Orbit(Component):
     kind = "orbit"
     default_region = "stage"
     default_enter = "none"
-    default_sfx = "pop"
+    default_sfx = "popup"
 
     def render(self):
         g = self.g
@@ -1169,7 +1215,7 @@ class Equation(Component):
     kind = "equation"
     default_region = "top"
     default_enter = "none"
-    default_sfx = "pop"
+    default_sfx = "popup"
 
     def render(self):
         g = self.g
@@ -1238,7 +1284,7 @@ class CTA(Component):
     kind = "cta"
     default_region = "lower"
     default_enter = "none"
-    default_sfx = "pop"
+    default_sfx = "popup"
     STYLES = {"chip", "stamp", "type", "bubble", "underline", "fan"}
 
     def render(self):
@@ -1336,7 +1382,14 @@ def render_graphics(graphics, ctx):
         anims.extend(a)
         meta.append({"id": component.id, "type": kind, "start": round(component.start, 3), "end": round(component.end, 3),
                      "beat": spec.get("beat", ""), "enter": component.enter, "exit": component.exit,
-                     "box": [round(component.x, 2), round(component.y, 2), round(component.w, 2),
-                             None if component.h is None else round(component.h, 2)],
-                     "depth": component.depth, "scrim": bool(spec.get("scrim", False))})
+                     "box": [None if v is None else round(v, 2) for v in component.meta_box()],
+                     "depth": component.depth, "scrim": bool(spec.get("scrim", False)),
+                     "hides_captions": component.hides_captions(),
+                     "variant": spec.get("variant"), "showpiece": component.showpiece(),
+                     **({"size_px": component.fitted_px} if getattr(component, "fitted_px", None) else {})})
     return markup, anims, meta
+
+
+# Presenter-first showreel primitives (hero type, callout tags, payoff reveal, particles).
+# motion_kit registers them into COMPONENTS itself, so importing either module first works.
+import motion_kit  # noqa: E402,F401

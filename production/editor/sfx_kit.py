@@ -5,6 +5,7 @@ dropping bodies, then peak-normalized. Levels in DEFAULT_GAIN sit well under
 speech; judge the final mix by listening at phone volume.
 """
 import math
+import re
 import wave
 from pathlib import Path
 
@@ -13,19 +14,28 @@ from scipy import signal
 
 RATE = 48000
 
+import style
+
 DEFAULT_GAIN = {
     "whoosh": .20, "whoosh_short": .18, "swipe": .13, "pop": .20, "tick": .16, "tap": .17,
     "typing": .12, "thud": .24, "riser": .13, "draw": .10, "paper": .15, "deny": .18,
-    "stamp": .24, "shimmer": .07, "ticker": .12,
+    "stamp": .24, "shimmer": .07, "ticker": .12, "bubble": .16, "bubble_soft": .12, "impact_soft": .2,
 }
-IMPACTS = {"thud", "stamp", "riser"}
-# Level of each sound's loudest 400 ms relative to the voice's integrated loudness (LU).
+IMPACTS = {"thud", "stamp", "riser", "impact_soft"}
+BUBBLES = {"bubble", "bubble_soft"}
+# Level of each sound's loudest 400 ms relative to the voice's integrated loudness (LU),
+# from the house style spec; kinds the spec does not list keep these fallbacks.
 VOICE_OFFSET = {
     "whoosh": -10, "whoosh_short": -11, "swipe": -13, "pop": -12, "tap": -14, "tick": -15, "typing": -16,
     "ticker": -16, "draw": -15, "paper": -13, "deny": -12, "stamp": -9, "thud": -9, "riser": -12, "shimmer": -18,
+    "bubble": -15, "bubble_soft": -18, "impact_soft": -12,
 }
-LEGACY = {"soft_pop": "pop", "soft_click": "tick", "soft_whoosh": "whoosh_short", "soft_error": "deny"}
+VOICE_OFFSET.update(style.load()["sound"]["voice_offset_lu"])
+# Older timelines named sounds that are now retired; "pop" becomes the bubble family.
+LEGACY = {"soft_pop": "bubble", "soft_click": "tick", "soft_whoosh": "whoosh_short", "soft_error": "deny", "pop": "bubble"}
 KINDS = frozenset(DEFAULT_GAIN)
+VARIANTS = int(style.load()["sound"].get("bubble_variants", 6))
+HOOK_WINDOW = float(style.load()["hook"]["payoff_by"])
 
 
 def _noise(n, seed):
@@ -74,9 +84,40 @@ def _click(n, seed, lo=2500, hi=7000, decay=.006):
     return burst
 
 
-def synth(kind, duration=None, seed=7):
+def _bubble(seed, variant, soft=False):
+    """Soft, rounded bubble pop: a short sine whose pitch rises as the bubble closes,
+    a smooth attack and a quick decay, low-passed for roundness. Each variant shifts
+    pitch, glide, decay and texture slightly so repeated pop-ups never sound identical."""
+    rng = np.random.default_rng(1000 + seed * 31 + variant * 7)
+    base = (330 if soft else 470) * (0.88 + 0.24 * rng.random())
+    rise = (0.30 if soft else 0.42) + 0.30 * rng.random()
+    decay = (0.034 if soft else 0.026) + 0.014 * rng.random()
+    n = int(RATE * (0.16 if soft else 0.13))
+    t = np.arange(n) / RATE
+    freq = base * (1 + rise * (1 - np.exp(-t / 0.016)))
+    phase = 2 * np.pi * np.cumsum(freq) / RATE
+    attack = 0.5 - 0.5 * np.cos(np.pi * np.clip(t / 0.004, 0, 1))
+    env = attack * np.exp(-t / decay)
+    tone = np.sin(phase) + (0.06 + 0.1 * rng.random()) * np.sin(2.3 * phase + 0.7)
+    wet = _lp(_noise(n, seed + 90 + variant), 3200) * np.exp(-t / 0.004) * (0.04 if soft else 0.07) * (0.6 + 0.8 * rng.random())
+    x = tone * env + wet
+    x = _lp(x, 2600 if soft else 3400, order=2)
+    sos = signal.butter(2, 140, "highpass", fs=RATE, output="sos")
+    return signal.sosfilt(sos, x)
+
+
+def synth(kind, duration=None, seed=7, variant=0):
     kind = LEGACY.get(kind, kind)
-    if kind == "whoosh":
+    if kind in BUBBLES:
+        x = _bubble(seed, variant, soft=kind == "bubble_soft")
+    elif kind == "impact_soft":
+        # Restrained reveal impact: a low rounded body and a short air tail, no crack.
+        n = int(RATE * .46)
+        t = np.arange(n) / RATE
+        body = _body(n, 82, 44, .15) * (0.5 - 0.5 * np.cos(np.pi * np.clip(t / .006, 0, 1)))
+        air = _lp(_noise(n, seed + 95), 1100) * np.exp(-t / .045) * .28
+        x = _lp(body + air, 1800)
+    elif kind == "whoosh":
         n = int(RATE * .56)
         x = _band_sweep(_noise(n, seed), [380, 900, 2300, 1500, 700], .9) * _env(n, .58, .42, 2.4)
     elif kind == "whoosh_short":
@@ -169,8 +210,8 @@ def synth(kind, duration=None, seed=7):
     return x / peak * 10 ** (-1 / 20)  # -1 dBFS peak
 
 
-def write(kind, path, duration=None):
-    data = synth(kind, duration)
+def write(kind, path, duration=None, variant=0):
+    data = synth(kind, duration, variant=variant)
     pcm = np.clip(data * 32767, -32768, 32767).astype("<i2").tobytes()
     with wave.open(str(path), "wb") as out:
         out.setparams((1, 2, RATE, 0, "NONE", "not compressed"))
@@ -178,39 +219,62 @@ def write(kind, path, duration=None):
     return len(data) / RATE
 
 
-TRANSIENTS = {"pop", "tick", "tap", "draw", "deny", "stamp", "thud"}
+TRANSIENTS = {"pop", "tick", "tap", "draw", "deny", "stamp", "thud", "bubble", "bubble_soft", "impact_soft"}
 SUSTAINED = {"typing", "ticker", "riser", "shimmer", "paper"}
 
 
-def priority(event):
-    """Lower wins: explicit > transitions/layout moves > semantic sounds > entrances."""
+def priority(event, hook_window=HOOK_WINDOW):
+    """Lower wins: explicit > transitions/layout moves > anything in the hook window >
+    reveals and sustained sounds > entrances."""
     if event.get("explicit"):
         return 0
     source = str(event.get("source", ""))
     kind = LEGACY.get(event["kind"], event["kind"])
-    if source.startswith(("transition-", "shot-", "camera-")):
-        return 1
-    if kind in SUSTAINED or kind in {"stamp", "thud", "deny"}:
+    if re.fullmatch(r"(transition|shot|camera)-\d+", source):
+        return 1  # section moves (a highlight inside a shot is an entrance, not a move)
+    if float(event["at"]) < hook_window:
+        return 1.5  # the hook's own pop-ups keep their sound ahead of later ones
+    if kind in SUSTAINED or kind in {"stamp", "thud", "deny", "impact_soft"} or event.get("role") == "reveal":
         return 2
     return 3
 
 
-def plan(events, duration, policy=None):
-    """Thin automatic SFX so effects stay restrained: spacing, impact budget, clamps.
+def speech_rate(words, at, window=.6):
+    """Words per second around a moment; dense speech has no room for a pop."""
+    if not words:
+        return 0.0
+    count = sum(1 for w in words if at - window <= float(w["start"]) <= at + window)
+    return count / (2 * window)
 
-    Sustained sounds (typing, counters) may layer under a transient; two transients
-    or two whooshes may not crowd each other. Returns (kept, dropped).
-    """
-    policy = dict({"min_gap": .12, "max_impacts": 3, "impact_gap": 4.0, "whoosh_gap": 1.0, "same_kind_gap": .3}, **(policy or {}))
-    ordered = sorted(events, key=lambda e: (priority(e), float(e["at"])))
+
+def plan(events, duration, policy=None, words=None, house=None):
+    """Keep sound effects sparse: bubble pops only where a pop-up lands and speech leaves room,
+    one pop per cluster of arrivals, quiet whooshes spaced out, an impact budget, a cap per
+    ten seconds and per spoken word. Sustained sounds may layer under a transient.
+    ``house`` is the (timeline-merged) style spec. Returns (kept, dropped)."""
+    spec = house or style.load()
+    sound = spec["sound"]
+    policy = dict({"min_gap": .12, "max_impacts": sound["max_impacts"], "impact_gap": sound["impact_gap"],
+                   "whoosh_gap": 1.0, "same_kind_gap": .3, "popup_min_gap": sound["popup_min_gap"],
+                   "dense_speech_wps": sound["dense_speech_wps"], "max_per_10s": sound["max_per_10s"],
+                   "max_per_word": sound.get("max_per_word")},
+                  **(policy or {}))
+    retired = set(sound.get("forbidden_kinds", [])) - set(LEGACY)
+    hook_window = float(spec["hook"]["payoff_by"])
+    ordered = sorted(events, key=lambda e: (priority(e, hook_window), float(e["at"])))
     kept, dropped = [], []
     impacts = []
+    # Never more than one effect per so many spoken words, whatever the density windows allow.
+    budget = max(2, int(len(words) * float(policy["max_per_word"]))) if words and policy.get("max_per_word") else None
     for event in ordered:
         kind = LEGACY.get(event["kind"], event["kind"])
-        if kind not in KINDS:
-            raise ValueError(f"unknown SFX kind {event['kind']!r}")
         at = float(event["at"])
         reason = None
+        if kind in retired and not event.get("explicit"):
+            dropped.append({**event, "kind": kind, "reason": f"{kind} is retired from the house sound policy"})
+            continue
+        if kind not in KINDS:
+            raise ValueError(f"unknown SFX kind {event['kind']!r}")
         if not 0 <= at < duration:
             reason = "outside timeline"
         elif kind in IMPACTS and not event.get("explicit"):
@@ -219,18 +283,30 @@ def plan(events, duration, policy=None):
             elif any(abs(at - other) < policy["impact_gap"] for other in impacts):
                 reason = "impact too close to another impact"
         if reason is None and not event.get("explicit"):
+            if kind in BUBBLES and event.get("role") != "reveal" and speech_rate(words, at) > policy["dense_speech_wps"]:
+                reason = f"dense speech ({speech_rate(words, at):.1f} words/s) leaves no room for a pop"
             for other in kept:
+                if reason:
+                    break
                 gap = abs(at - other["at"])
                 other_kind = other["kind"]
-                if kind == other_kind and gap < policy["same_kind_gap"]:
+                if kind in BUBBLES and other_kind in BUBBLES and gap < policy["popup_min_gap"]:
+                    reason = f"pop-ups arrive in a cluster ({gap:.2f}s apart); one pop covers them"
+                elif kind == other_kind and gap < policy["same_kind_gap"]:
                     reason = f"same sound {gap:.2f}s after another {kind}"
-                    break
-                if kind in TRANSIENTS and other_kind in TRANSIENTS and gap < policy["min_gap"]:
+                elif kind in TRANSIENTS and other_kind in TRANSIENTS and gap < policy["min_gap"]:
                     reason = f"within {policy['min_gap']}s of {other_kind}"
-                    break
-                if kind.startswith("whoosh") and other_kind.startswith("whoosh") and gap < policy["whoosh_gap"]:
+                elif kind.startswith("whoosh") and other_kind.startswith("whoosh") and gap < policy["whoosh_gap"]:
                     reason = "whooshes too dense"
-                    break
+            if reason is None and budget is not None and len(kept) >= budget:
+                reason = f"effects budget reached ({budget} for {len(words)} spoken words)"
+            if reason is None and kind not in SUSTAINED:
+                # Every ten-second window that would hold this sound stays under the cap.
+                near = [o["at"] for o in kept if o["kind"] not in SUSTAINED and abs(o["at"] - at) < 10] + [at]
+                for lo in [t for t in near if at - 10 < t <= at]:
+                    if sum(1 for t in near if lo <= t < lo + 10) > policy["max_per_10s"]:
+                        reason = f"more than {policy['max_per_10s']} effects in ten seconds"
+                        break
         if reason:
             dropped.append({**event, "kind": kind, "reason": reason})
             continue
@@ -239,6 +315,11 @@ def plan(events, duration, policy=None):
         kept.append({**event, "kind": kind})
     kept.sort(key=lambda e: e["at"])
     return kept, dropped
+
+
+def variant_for(event, variants=None):
+    """Stable bubble variant per event so repeats differ but rebuilds stay identical."""
+    return int(round(float(event["at"]) * 1000)) * 7919 % int(variants or VARIANTS)
 
 
 def momentary_max(path, gain=1.0):
@@ -252,12 +333,31 @@ def momentary_max(path, gain=1.0):
     return max(values) if values else None
 
 
-def matched_gain(kind, sound_path, voice_lufs):
-    """Gain that places this sound VOICE_OFFSET LU under the recorded voice."""
+def phone_offset(sound_path, gain, voice_phone_lufs, band=None):
+    """Loudest 400 ms of a sound at its gain, through the phone-speaker band, relative to the
+    voice measured through the same band (LU). Small speakers drop the low end, so a pop that
+    sits well under the voice on headphones can poke out on a phone."""
+    import re
+    import subprocess
+    if voice_phone_lufs is None:
+        return None
+    lo, hi = band or style.load()["sound"]["phone_band_hz"]
+    result = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(sound_path), "-af",
+                             f"volume={gain},highpass=f={lo}:poles=2,highpass=f={lo}:poles=2,lowpass=f={hi}:poles=2,"
+                             "apad=pad_dur=0.6,ebur128", "-f", "null", "-"], capture_output=True, text=True)
+    values = [float(v) for v in re.findall(r"M:\s*(-?\d+\.\d)", result.stderr)]
+    if not values or max(values) < -70:
+        return None
+    return round(max(values) - voice_phone_lufs, 1)
+
+
+def matched_gain(kind, sound_path, voice_lufs, offsets=None):
+    """Gain that places this sound's loudest 400 ms its voice offset (LU) under the recorded
+    voice; ``offsets`` are the timeline's merged house-style offsets."""
     if voice_lufs is None:
         return DEFAULT_GAIN[kind]
     level = momentary_max(sound_path)
     if level is None or level < -70:
         return DEFAULT_GAIN[kind]
-    target = voice_lufs + VOICE_OFFSET[kind]
+    target = voice_lufs + (offsets or {}).get(kind, VOICE_OFFSET[kind])
     return round(max(.01, min(1.0, 10 ** ((target - level) / 20))), 4)
