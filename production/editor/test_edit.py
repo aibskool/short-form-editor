@@ -57,7 +57,9 @@ class TimelineTests(unittest.TestCase):
         self.assertIn('Trust &lt;now&gt;', markup)
         self.assertIn('BrightLocal · 2026', markup)
         self.assertTrue(any('row-0' in cue and 'fromTo' in cue for cue in motion))
-        self.assertTrue(any('bar-0' in cue and 'scaleX:0' in cue for cue in motion))
+        # Rows no longer carry a growing bottom bar; it read as a timer bar in review.
+        self.assertFalse(any('scaleX:0' in cue and 'row' not in cue for cue in motion if 'strike' not in cue))
+        self.assertIn('kinetic-edge', markup)
         self.assertTrue(any('Math.round' in cue for cue in motion))
 
     def test_cues_must_align_to_spoken_words_and_ui_must_keep_changing(self):

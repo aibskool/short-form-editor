@@ -1,0 +1,338 @@
+{
+  "name": "Brandon house style: corrections of September 28, 2026",
+  "verified_at": "2026-09-29T06:13:01.280185+00:00",
+  "branch": "stage-motion-system",
+  "scope": "The pipeline, style spec, planner, primitives, transitions, caption presets, sound kit, builder and acceptance review that every future edit uses. Footage, the private calibration video and working files are not in the repository; this receipt records hashes and measurements only.",
+  "tests": {
+    "unit": {
+      "production/editor": "70 passed (2 skipped: integration renders run separately)",
+      "production": "26 passed",
+      "production/intake": "10 passed",
+      "skill/scripts": "4 passed",
+      "tools": "5 passed"
+    },
+    "integration_renders": "RUN_HYPERFRAMES_INTEGRATION=1: stage pixel test, media background test and music policy test passed (HyperFrames 0.8.27)"
+  },
+  "planner_fuzz": {
+    "method": "Random stories with synthetic word timings, planned, built and reviewed with review_reel; the phone_speaker_mix warning is an artifact of the synthetic 170 Hz test tone (below the 300 Hz phone band) and does not occur on real speech",
+    "original_pool": {
+      "seed": 7,
+      "builds": 30,
+      "review_fails": 0,
+      "build_failures": 0,
+      "warnings_excluding_tone_artifact": 0
+    },
+    "wider_pool": {
+      "seeds": [
+        303,
+        505
+      ],
+      "builds": 80,
+      "review_fails": 0,
+      "build_failures": 0,
+      "warnings_excluding_tone_artifact": {
+        "graphic_density": 1,
+        "graphic_variety": 1,
+        "composition_range": 1
+      }
+    },
+    "before_fixes": "In the first independent pass, 4 of 30 random stories failed their own review; in the second, the wider pool had 1 build failure and 2 review fails"
+  },
+  "independent_review": [
+    "First pass over the diff: 21 confirmed defects (negative and past-end cues, duplicate CTA ids, a hero past a trimmed end, screen budget ignoring the reveal, heroes riding into screens, a spoken 'W2' read as a word index, two emphasis normalizers, no guaranteed hook showpiece, output-relative paths, hidden caption spans, older receipts, caption band, mix guards, fitted hero size, spec-driven caption limits, slam line fit, style overrides not reaching the sound kit, still-frame clamping, a circular import, short hook cards). All fixed and covered by HardeningTests.",
+    "Second pass verifying the fixes: confirmed all but style overrides (voice band and design tokens), and found spoken numbers altered on screen ('thirteen thousand' and 'a hundred and fifty'), a fallback hero past the reel end, hook openers missing the 1.2 s deadline, mid-sentence breaths and lead-ins splitting the hook, frame snapping under minimum holds, adjacent camera pushes and a capture under the payoff reveal. All fixed; the repros now build and pass review with no warnings."
+  ],
+  "calibrations": {
+    "a": {
+      "source_segment_s": [
+        0,
+        11.26
+      ],
+      "duration_s": 11.26,
+      "hook": "result_preview",
+      "raw_render_sha256": "e45fc843aa97b17aa5504ab133206b9aa1b1da42078f1410f1ae25182a16d965",
+      "final_sha256": "9fe0e9b13c11df4a4d3cb886524945840adf8f68cb9b362e22df85669af664da",
+      "final_integrated_lufs": -14.91,
+      "hyperframes_check": "passed (lint 0 errors/0 warnings, motion 0/0, contrast all WCAG AA)",
+      "review": {
+        "status": "pass",
+        "counts": {
+          "pass": 54,
+          "warn": 0,
+          "fail": 0
+        }
+      },
+      "presenter_layout_share": {
+        "full": 0.841,
+        "stack": 0.0,
+        "away": 0.159
+      },
+      "presenter_face_track": {
+        "full": 0.839,
+        "stack": 0.0,
+        "away": 0.161
+      },
+      "showpieces": [
+        "2.4s screen:2.5D",
+        "2.4s transition:push_in",
+        "2.6s hero:split hook-hit"
+      ],
+      "transitions": {
+        "push_in": 1,
+        "cut": 2,
+        "punch": 1
+      },
+      "effects_vs_speech": [
+        {
+          "kind": "bubble",
+          "at": 0.07,
+          "full_band_lu": -13.5,
+          "phone_band_db": -12.4
+        },
+        {
+          "kind": "whoosh_short",
+          "at": 2.2,
+          "full_band_lu": -13.6,
+          "phone_band_db": -15.7
+        },
+        {
+          "kind": "bubble",
+          "at": 7.703,
+          "full_band_lu": -13.6,
+          "phone_band_db": -12.4
+        },
+        {
+          "kind": "bubble",
+          "at": 9.703,
+          "full_band_lu": -13.7,
+          "phone_band_db": -12.5
+        }
+      ],
+      "graphics": [
+        "hero:stack hook-open",
+        "hero:split hook-hit",
+        "tag steps-1"
+      ]
+    },
+    "b": {
+      "source_segment_s": [
+        22.21,
+        35.78
+      ],
+      "duration_s": 13.57,
+      "hook": "result_preview",
+      "raw_render_sha256": "458e99af190303d816031263d6550f3c483e571e50892ba4764ba2b1b214aeac",
+      "final_sha256": "3a963b93cda01dd89ba26f2e68deb65243fcf941d5d538bbb40fabe39ac099bb",
+      "final_integrated_lufs": -14.59,
+      "hyperframes_check": "passed (lint 0 errors/0 warnings, motion 0/0, contrast all WCAG AA)",
+      "review": {
+        "status": "pass",
+        "counts": {
+          "pass": 54,
+          "warn": 0,
+          "fail": 0
+        }
+      },
+      "presenter_layout_share": {
+        "full": 0.757,
+        "stack": 0.0,
+        "away": 0.243
+      },
+      "presenter_face_track": {
+        "full": 0.75,
+        "stack": 0.0,
+        "away": 0.25
+      },
+      "showpieces": [
+        "0.3s screen:2.5D",
+        "0.3s transition:push_in",
+        "0.6s hero:outline hook-open",
+        "1.8s hero:slam hook-hit",
+        "2.7s screen:2.5D"
+      ],
+      "transitions": {
+        "push_in": 1,
+        "cut": 2,
+        "zoom_blur": 1,
+        "punch": 1,
+        "light_leak": 1
+      },
+      "effects_vs_speech": [
+        {
+          "kind": "whoosh_short",
+          "at": 0.15,
+          "full_band_lu": -13.7,
+          "phone_band_db": -16.0
+        },
+        {
+          "kind": "bubble",
+          "at": 0.703,
+          "full_band_lu": -13.7,
+          "phone_band_db": -12.7
+        },
+        {
+          "kind": "impact_soft",
+          "at": 2.033,
+          "full_band_lu": -10.7,
+          "phone_band_db": -32.4
+        },
+        {
+          "kind": "whoosh_short",
+          "at": 2.55,
+          "full_band_lu": -13.8,
+          "phone_band_db": -16.2
+        },
+        {
+          "kind": "bubble",
+          "at": 10.937,
+          "full_band_lu": -13.6,
+          "phone_band_db": -12.7
+        }
+      ],
+      "graphics": [
+        "hero:outline hook-open",
+        "hero:slam hook-hit",
+        "tag steps-1",
+        "tag steps-2"
+      ]
+    },
+    "c": {
+      "source_segment_s": [
+        35.78,
+        51.233
+      ],
+      "duration_s": 15.452999999999996,
+      "hook": "result_preview+payoff",
+      "raw_render_sha256": "1d42556f1901d7c0540bf5181e2a12e758d48aa92cdd8649c0f03964be3a76f1",
+      "final_sha256": "93fa7e880997455967a3b79bcb4a8c9d83a7c48e5e5a3b67812219b8045927c1",
+      "final_integrated_lufs": -14.69,
+      "hyperframes_check": "passed (lint 0 errors/0 warnings, motion 0/0, contrast all WCAG AA)",
+      "review": {
+        "status": "pass",
+        "counts": {
+          "pass": 55,
+          "warn": 0,
+          "fail": 0
+        }
+      },
+      "presenter_layout_share": {
+        "full": 0.742,
+        "stack": 0.0,
+        "away": 0.258
+      },
+      "presenter_face_track": {
+        "full": 0.675,
+        "stack": 0.0,
+        "away": 0.325
+      },
+      "showpieces": [
+        "2.4s screen:2.5D",
+        "2.4s transition:push_in",
+        "3.8s reveal:tilt payoff",
+        "7.6s transition:match_move",
+        "10.3s hero:split turn-1"
+      ],
+      "transitions": {
+        "push_in": 1,
+        "cut": 2,
+        "match_move": 1,
+        "whip": 1
+      },
+      "effects_vs_speech": [
+        {
+          "kind": "bubble",
+          "at": 0.07,
+          "full_band_lu": -12.5,
+          "phone_band_db": -10.8
+        },
+        {
+          "kind": "whoosh_short",
+          "at": 2.2,
+          "full_band_lu": -12.6,
+          "phone_band_db": -14.1
+        },
+        {
+          "kind": "impact_soft",
+          "at": 4.25,
+          "full_band_lu": -9.7,
+          "phone_band_db": -29.9
+        },
+        {
+          "kind": "whoosh_short",
+          "at": 7.42,
+          "full_band_lu": -12.7,
+          "phone_band_db": -14.1
+        },
+        {
+          "kind": "whoosh",
+          "at": 11.26,
+          "full_band_lu": -11.7,
+          "phone_band_db": -12.9
+        },
+        {
+          "kind": "bubble",
+          "at": 12.303,
+          "full_band_lu": -12.1,
+          "phone_band_db": -10.5
+        }
+      ],
+      "graphics": [
+        "hero:card hook-card",
+        "reveal:tilt payoff",
+        "hero:split turn-1",
+        "cta cta"
+      ]
+    }
+  },
+  "before_after": {
+    "before": {
+      "reel": "Astra export (stage 2)",
+      "review": {
+        "status": "fail",
+        "counts": {
+          "pass": 32,
+          "warn": 13,
+          "fail": 9
+        }
+      },
+      "fails": [
+        "first striking visual (showpiece, screen or result) at 6.33s",
+        "opens on a equation held 5.2s; open on the payoff or the staged key words instead of a setup card",
+        "captions use \"karaoke\": every word changes color as it is spoken",
+        "shrunk into a band for 38% (longest 10.8s)",
+        "longest unchanged composition 10.8s (stack, 25.0-35.8s)",
+        "0 art-directed moment(s)",
+        "retired sounds used: pop, tick",
+        "at most 9 effects in any 10 seconds (33 total)",
+        "longest run with a small or lowered face 10.8s"
+      ]
+    },
+    "after": {
+      "a": {
+        "status": "pass",
+        "counts": {
+          "pass": 54,
+          "warn": 0,
+          "fail": 0
+        }
+      },
+      "b": {
+        "status": "pass",
+        "counts": {
+          "pass": 54,
+          "warn": 0,
+          "fail": 0
+        }
+      },
+      "c": {
+        "status": "pass",
+        "counts": {
+          "pass": 55,
+          "warn": 0,
+          "fail": 0
+        }
+      }
+    },
+    "note": "Same review code for both. The calibrations re-edit three segments of the same recording with the new defaults."
+  }
+}

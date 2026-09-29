@@ -1,0 +1,71 @@
+{
+  "reference_url": "https://www.instagram.com/p/Dd1k8esReOo/",
+  "verified_at": "2026-09-28T20:31:40.581273+00:00",
+  "evidence": [
+    "Reference studied through six vidIQ watch passes; Instagram media download was refused by the workspace egress policy, so timings are estimates (see skill/references/stage-reference-breakdown.md)",
+    "Five AI-business outlier reels reviewed with vidIQ for niche fit",
+    "Native HyperFrames 0.8.27 renders on Linux with Chrome Headless Shell 1194; encoded frames of both demos inspected as contact sheets and single frames",
+    "An independent review pass over the diff found nine defects (caption line layout, stretched-stroke draw-ons, id validation, build-time start states, hyphenated-number cues, split-shot caption backing, cross-line accents, undocumented or ignored options, caret timing); all were fixed and covered by tests before these renders"
+  ],
+  "checks": {
+    "unit_tests": "15 suites passed (production/editor, production, production/intake, skill/scripts, tools); 21 motion-system tests",
+    "integration_renders": "RUN_HYPERFRAMES_INTEGRATION=1: stage pixel test, media background test and music policy test passed",
+    "demo_pipeline": "python3 production/editor/demo/make_demo.py --render: both timelines generated, built, checked and rendered",
+    "demo_renders": {
+      "stage-explainer": {
+        "timeline": "production/editor/demo/stage-explainer.json",
+        "render_sha256": "4ba07065d1f1ed5e425fbc10cf962cfdda02421544eaef0db0dcc68924f8e2c4",
+        "render": "720x1280 h264 30.800000 s, AAC stereo, draft quality",
+        "graphics": 12,
+        "graphics_by_type": {
+          "headline": 4,
+          "statement": 3,
+          "checklist": 1,
+          "card": 1,
+          "flow": 1,
+          "device": 1,
+          "cta": 1
+        },
+        "presenter_visible_ratio": 1.0,
+        "motion_report_warnings": [],
+        "sfx_kept": 25,
+        "voice_lufs": -20.7,
+        "hyperframes_check": "passed: lint 0 errors/0 warnings; runtime 0 errors, 1 warning (voice media duration read timeout); layout 0 errors/0 warnings plus 2 info notes (masked words in their hidden state); motion 0/0; contrast 43/43 WCAG AA"
+      },
+      "receipts-first": {
+        "timeline": "production/editor/demo/receipts-first.json",
+        "render_sha256": "d7440f9a6c433b8467d0ae469c2cccf3071581c0e6def4d99ce0881441ae5ace",
+        "render": "720x1280 h264 35.566667 s, AAC stereo, draft quality",
+        "graphics": 11,
+        "graphics_by_type": {
+          "equation": 1,
+          "prompt": 1,
+          "spotlight": 1,
+          "headline": 2,
+          "stat": 1,
+          "chart": 1,
+          "compare": 1,
+          "orbit": 1,
+          "badge": 1,
+          "cta": 1
+        },
+        "presenter_visible_ratio": 0.906,
+        "motion_report_warnings": [
+          "shot 2: bright media under the captions; dark caption backing applied"
+        ],
+        "sfx_kept": 24,
+        "voice_lufs": -20.8,
+        "hyperframes_check": "passed: lint 0 errors/0 warnings; runtime 0 errors, 1 warning (voice media duration read timeout); layout 0 errors/0 warnings plus 2 info notes (masked words in their hidden state); motion 0/0; contrast 37/37 WCAG AA"
+      }
+    },
+    "sfx_mix": "stage-explainer SFX-only mix measured at -32.7 LUFS against a -20.7 LUFS voice; peak -7.5 dBFS",
+    "packaged_reference_hashes": "python tools/build-plugin.py regenerated 18 references"
+  },
+  "scope": "Stage editorial direction: word-cued motion components, stage layout, camera, transitions, synthesized SFX, bundled fonts, motion report, documentation and presets",
+  "limitations": [
+    "The demo presenter is an illustrated stand-in with a speech-shaped noise track; framing defaults need tuning on Brandon's real footage",
+    "No edit of Brandon's footage has been rendered with this system yet; style approval stays pending his review",
+    "Sound levels are measured, not listened to; confirm the mix by ear at phone volume",
+    "Reference timings, colors, fonts and sounds are model-described estimates, not measured from the MP4"
+  ]
+}

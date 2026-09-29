@@ -17,4 +17,4 @@ For each viable story, propose two or three genuinely different viewer payoffs/h
 
 Define stable idea/story/reel IDs, archetype, chosen hook, short explanation, uppercase CTA keyword and the exact resource to deliver. Check Eden saves for an existing useful resource; record original-link, attributed-summary or original-worksheet reuse. Reject an angle if it cannot be explained honestly within the filming format.
 
-Before handing to scripting, assign tentative visual jobs to the main beats: what will be shown, why it helps, and which evidence is already captured. A source-heavy story with no readable focal detail needs a different angle or capture plan. Save `ideation/ideas.json`, selected/rejected reasons and the giveaway promise. Do not call a draft accepted or published.
+Before handing to scripting, assign tentative visual jobs to the main beats: what will be shown, why it helps, and which footage is already captured. A source-heavy story with no readable focal detail needs a different angle or capture plan. Save `ideation/ideas.json`, selected/rejected reasons and the giveaway promise. Do not call a draft accepted or published.

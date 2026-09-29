@@ -1,6 +1,6 @@
 ---
 name: reel-script
-description: "Write Brandon's outcome-first resource reels: a strong hook, distinct plugin/skill/tool beats, concrete uses, proof visuals and a matching giveaway CTA."
+description: "Write Brandon's outcome-first resource reels: a strong hook, distinct plugin/skill/tool beats, concrete uses, demonstration visuals and a matching giveaway CTA."
 ---
 
 # Reel scripting
@@ -15,7 +15,7 @@ For a new reel, default to one outcome-first hook with an honest count, then an 
 
 Write clean spoken copy separately from editor notes. Prefer concrete input → mechanism → payoff → useful CTA. Standard samples are generally 98–195 words; use the closest relevant sample and requested format rather than forcing a quota. Council's rapid delivery is a specific filmed example, not a universal speaking-speed assumption.
 
-For each beat, attach the viewer question, visual job, source/asset request, important spoken noun/action and required readable detail. Do not claim a tested result when only documentation exists. Keep personal-use claims, numbers, free access and novelty grounded in evidence.
+For each beat, attach the viewer question, visual job, source/asset request, important spoken noun/action and required readable detail. Brandon's own experience, results and numbers are his to state; take them as given. When you draft facts about someone else's product (release date, pricing, free access, a feature), check its source so the script doesn't misstate it.
 
 Build the promised resource or hand its exact specification to `reel-deliver`. Run the real script checker and Hold Your Voice scanner in the project. Inspect flags against the source samples; generic one-sentence-paragraph warnings are not reasons to destroy Brandon's cadence. Save source/voice anchors and justified decisions.
 

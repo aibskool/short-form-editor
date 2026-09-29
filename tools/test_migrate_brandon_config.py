@@ -58,5 +58,18 @@ class MigrationTests(unittest.TestCase):
             new.write_text('{}');migrate.migrate_timeline(old,new)
 
 
+    def test_retired_green_effects_become_full_frame_equivalents(self):
+        old=self.root/'green.json';new=self.root/'green-new.json'
+        old.write_text(json.dumps({'transitions':[{'at':1.2,'duration':.3,'kind':'green_wipe'},{'at':4,'kind':'flash'}],
+                                   'flashes':[{'at':2.0},{'at':3.0,'color':'#fff'}]}))
+        receipt=migrate.migrate_timeline(old,new)
+        output=json.loads(new.read_text())
+        self.assertEqual(output['transitions'][0],{'at':1.2,'duration':.3,'kind':'whip','direction':'left'})
+        self.assertEqual(output['transitions'][1]['kind'],'flash')
+        self.assertEqual(output['flashes'][0]['color'],'#fff4e6')
+        self.assertEqual(output['flashes'][1]['color'],'#fff')
+        self.assertEqual(len(receipt['retired_effects_replaced']),2)
+
+
 if __name__=='__main__':
     unittest.main()

@@ -1,0 +1,280 @@
+{
+  "name": "Brandon Reel Engine house style",
+  "version": "2026-09-28",
+  "authority": "Brandon's script, narration and stated facts are the editorial input. Illustrate what he says; never gate a visual on whether footage proves it, and never add disclaimers.",
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30
+  },
+  "color": {
+    "accent": "#49cf26",
+    "accent_ink": "#06140a",
+    "text": "#ffffff",
+    "text_2": "#d3dad5",
+    "muted": "#8b958f",
+    "negative": "#ff5d5d",
+    "warm": "#ffc53d",
+    "canvas": "#050706",
+    "panel": "rgba(15,19,17,0.90)",
+    "panel_solid": "#0f1311",
+    "line": "rgba(255,255,255,0.11)",
+    "card_light": "#ffffff",
+    "card_light_ink": "#0b0d0c",
+    "rules": "White and light gray carry text. #49cf26 marks valuable words and positive states. Red only for a failed or negative state; warm only for a highlighter mark. No other accent without a stated reason."
+  },
+  "type": {
+    "display_font": "Inter Tight",
+    "serif_font": "Instrument Serif",
+    "caption_font": "Archivo Black",
+    "mono_font": "JetBrains Mono",
+    "caption_px": 66,
+    "hero_px": {
+      "min": 104,
+      "default": 136,
+      "max": 200
+    },
+    "label_px": {
+      "min": 36,
+      "default": 44
+    },
+    "min_readable_px": 34,
+    "notes": "Sizes are on the 1080-wide grid. Anything a viewer must read stays at or above min_readable_px at phone size."
+  },
+  "zones": {
+    "caption": {
+      "y": 71.5,
+      "band": [
+        69,
+        78
+      ]
+    },
+    "hero_chest": [
+      42,
+      66
+    ],
+    "hero_top": [
+      6,
+      20
+    ],
+    "face": [
+      13,
+      49
+    ],
+    "platform_safe": {
+      "top": 6,
+      "bottom": 80,
+      "left": 5,
+      "right": 88
+    },
+    "notes": "Frame percentages. Short spoken captions own the caption band; hero text lives on the chest or above the head and never shares the caption band. Instagram/TikTok controls cover the bottom 20% and the right edge."
+  },
+  "captions": {
+    "style": "pop",
+    "max_words": 2,
+    "max_words_allowed": 3,
+    "max_chars": 16,
+    "hold": 0.06,
+    "uppercase": true,
+    "omit_terminal_punctuation": true,
+    "color": "#ffffff",
+    "emphasis_color": "#49cf26",
+    "emphasis_max_per_group": 1,
+    "emphasis_min_gap": 1.6,
+    "hide_under_hero": true,
+    "forbid_styles": [
+      "karaoke"
+    ],
+    "min_px": 54,
+    "floor_px": 44,
+    "notes": "A short phrase lands as one unit in white; only a stressed word turns green, and not every group gets one. No per-word color change."
+  },
+  "motion": {
+    "feel": "snap",
+    "enter": 0.42,
+    "exit": 0.26,
+    "overshoot": "back.out(1.6)",
+    "stagger": 0.06,
+    "hold": {
+      "hero_min": 0.9,
+      "info_min": 2.0,
+      "screen_min": 1.4
+    },
+    "word_sync_tolerance": 0.1,
+    "notes": "Entrances land on the spoken word (within one to three frames). Every large graphic has a deliberate exit."
+  },
+  "layout": {
+    "presenter_visible_min": 0.72,
+    "presenter_full_min": 0.5,
+    "stack_max_seconds": 4.0,
+    "stack_max_share": 0.18,
+    "away_max_seconds": 5.5,
+    "showpiece_away_max_seconds": 8.0,
+    "fullscreen_max_share": 0.28,
+    "same_composition_max_seconds": 7.0,
+    "black_max_seconds": 2.5,
+    "black_luma": 22,
+    "black_area": 0.42,
+    "face_full_min": 0.2,
+    "notes": "Presenter full = his face at least face_full_min of frame height (full frame, reframed or punched in). Stack = him shrunk into a band or inset under other content. Away = presenter hidden by screens or full-screen graphics (the payoff reveal included); fullscreen_max_share is 1 - presenter_visible_min."
+  },
+  "hook": {
+    "first_motion_by": 0.3,
+    "hero_words_by": 1.2,
+    "payoff_by": 3.0,
+    "notes": "Something moves on frame 1, the hook words are staged big by 1.2 s, and a striking result, interface action or bold designed moment lands inside 3 s."
+  },
+  "showpiece": {
+    "min_count": 2,
+    "types": [
+      "hero:slam",
+      "hero:split",
+      "hero:outline",
+      "hero:depth",
+      "reveal",
+      "particles",
+      "screen:tilt",
+      "transition:push_in",
+      "transition:shape_wipe",
+      "transition:match_move"
+    ],
+    "notes": "The hook, one major reveal and the closing payoff get art-directed motion built for this story."
+  },
+  "transitions": {
+    "pool": [
+      "cut",
+      "punch",
+      "push_in",
+      "match_move",
+      "shape_wipe",
+      "whip",
+      "zoom_blur",
+      "light_leak",
+      "flash",
+      "blur_flash"
+    ],
+    "max_share": 0.45,
+    "min_kinds_per_30s": 2,
+    "no_adjacent_repeat": true,
+    "forbidden": [
+      "green_wipe",
+      "green_flash"
+    ]
+  },
+  "sound": {
+    "roles": {
+      "popup": "bubble",
+      "popup_soft": "bubble_soft",
+      "travel": "whoosh_short",
+      "section": "whoosh",
+      "reveal": "impact_soft",
+      "tap": "bubble_soft",
+      "type": null,
+      "count": null,
+      "strike": null,
+      "highlight": null
+    },
+    "voice_offset_lu": {
+      "bubble": -15,
+      "bubble_soft": -18,
+      "whoosh": -14,
+      "whoosh_short": -15,
+      "impact_soft": -12,
+      "swipe": -16,
+      "pop": -12,
+      "tick": -15,
+      "tap": -14,
+      "typing": -18,
+      "ticker": -18,
+      "thud": -10,
+      "riser": -14,
+      "draw": -17,
+      "paper": -15,
+      "deny": -14,
+      "stamp": -10,
+      "shimmer": -20
+    },
+    "bubble_variants": 6,
+    "popup_min_gap": 0.55,
+    "dense_speech_wps": 3.8,
+    "max_per_10s": 4,
+    "max_per_word": 0.12,
+    "max_impacts": 2,
+    "impact_gap": 8.0,
+    "phone_band_hz": [
+      300,
+      8000
+    ],
+    "phone_max_lu_over_voice": -8,
+    "forbidden_kinds": [
+      "pop",
+      "tick",
+      "beep",
+      "ding",
+      "chime"
+    ],
+    "music": false,
+    "notes": "Bubble pops land when a pop-up lands; quiet whooshes only for travel and section changes; one restrained impact for a major reveal. Nothing on captions or ordinary cuts. Skip pops in dense speech or when graphics arrive in a cluster."
+  },
+  "forbidden": {
+    "patterns": [
+      "green_wipe",
+      "green_flash",
+      "timer_bar",
+      "karaoke_captions",
+      "background_music",
+      "disclaimer_text",
+      "long_stack",
+      "beeps"
+    ],
+    "disclaimer_words": [
+      "disclaimer",
+      "not financial advice",
+      "results may vary",
+      "results not typical",
+      "for illustration",
+      "illustrative only",
+      "simulated",
+      "dramatization",
+      "concept only",
+      "demo only",
+      "not affiliated"
+    ]
+  },
+  "variety": {
+    "hook_kinds": [
+      "result_preview",
+      "cold_open",
+      "hero_card",
+      "hero_slam",
+      "action_first",
+      "question"
+    ],
+    "cta_styles": [
+      "chip",
+      "stamp",
+      "type",
+      "bubble",
+      "underline",
+      "fan"
+    ],
+    "hero_variants": [
+      "stack",
+      "slam",
+      "split",
+      "outline",
+      "card",
+      "depth"
+    ],
+    "retired_motifs": {
+      "icons": [
+        "rocket",
+        "dollar"
+      ],
+      "closing_types": [
+        "checklist"
+      ]
+    },
+    "notes": "Rotate hook kinds, hero variants and CTA styles against variation.avoid; build new sequences for each story. The Astra reel's rocket and money icons and its closing checklist are retired motifs: a new story gets its own imagery and a designed payoff."
+  }
+}

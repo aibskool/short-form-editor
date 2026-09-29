@@ -15,7 +15,7 @@ Default to complementary resource stacks around one specific viewer outcome, usi
 
 1. Inspect prior story ledger and the requested topic/window. Default news window is the last 30 inclusive calendar days; useful evergreen bookmarks remain eligible.
 2. Open relevant Eden saves, record their IDs and original URLs, then read original sources. If Eden is unavailable, record that and continue independent primary-source research.
-3. Collect official release/changelog/repository evidence. Preserve event date, publication date, capture date and exact supported claim separately. A repository push or save date is not a product launch.
+3. Collect official release/changelog/repository sources. Preserve event date, publication date, capture date and exact supported claim separately. A repository push or save date is not a product launch.
 4. Collect visual candidates now: actual repo/README, original posts, docs, images or demos. For each, record the viewer question, supported claim, exact useful detail, local capture or unresolved request, and reuse basis. Use `reel-assets` for actual capture.
 5. Save the reference breakdown, story bank with ordered resources, saved-resource provenance, source snapshots, visual/shot queue and rejected leads. Each resource needs a distinct job, setup/input/output, current access and a primary-source claim. Match every selected item to the promised giveaway without redistributing private/paid material.
 

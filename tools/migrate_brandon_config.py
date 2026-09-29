@@ -44,6 +44,17 @@ def migrate_timeline(source, target, dry_run=False):
     removed_music = len(value.pop('music', []))
     old_policy = value.get('audio_policy', {})
     value['audio_policy'] = {'music_required': False, 'music_free_reason': 'Brandon adds music on the platform'}
+    # Brandon's review retired the green half-frame wipe and green flashes; keep the
+    # section break but render it as a full-frame directional whip / neutral flash.
+    retired = []
+    for transition in value.get('transitions', []):
+        if transition.get('kind') == 'green_wipe':
+            transition.update({'kind': 'whip', 'direction': 'left'})
+            retired.append(f"green_wipe at {transition.get('at')} -> whip")
+    for flash in value.get('flashes', []):
+        if str(flash.get('color', '#49cf26')).lower() in {'#49cf26', 'green'}:
+            flash['color'] = '#fff4e6'
+            retired.append(f"green flash at {flash.get('at')} -> neutral")
     # Other legacy labels, scenes, graphics and split fractions retain their meanings.
     if target.exists():
         if read_json(target) != value:
@@ -54,7 +65,8 @@ def migrate_timeline(source, target, dry_run=False):
         target.write_text(json.dumps(value, indent=2) + '\n')
     return {'status': 'would_create' if dry_run else 'created', 'target': str(target),
             'legacy_captions_converted': changed, 'editorial_graphics_inferred': False,
-            'removed_music_entries': removed_music, 'previous_audio_policy': old_policy}
+            'removed_music_entries': removed_music, 'previous_audio_policy': old_policy,
+            'retired_effects_replaced': retired}
 
 
 def main():

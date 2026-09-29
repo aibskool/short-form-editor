@@ -182,6 +182,20 @@ class EditorialChecks(unittest.TestCase):
         (self.root/'guide.md').write_text('Real guide')
         self.assertTrue(self.run_check()['mechanical_ready'])
 
+    def test_motion_component_cta_counts_as_displayed_keyword(self):
+        self.data['schema_version'] = 2
+        self.data['cta'] = {'keyword':'DEMO','resource_path':None,'face_to_camera':True,'status':'planned'}
+        self.words['words'][2]['word']='DEMO'
+        self.data['beats'][0]['spoken_text']="DON’T skip DEMO"
+        self.timeline['graphics'] = [{'type':'cta','style':'stamp','keyword':'Demo','start':1,'end':2}]
+        self.assertTrue(self.run_check()['mechanical_ready'])
+        self.timeline['graphics'][0]['keyword'] = 'GUIDE'
+        self.assert_error('keyword missing')
+
+    def test_word_cue_timeline_points_to_resolved_copy(self):
+        self.timeline['shots'][0]['start'] = '@skip'
+        self.assert_error('resolved-timeline.json')
+
 
 if __name__ == '__main__':
     unittest.main()
