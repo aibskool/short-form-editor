@@ -2,7 +2,7 @@
   "id": "ai-builder-school",
   "name": "AI Builder School",
   "default_mode": "dark",
-  "measurement_note": "Layout fractions are reconciled to reference frames (540x960 grabs of the dark reels). The speaker card body sits about 6.5% in from each side and starts near 71% down, which is wider than the 40px estimate in the written spec. Caption glyphs land near 65-68% down. The first large layout cut in reel 03 is at 3.0s.",
+  "measurement_note": "The split speaker card is 41% of the canvas (card_top 0.575 through card_bottom 0.985) so a selfie shows headroom, shoulders, and upper chest. Captions sit just above the card. The wide split crop is 1.0 (no punch-in). Tight alternation inside split is +8%. object_position 50% 38% puts the eyes about a third of the way down that card.",
   "modes": {
     "dark": {
       "background": "#1A1A1A",
@@ -66,39 +66,41 @@
   },
   "layout": {
     "card_margin_x": 0.065,
-    "card_top": 0.715,
+    "card_top": 0.575,
     "card_bottom": 0.985,
     "card_radius": 28,
-    "caption_split_y": 0.648,
+    "caption_split_y": 0.522,
     "caption_full_y": 0.68,
-    "title_top": 0.05,
+    "title_top": 0.042,
     "stage_left": 0.05,
-    "stage_top": 0.145,
+    "stage_top": 0.155,
     "stage_width": 0.9,
-    "stage_height": 0.47,
+    "stage_height": 0.35,
     "caption_font_px": 76,
     "title_font_px": 112,
     "mono_font_px": 22,
     "punch_scale": 1.16,
-    "tight_scale": 1.15,
+    "tight_scale": 1.08,
     "wide_scale": 1.0,
     "dot_spacing": 36,
-    "object_position": "50% 32%"
+    "object_position": "50% 38%"
   },
   "voice": {
     "plain_english": true,
     "forbid_characters": ["\u2014", "\u2013"]
   },
   "audio": {
-    "pause_gap_seconds": 0.1,
-    "join_handle_seconds": 0.02,
+    "pause_gap_seconds": 0.06,
+    "join_handle_seconds": 0.004,
+    "cut_crossfade_seconds": 0.008,
     "voice_lufs": -14,
     "voice_true_peak": -1.5,
     "compression_ratio": 4,
     "presence_hz": 4000,
     "presence_db": 4,
     "music_under_db": 25,
-    "music_default": true
+    "music_default": true,
+    "bed_bpm": 105
   },
   "content": {
     "lead_magnet_title": "AI Business Idea Vault",
@@ -107,15 +109,16 @@
     "default_keyword": "VAULT"
   },
   "sfx_gain": {
-    "pop": 0.46,
-    "whoosh": 0.4,
-    "click": 0.38,
-    "typing": 0.3,
-    "ticking": 0.24,
-    "ding": 0.42,
-    "bass": 0.52,
-    "riser": 0.36,
-    "error": 0.34,
-    "marker": 0.4
+    "pop": 0.1,
+    "whoosh": 0.12,
+    "click": 0.11,
+    "typing": 0.09,
+    "ticking": 0.11,
+    "ding": 0.08,
+    "bass": 0.13,
+    "riser": 0.1,
+    "error": 0.09,
+    "marker": 0.09,
+    "paper": 0.1
   }
 }

@@ -93,7 +93,9 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         raw_words = _try_transcribe(source, project / "whisper-words.json")
     tightened = tighten_video(
         source, raw_words, project / "tightened.mp4",
-        gap=float(audio_cfg["pause_gap_seconds"]), handle=float(audio_cfg["join_handle_seconds"]))
+        gap=float(audio_cfg["pause_gap_seconds"]),
+        handle=float(audio_cfg["join_handle_seconds"]),
+        crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)))
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),
@@ -108,7 +110,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     music_note = None
     if music:
         try:
-            bpm = 82
+            bpm = None
             if isinstance(stage_plan, dict) and stage_plan.get("bed_bpm"):
                 bpm = float(stage_plan["bed_bpm"])
             elif theme.get("audio", {}).get("bed_bpm"):

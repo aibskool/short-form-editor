@@ -99,7 +99,7 @@ def stage_events(motif, start, end, stage=None):
     if motif == "hand_circle":
         return [{"at": round(start + 0.05, 3), "kind": "marker"}]
     if motif == "doc_fan":
-        return [{"at": t, "kind": "pop"} for t in _times(start, end, int(stage.get("count", 5)), 1.15)]
+        return [{"at": t, "kind": "paper"} for t in _times(start, end, int(stage.get("count", 5)), 1.15)]
     if motif == "typing_ui":
         return [{"at": t, "kind": "typing"} for t in _times(start, min(end, start + 1.15), 8, 1.05)]
     if motif == "mind_map":

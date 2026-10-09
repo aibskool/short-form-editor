@@ -8,7 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kallaway_audio import SFX_KINDS, keep_ranges, write_sfx_library
+import numpy as np
+
+from kallaway_audio import SFX_KINDS, keep_ranges, refine_word_bounds, sfx_variants, write_sfx_library
 from kallaway_motifs import MOTIFS, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
 from kallaway_style import _caption_text, load_theme
@@ -41,6 +43,7 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(theme["fonts"]["display"]["family"], "Permanent Marker")
         self.assertEqual(theme["fonts"]["caption"]["family"], "Inter")
         self.assertEqual(theme["fonts"]["mono"]["family"], "IBM Plex Mono")
+        self.assertAlmostEqual(theme["layout"]["tight_scale"], 1.08)
         _theme, light, light_mode, _path = load_theme("light")
         self.assertEqual(light_mode, "light")
         self.assertEqual(light["background"], "#FBF8F1")
@@ -65,6 +68,47 @@ class KallawayTests(unittest.TestCase):
             {"word": "b", "start": 0.25, "end": 0.4},
         ], 1.0, gap=0.1, handle=0.02)
         self.assertEqual(len(tight), 1)
+        cut = keep_ranges([
+            {"word": "one", "start": 0.0, "end": 0.3},
+            {"word": "two", "start": 0.9, "end": 1.1},
+        ], 2.0, gap=0.06, handle=0.0)
+        self.assertEqual(len(cut), 2)
+        kept = (cut[0][1] - 0.3) + (0.9 - cut[1][0])
+        self.assertAlmostEqual(kept, 0.06, places=2)
+
+    def test_energy_trim_drops_a_separated_breath(self):
+        rate = 16000
+        t = np.arange(rate) / rate
+        tone = ((t >= 0.28) & (t < 0.42)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 220 * t)
+        breath = ((t >= 0.05) & (t < 0.12)).astype(np.float64) * 0.05 * np.random.default_rng(1).standard_normal(rate)
+        refined = refine_word_bounds(tone + breath, rate, [{"word": "hey", "start": 0.05, "end": 0.50}])
+        self.assertGreater(refined[0]["start"], 0.2)
+        self.assertLess(refined[0]["end"], 0.48)
+        self.assertGreater(refined[0]["end"], 0.40)
+
+    def test_energy_trim_keeps_a_stop_closure_inside_the_word(self):
+        rate = 16000
+        t = np.arange(rate) / rate
+        first = ((t >= 0.20) & (t < 0.46)).astype(np.float64) * 0.25 * np.sin(2 * np.pi * 180 * t)
+        second = ((t >= 0.56) & (t < 0.90)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 180 * t)
+        refined = refine_word_bounds(first + second, rate, [{"word": "reactivation", "start": 0.22, "end": 0.92}])
+        self.assertLess(refined[0]["start"], 0.24)
+        self.assertGreater(refined[0]["end"], 0.85)
+
+    def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
+        theme, _, _, _ = load_theme("dark")
+        layout = theme["layout"]
+        height = layout["card_bottom"] - layout["card_top"]
+        self.assertGreaterEqual(height, 0.38)
+        self.assertLessEqual(height, 0.42)
+        self.assertLess(layout["caption_split_y"], layout["card_top"])
+        self.assertGreater(layout["caption_split_y"], layout["stage_top"] + layout["stage_height"])
+        self.assertEqual(layout["wide_scale"], 1.0)
+        self.assertAlmostEqual(layout["tight_scale"], 1.08)
+        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.06)
+        self.assertIn("paper", SFX_KINDS)
+        self.assertGreaterEqual(len(sfx_variants("whoosh")), 2)
+        self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
 
     def test_every_motif_emits_in_range_events(self):
         for motif in MOTIFS:

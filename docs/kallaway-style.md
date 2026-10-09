@@ -49,9 +49,9 @@ The command refuses to overwrite `--output`. Render goes through `production/edi
 
 What the runner does:
 
-1. Drops pauses longer than 0.1s on word boundaries and keeps the voice at 1x.
+1. Snaps word edges to the energy envelope, drops breaths, and cuts any pause longer than the theme gap (default 60 ms) down to that gap. Each join gets an 8 ms audio crossfade. The voice stays at 1x.
 2. High-passes, boosts presence around 4 kHz, compresses about 4:1, and loudnorm-targets the voice at -14 LUFS.
-3. Writes an original lo-fi bed about 25 dB under the voice, and original SFX for every graphic-stage event.
+3. Loops a CC0 lo-fi bed about 25 dB under the voice, and plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue.
 4. Plans hook splits, a full-screen cut near 3s, body alternation, and a final split with the document fan.
 5. Runs the style check, builds the HyperFrames composition, checks the HTML for brand colors and fonts, renders, and finalizes the mix.
 
@@ -160,7 +160,7 @@ Each beat has `spoken` (a phrase from the transcript) and `layout` (`split`, `fu
 
 A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` land the circle or the highlight on that word.
 
-`music_drops` is a list of `{spoken, until, hit}`. The bed goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo. The default bed stays 82. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
+`music_drops` is a list of `{spoken, until, hit}`. The bed goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo. The default bed is the CC0 loop at about 105 BPM. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
 
 The style check treats `structure: authored` differently from an automatic cut. The first full-screen or punch-in must start by 8 seconds, and the layout or the motif must change by 4 seconds. Automatic cuts still need a full-screen cut between 2.2 and 4.0 seconds. Captions are not forced through CSS lowercase, so `keep_case` survives. The builder still lowercases every other word.
 
@@ -189,12 +189,13 @@ The house-style build gate still rejects music. A Kallaway timeline may include 
 
 ## Known gaps
 
-- No face tracking. The crop is a fixed `object-position` (default `50% 32%`) plus wide, tight (+15%), and punch-in (+16%) scales. `track_face.py` belongs to the house style.
+- No face tracking. The crop is a fixed `object-position` (default `50% 38%`, eyes about a third of the way down the split card) plus a wide split scale of 1.0, a tight split scale of 1.08, and a punch-in scale of 1.16. `track_face.py` belongs to the house style.
 - Motifs are stylized recreations, not his After Effects projects. Mind maps and dashed logo connectors are simple.
 - The automatic motif picker rotates. It does not read the sentence. Pass `--stage-plan` and real screenshots when the graphic should match the line.
 - Full-screen movie B-roll is not a default. B-roll stays in a card or phone.
 - Slow push-ins stay off.
 - The spring is GSAP `back.out`, which approximates an 80% to 110% to 100% pop. The slide ease is the spec cubic-bezier.
-- Music and SFX are original synthesis (CC0), not a commercial lo-fi track or a named sample library.
+- The split speaker card is 41% of the canvas. The graphic stage is the band above the captions, which sit just above the card.
+- Music is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized and mixed about 18 to 22 dB under the voice. Sources are in `THIRD_PARTY_NOTICES.md`.
 - Whisper is optional and not installed by this repo.
 - `sample_talking_head.py` builds a synthetic proof take (espeak-ng, Pillow, numpy). Do not ship its output.

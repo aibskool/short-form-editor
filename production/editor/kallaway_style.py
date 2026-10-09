@@ -267,15 +267,22 @@ def build_kallaway(spec, spec_path, project):
             f'data-track-index="7" style="background:{colors["accent"]};color:{colors["on_accent"]};'
             f"font-family:'{mono_family}',monospace\">{escape(chip.get('text', ''))}</div>")
 
-    from kallaway_audio import SFX_KINDS, write_sfx_library
+    from kallaway_audio import SFX_KINDS, sfx_variants, write_sfx_library
     library = spec_path.parent / "sfx"
-    if any(sound.get("kind") for sound in spec.get("sfx", [])) and not (library / "pop.wav").is_file():
+    if any(sound.get("kind") for sound in spec.get("sfx", [])) and not sfx_variants("pop", library):
         write_sfx_library(library)
+    variant_use = {}
     for index, sound in enumerate(spec.get("sfx", [])):
         if sound.get("kind"):
             if sound["kind"] not in SFX_KINDS:
                 raise ValueError(f"unknown sfx kind: {sound['kind']}")
-            path = media(str(library / f"{sound['kind']}.wav"))
+            variants = sfx_variants(sound["kind"], library)
+            if not variants:
+                raise ValueError(f"sfx library has no files for {sound['kind']}")
+            slot = variant_use.get(sound["kind"], 0)
+            variant_use[sound["kind"]] = slot + 1
+            chosen = variants[slot % len(variants)]
+            path = media(str(chosen))
             length = float(probe(project / path)["format"]["duration"])
         else:
             path = media(sound["path"])
