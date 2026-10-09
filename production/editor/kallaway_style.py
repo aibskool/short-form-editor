@@ -390,7 +390,7 @@ def build_kallaway(spec, spec_path, project):
     .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}
     .quote-card{{height:100%;display:flex;align-items:center;justify-content:center;padding:6%}}
     .quote-text{{position:relative;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1.05;color:{colors['text']};text-align:center}}
-    .quote-strike{{position:absolute;left:-4%;right:-4%;top:54%;height:{6*scale:.0f}px;background:{colors['warning']};transform:scaleX(0);transform-origin:0 50%}}
+    .quote-strike{{position:absolute;left:-4%;right:-4%;top:52%;height:{10*scale:.0f}px;background:{colors['warning']};transform:scaleX(0);transform-origin:0 50%}}
     .offer-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .offer-kicker{{color:{colors['muted']};font-size:{mono_px:.1f}px}}
     .offer-row{{flex:1;display:flex;gap:{12*scale:.0f}px}}

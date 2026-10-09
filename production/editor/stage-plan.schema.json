@@ -125,7 +125,8 @@
           "additionalProperties": false,
           "properties": {
             "from": {"type": "number"},
-            "to": {"type": "number"}
+            "to": {"type": "number"},
+            "duration": {"type": "number", "description": "Seconds the pan takes. It holds after that so a later circle can land on the framed detail."}
           },
           "description": "Pan a phone screenshot. 0 is the top of the image and 1 is the bottom."
         },

@@ -170,7 +170,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         scroll = stage.get("scroll") or {}
         desat = float(stage.get("desaturate") or 0)
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
-        img_h = 168 if scroll else 100
+        # A 9:16 still in the wide stage needs extra height before a pan can reach the footer.
+        img_h = 210 if scroll and float(scroll.get("to", 0)) > 0.7 else (168 if scroll else 100)
         sat = max(0.0, min(1.0, 1.0 - desat))
         if media_url:
             screen = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
@@ -200,11 +201,14 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
         if scroll:
+            # yPercent is relative to the image. The image is taller than the screen,
+            # so a pan of `extra` percent of the screen is extra/img_h of the image.
             extra = img_h - 100
-            fro = float(scroll.get("from", 0)) * extra
-            to = float(scroll.get("to", 0.45)) * extra
+            fro = -float(scroll.get("from", 0)) * extra / img_h * 100
+            to = -float(scroll.get("to", 0.45)) * extra / img_h * 100
+            span = float(scroll["duration"]) if scroll.get("duration") else max(0.45, duration - 0.3)
             animations.append(
-                f'tl.fromTo("#{ident}-img",{{top:"{fro:.2f}%"}},{{top:"{to:.2f}%",duration:{max(0.45, duration-0.3):.3f},'
+                f'tl.fromTo("#{ident}-img",{{yPercent:{fro:.2f}}},{{yPercent:{to:.2f},duration:{span:.3f},'
                 f'ease:"power1.inOut",immediateRender:false}},{start+0.12});')
         if stage.get("callout"):
             at = next(event["at"] for event in events if event["kind"] == "marker")
