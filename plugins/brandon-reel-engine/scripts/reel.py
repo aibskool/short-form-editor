@@ -96,10 +96,7 @@ def main():
                 spec_path = selected.spec if selected.spec.is_absolute() else project / selected.spec
                 timeline = json.loads(spec_path.read_text())
                 policy = timeline.get('audio_policy', {})
-                if timeline.get('style') == 'kallaway':
-                    if not timeline.get('music') and not policy.get('user_opt_out'):
-                        raise ValueError('A Kallaway talking-head edit needs a music bed or audio_policy.user_opt_out')
-                elif policy.get('music_required') is not False or timeline.get('music'):
+                if timeline.get('style') != 'kallaway' and (policy.get('music_required') is not False or timeline.get('music')):
                     raise ValueError('Brandon short-form exports require music_required:false and no music entries')
             return subprocess.run([executable, str(project / relative), *fixed, *forwarded], cwd=project).returncode
         result = {'project_root': str(project), 'project_resolution': basis, 'plugin_root': str(PLUGIN),

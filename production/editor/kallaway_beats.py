@@ -9,6 +9,7 @@ lead-magnet fan, so a Comment header can sit mid-reel.
 """
 import re
 
+from kallaway_motifs import resolve_annotations
 from kallaway_plan import (
     NEGATIVE, _cover_sfx, _slot_words, _spoken, _token, caption_phrases, plain_text,
 )
@@ -202,6 +203,8 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                     else:
                         stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
                 shot["stage"] = stage
+                if motif in {"phone_frame", "broll_card"}:
+                    resolve_annotations(stage, start, end)
                 overlays = []
                 for spec in beat.get("overlays") or []:
                     overlay = _overlay(spec, ordered, item["index"], start, end, only_split and piece_index == 0)
@@ -210,6 +213,9 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                             raise ValueError(f"overlay {motif} repeats the shot motif on {beat['spoken']!r}")
                         overlays.append(overlay)
                 if overlays:
+                    for overlay in overlays:
+                        if overlay.get("motif") in {"phone_frame", "broll_card"}:
+                            resolve_annotations(overlay, overlay["start"], overlay["end"])
                     shot["overlays"] = overlays
                 split_pieces.append(shot)
                 split_index += 1
@@ -274,23 +280,26 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         })
 
     envelope = []
-    bass_at = [0.0]
-    for drop in stage_plan.get("music_drops") or []:
-        out_index = locate(ordered, drop["spoken"], 0)
-        back_index = locate(ordered, drop["until"], out_index + len(_tokens(drop["spoken"])))
-        out_at = float(ordered[out_index]["start"])
-        back_at = float(ordered[back_index]["start"])
-        if back_at <= out_at + 0.12:
-            raise ValueError(f"music drop {drop['spoken']!r} returns before it leaves")
-        for moment, level in ((out_at - 0.02, 1), (out_at, 0), (back_at - 0.03, 0), (back_at, 1)):
-            moment = round(max(0.0, moment), 3)
-            if envelope and moment <= envelope[-1]["t"]:
-                moment = round(envelope[-1]["t"] + 0.03, 3)
-            envelope.append({"t": moment, "v": level})
-        if drop.get("hit", True):
-            bass_at.append(round(back_at, 3))
-    if envelope and envelope[-1]["v"] == 0:
-        envelope.append({"t": duration, "v": 1})
+    bass_at = []
+    # Drops and their return hits only exist while a bed is actually mixed.
+    if music and music_path:
+        bass_at.append(0.0)
+        for drop in stage_plan.get("music_drops") or []:
+            out_index = locate(ordered, drop["spoken"], 0)
+            back_index = locate(ordered, drop["until"], out_index + len(_tokens(drop["spoken"])))
+            out_at = float(ordered[out_index]["start"])
+            back_at = float(ordered[back_index]["start"])
+            if back_at <= out_at + 0.12:
+                raise ValueError(f"music drop {drop['spoken']!r} returns before it leaves")
+            for moment, level in ((out_at - 0.02, 1), (out_at, 0), (back_at - 0.03, 0), (back_at, 1)):
+                moment = round(max(0.0, moment), 3)
+                if envelope and moment <= envelope[-1]["t"]:
+                    moment = round(envelope[-1]["t"] + 0.03, 3)
+                envelope.append({"t": moment, "v": level})
+            if drop.get("hit", True):
+                bass_at.append(round(back_at, 3))
+        if envelope and envelope[-1]["v"] == 0:
+            envelope.append({"t": duration, "v": 1})
 
     under = float(theme["audio"]["music_under_db"])
     music_tracks = []

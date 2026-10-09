@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from kallaway_audio import SFX_KINDS, keep_ranges, refine_word_bounds, sfx_variants, write_sfx_library
-from kallaway_motifs import MOTIFS, stage_events
+from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
 from kallaway_style import _caption_text, load_theme
 
@@ -109,6 +109,92 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("paper", SFX_KINDS)
         self.assertGreaterEqual(len(sfx_variants("whoosh")), 2)
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
+        self.assertFalse(theme["audio"]["music_default"])
+
+    def test_music_stays_off_and_drops_do_not_add_hits(self):
+        from check_kallaway_style import check
+        words = words_for()
+        plan = {
+            "schema": "kallaway-stage-plan/v1",
+            "music_drops": [{"spoken": "old way", "until": "Start on", "hit": True}],
+            "beats": [
+                {"spoken": "This one", "layout": "split", "motif": "pill", "label": "Comment VAULT",
+                 "header": {"text": "Comment VAULT", "emphasis": ["VAULT"]}},
+                {"spoken": "old way", "layout": "full"},
+                {"spoken": "Start on", "layout": "split", "motif": "counter", "value": 3},
+                {"spoken": "Comment VAULT", "layout": "split", "motif": "doc_fan"},
+            ],
+        }
+        timeline = plan_timeline(words, "/reels/silent.mp4", "words.json", music=False,
+                                 music_path="/tmp/bed.wav", stage_plan=plan, keyword="VAULT")
+        self.assertEqual(timeline["music"], [])
+        self.assertFalse(any(item["kind"] == "bass" and item["at"] > 0.05 for item in timeline["sfx"]))
+        timeline["audio_policy"]["user_opt_out"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = root / "timeline.json"
+            words_path = root / "words.json"
+            timeline["words_path"] = "words.json"
+            spec.write_text(json.dumps(timeline))
+            words_path.write_text(json.dumps(words))
+            report = check(spec, words_path)
+            self.assertTrue(report["ok"], report)
+            self.assertFalse(any("music" in error for error in report["errors"]))
+            self.assertFalse(any("music" in warning for warning in report["warnings"]))
+
+    def test_callout_draws_after_the_pan_and_rides_the_screenshot(self):
+        from check_kallaway_style import check
+        stage = {
+            "motif": "phone_frame",
+            "scroll": {"from": 0, "to": 0.42, "duration": 1.2},
+            "callout": {"at": 0.9, "x": 0.8, "y": 0.3, "w": 0.16, "h": 0.48},
+        }
+        resolve_annotations(stage, 0.0, 3.0)
+        self.assertLessEqual(stage["motion"]["scroll_end"], 0.9)
+        self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["entrance_end"])
+        self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["scroll_end"])
+        self.assertGreaterEqual(stage["callout"]["at"], 0.9)
+        marker = next(event for event in stage_events("phone_frame", 0.0, 3.0, stage) if event["kind"] == "marker")
+        self.assertEqual(marker["at"], stage["callout"]["at"])
+        left, top, width, height = screenshot_box(stage["callout"], 168, 0.42)
+        self.assertAlmostEqual(top, 34.86, places=1)
+        early = {
+            "scroll": {"from": 0.35, "to": 1, "duration": 1.15},
+            "callout": {"at": 1.1, "x": 0.1, "y": 0.81, "w": 0.8, "h": 0.15},
+        }
+        resolve_annotations(early, 1.0, 4.0)
+        self.assertGreater(early["callout"]["at"], early["callout"]["cue_at"])
+        self.assertGreaterEqual(early["callout"]["at"], early["motion"]["scroll_end"])
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
+        section, animations, _events = motif_markup(
+            "phone_frame", stage, 0.0, 3.0, {"left": 0, "top": 0, "width": 400, "height": 700}, colors, "stage-0", "shot.png")
+        pan = section.index('id="stage-0-pan"')
+        ring = section.index('id="stage-0-ring"')
+        self.assertLess(pan, ring)
+        self.assertIn(f'tl.set("#stage-0-ring",{{opacity:1}},{stage["callout"]["at"]:.3f});', animations)
+        bad = {
+            "style": "kallaway", "theme": "ai-builder-school", "theme_mode": "dark",
+            "output": {"width": 1080, "height": 1920, "fps": 30},
+            "audio_policy": {"music_required": False}, "music": [],
+            "headers": [{"start": 0, "end": 2, "text": "Comment VAULT"}],
+            "cta": {"keyword": "VAULT"},
+            "shots": [{
+                "id": "shot-00", "start": 0, "end": 2.2, "layout": "split",
+                "stage": {"motif": "phone_frame", "scroll": {"from": 0, "to": 0.4},
+                          "motion": {"entrance_end": 0.4, "scroll_start": 0, "scroll_end": 1.1},
+                          "callout": {"at": 0.2, "x": 0.5, "y": 0.4, "w": 0.2, "h": 0.2}},
+            }, {
+                "id": "shot-01", "start": 2.2, "end": 3.2, "layout": "full",
+            }],
+            "sfx": [{"kind": "whoosh", "at": 0}, {"kind": "marker", "at": 0.2}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "timeline.json"
+            spec.write_text(json.dumps(bad))
+            report = check(spec, None)
+            self.assertFalse(report["ok"])
+            self.assertTrue(any("still scrolling" in error or "frame entrance" in error for error in report["errors"]))
 
     def test_every_motif_emits_in_range_events(self):
         for motif in MOTIFS:

@@ -36,6 +36,118 @@ def _clamp(moment, start, end):
     return round(min(max(moment, start), latest), 3)
 
 
+# The phone/card slide is 0.4s. A marker stroke is a short hand-drawn sweep.
+ENTRANCE_SECONDS = 0.4
+DRAW_SECONDS = 0.36
+MIN_SCROLL_SECONDS = 0.35
+HAND_CIRCLE = "M48 7 C76 2, 99 22, 95 49 C98 76, 76 99, 49 96 C20 99, 1 74, 6 48 C2 20, 22 3, 48 7"
+HAND_CIRCLE_LENGTH = 320
+
+
+def _cue_time(block):
+    if not isinstance(block, dict):
+        return None
+    if block.get("cue_at") is not None:
+        return float(block["cue_at"])
+    if block.get("at") is not None:
+        return float(block["at"])
+    return None
+
+
+def image_height_percent(stage):
+    scroll = stage.get("scroll") or {}
+    if not scroll:
+        return 100.0
+    if float(scroll.get("to", 0)) > 0.7:
+        return 210.0
+    return 168.0
+
+
+def motion_window(stage, start, end):
+    """Entrance end and scroll span for a phone or card.
+
+    When a callout or highlight names a word, the pan starts with the shot and
+    is shortened so it has settled by that word. A word that arrives before a
+    minimum pan can finish leaves the draw waiting until the pan stops.
+    """
+    start, end = float(start), float(end)
+    entrance_end = round(start + ENTRANCE_SECONDS, 3)
+    scroll = stage.get("scroll") or {}
+    img_h = image_height_percent(stage)
+    if not scroll:
+        return {"entrance_end": entrance_end, "scroll_start": None, "scroll_end": None, "img_h": img_h}
+    cues = [moment for moment in (_cue_time(stage.get("callout")), _cue_time(stage.get("highlight"))) if moment is not None]
+    cue = min(cues) if cues else None
+    if cue is None:
+        scroll_start = round(start + 0.12, 3)
+        span = float(scroll["duration"]) if scroll.get("duration") is not None else max(0.45, end - start - 0.3)
+    else:
+        scroll_start = round(start, 3)
+        natural = float(scroll["duration"]) if scroll.get("duration") is not None else max(0.45, min(1.15, (end - start) * 0.45))
+        available = cue - scroll_start
+        if available >= MIN_SCROLL_SECONDS:
+            span = min(natural, available)
+        else:
+            span = MIN_SCROLL_SECONDS
+    span = max(0.2, min(span, max(0.2, end - scroll_start - 0.05)))
+    scroll_end = round(min(end - 0.02, scroll_start + span), 3)
+    return {
+        "entrance_end": entrance_end,
+        "scroll_start": scroll_start,
+        "scroll_end": scroll_end,
+        "img_h": img_h,
+    }
+
+
+def draw_moment(cue, motion, end):
+    """First moment a stroke may appear: after the entrance, after the pan, and on the word if the word is later."""
+    settled = float(motion["entrance_end"])
+    if motion.get("scroll_end") is not None:
+        settled = max(settled, float(motion["scroll_end"]))
+    moment = max(settled, float(cue))
+    latest = max(settled, float(end) - 0.05)
+    return round(min(moment, latest), 3)
+
+
+def resolve_annotations(stage, start, end):
+    """Write the draw time onto callout and highlight, and remember the pan window.
+
+    `cue_at` keeps the spoken word. `at` becomes the moment the stroke starts.
+    A second call leaves an already resolved stage alone.
+    """
+    if stage.get("motion"):
+        return stage["motion"]
+    motion = motion_window(stage, start, end)
+    stage["motion"] = {
+        "entrance_end": motion["entrance_end"],
+        "scroll_start": motion["scroll_start"],
+        "scroll_end": motion["scroll_end"],
+    }
+    for key in ("callout", "highlight"):
+        block = stage.get(key)
+        cue = _cue_time(block)
+        if cue is None:
+            continue
+        if block.get("cue_at") is None:
+            block["cue_at"] = round(cue, 3)
+        block["at"] = draw_moment(block["cue_at"], motion, end)
+        block["draw"] = DRAW_SECONDS
+    return stage["motion"]
+
+
+def screenshot_box(block, img_h, scroll_to):
+    """Map a settled viewport box onto the tall screenshot, in percentages of that image."""
+    extra = float(img_h) - 100.0
+    to = float(scroll_to or 0)
+    x = float(block.get("x", 0.3))
+    y = float(block.get("y", 0.3))
+    w = float(block.get("w", 0.28))
+    h = float(block.get("h", 0.16))
+    top = (y * 100.0 + to * extra) / float(img_h) * 100.0
+    height = h * 100.0 / float(img_h) * 100.0
+    return x * 100.0, top, w * 100.0, height
+
+
 def _stage_chip(ident, stage):
     chip = stage.get("chip")
     if not chip:
@@ -69,9 +181,9 @@ def stage_events(motif, start, end, stage=None):
     if motif in {"phone_frame", "broll_card"}:
         events = [{"at": round(start, 3), "kind": "whoosh"}]
         if stage.get("callout"):
-            events.append({"at": _clamp((stage.get("callout") or {}).get("at", start + 0.35), start, end), "kind": "marker"})
+            events.append({"at": float(stage["callout"].get("at", start + ENTRANCE_SECONDS)), "kind": "marker"})
         if stage.get("highlight"):
-            events.append({"at": _clamp((stage.get("highlight") or {}).get("at", start + 0.4), start, end), "kind": "pop"})
+            events.append({"at": float(stage["highlight"].get("at", start + ENTRANCE_SECONDS)), "kind": "pop"})
         return events
     if motif == "numbered_list":
         items = stage.get("items") or ["One", "Two", "Three", "Four"]
@@ -94,8 +206,9 @@ def stage_events(motif, start, end, stage=None):
         events.append({"at": round(min(end - 0.08, start + 0.95), 3), "kind": "ding"})
         return events
     if motif == "highlight_box":
-        return [{"at": round(start, 3), "kind": "whoosh"},
-                {"at": round(min(end - 0.05, start + 0.28), 3), "kind": "pop"}]
+        # The line waits until the card slide has finished.
+        draw = round(min(end - 0.05, start + ENTRANCE_SECONDS), 3)
+        return [{"at": round(start, 3), "kind": "whoosh"}, {"at": draw, "kind": "pop"}]
     if motif == "hand_circle":
         return [{"at": round(start + 0.05, 3), "kind": "marker"}]
     if motif == "doc_fan":
@@ -136,6 +249,8 @@ def _slide(selector, at):
 
 def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, track_index=2):
     stage = stage or {}
+    if motif in {"phone_frame", "broll_card"}:
+        resolve_annotations(stage, start, end)
     events = stage_events(motif, start, end, stage)
     animations = []
     duration = end - start
@@ -170,29 +285,36 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         scroll = stage.get("scroll") or {}
         desat = float(stage.get("desaturate") or 0)
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
-        # A 9:16 still in the wide stage needs extra height before a pan can reach the footer.
-        img_h = 210 if scroll and float(scroll.get("to", 0)) > 0.7 else (168 if scroll else 100)
+        motion = stage.get("motion") or resolve_annotations(stage, start, end)
+        img_h = image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
+        scroll_to = float(scroll.get("to", 0)) if scroll else 0
         if media_url:
-            screen = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
-                      f'style="position:absolute;left:0;top:0;width:100%;height:{img_h}%;object-fit:cover;'
-                      f'filter:saturate({sat:.3f})">')
+            picture = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
+                       f'style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;'
+                       f'filter:saturate({sat:.3f})">')
         else:
-            screen = (f'<div class="phone-fake"><b style="color:{text}">Preview</b>'
-                      f'<span class="mono" style="color:{muted}">9:16</span></div>')
+            picture = (f'<div class="phone-fake"><b style="color:{text}">Preview</b>'
+                       f'<span class="mono" style="color:{muted}">9:16</span></div>')
         extras = ""
         if stage.get("callout"):
             callout = stage["callout"]
-            extras += (f'<div id="{ident}-ring" class="callout-ring" style="left:{float(callout.get("x", 0.3))*100:.2f}%;'
-                       f'top:{float(callout.get("y", 0.3))*100:.2f}%;width:{float(callout.get("w", 0.28))*100:.2f}%;'
-                       f'height:{float(callout.get("h", 0.16))*100:.2f}%"></div>')
+            left, top, width, height = screenshot_box(callout, img_h, scroll_to)
+            extras += (
+                f'<svg id="{ident}-ring" class="callout-draw" viewBox="0 0 100 100" preserveAspectRatio="none" '
+                f'style="left:{left:.2f}%;top:{top:.2f}%;width:{width:.2f}%;height:{height:.2f}%">'
+                f'<path id="{ident}-stroke" d="{HAND_CIRCLE}" stroke-dasharray="{HAND_CIRCLE_LENGTH}" '
+                f'stroke-dashoffset="{HAND_CIRCLE_LENGTH}"/></svg>')
         if stage.get("highlight"):
             highlight = stage["highlight"]
-            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" '
-                       f'style="top:{float(highlight.get("y", 0.4))*100:.2f}%">{_esc(highlight.get("label") or "")}</div>')
+            _left, top, _width, _height = screenshot_box(
+                {"x": 0, "y": highlight.get("y", 0.4), "w": 1, "h": 0.08}, img_h, scroll_to)
+            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top:.2f}%">'
+                       f'{_esc(highlight.get("label") or "")}</div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
         klass = "phone fill" if media_url and detailed else "phone"
-        body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">{screen}{extras}'
+        body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">'
+                f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.0f}%">{picture}{extras}</div>'
                 f'<div class="phone-bar"><div id="{ident}-prog"></div></div>{thumb}</div></div>')
         animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         animations.append(
@@ -201,23 +323,28 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
         if scroll:
-            # yPercent is relative to the image. The image is taller than the screen,
-            # so a pan of `extra` percent of the screen is extra/img_h of the image.
+            # The pan is the screenshot. yPercent moves the callout with the pixels.
             extra = img_h - 100
             fro = -float(scroll.get("from", 0)) * extra / img_h * 100
             to = -float(scroll.get("to", 0.45)) * extra / img_h * 100
-            span = float(scroll["duration"]) if scroll.get("duration") else max(0.45, duration - 0.3)
+            scroll_start = float(motion.get("scroll_start") or start)
+            scroll_end = float(motion.get("scroll_end") or (scroll_start + 0.45))
+            span = max(0.2, scroll_end - scroll_start)
             animations.append(
-                f'tl.fromTo("#{ident}-img",{{yPercent:{fro:.2f}}},{{yPercent:{to:.2f},duration:{span:.3f},'
-                f'ease:"power1.inOut",immediateRender:false}},{start+0.12});')
+                f'tl.fromTo("#{ident}-pan",{{yPercent:{fro:.2f}}},{{yPercent:{to:.2f},duration:{span:.3f},'
+                f'ease:"power1.inOut",immediateRender:false}},{scroll_start:.3f});')
         if stage.get("callout"):
-            at = next(event["at"] for event in events if event["kind"] == "marker")
+            at = float(stage["callout"]["at"])
+            draw = float(stage["callout"].get("draw") or DRAW_SECONDS)
+            animations.append(f'tl.set("#{ident}-ring",{{opacity:1}},{at:.3f});')
             animations.append(
-                f'tl.fromTo("#{ident}-ring",{{scale:1.18,opacity:0}},{{scale:1,opacity:1,duration:0.35,ease:"back.out(1.7)",'
-                f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
+                f'tl.fromTo("#{ident}-stroke",{{strokeDashoffset:{HAND_CIRCLE_LENGTH}}},'
+                f'{{strokeDashoffset:0,duration:{draw:.2f},ease:"power1.inOut"}},{at:.3f});')
         if stage.get("highlight"):
-            at = next(event["at"] for event in events if event["kind"] == "pop")
-            animations.append(_pop(f"#{ident}-hl", at))
+            at = float(stage["highlight"]["at"])
+            animations.append(
+                f'tl.fromTo("#{ident}-hl",{{opacity:0,scale:0.92}},{{opacity:1,scale:1,duration:0.28,'
+                f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{at:.3f});')
 
     elif motif == "broll_card":
         picture = (f'<img src="{_esc(media_url)}" alt="">' if media_url
@@ -314,7 +441,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<div id="{ident}-hl" class="hl-line">{_esc(line)}</div>'
                 f'<div class="fake-line" style="width:66%"></div></div>')
         animations.append(_slide(f"#{ident}-shot", events[0]["at"]))
-        animations.append(_pop(f"#{ident}-hl", events[1]["at"]))
+        animations.append(
+            f'tl.fromTo("#{ident}-hl",{{opacity:0,scale:0.92}},{{opacity:1,scale:1,duration:0.28,'
+            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{events[1]["at"]});')
 
     elif motif == "hand_circle":
         phrase = stage.get("label") or "this"

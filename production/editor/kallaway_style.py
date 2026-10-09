@@ -366,7 +366,7 @@ def build_kallaway(spec, spec_path, project):
     .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:12px}}
     .shotcard{{height:100%;border-radius:{20*scale:.0f}px;background:{colors['surface']};border:1px solid {colors['border']};padding:8% 8%;display:flex;flex-direction:column;justify-content:center;gap:{18*scale:.0f}px;position:relative;overflow:hidden}}
     .fake-line{{height:{22*scale:.0f}px;border-radius:8px;background:{colors['border']}}}
-    .hl-line{{align-self:flex-start;background:{_rgba(colors['accent'], 0.4)};color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;padding:0.2em 0.45em;border-radius:10px;border:2px solid {colors['accent_strong']}}}
+    .hl-line{{align-self:flex-start;background:{_rgba(colors['accent'], 0.4)};color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;padding:0.2em 0.45em;border-radius:10px;border:2px solid {colors['accent_strong']};opacity:0}}
     .circle-wrap{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
     .circle-card{{font-family:'{display}',cursive;font-size:{72*scale:.0f}px;color:{colors['text']}}}
     .circle-svg{{position:absolute;inset:8% 10%;width:80%;height:84%}}
@@ -390,8 +390,10 @@ def build_kallaway(spec, spec_path, project):
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
     .phone.fill{{width:100%;height:100%;margin:0;padding:{8*scale:.0f}px;border-radius:{28*scale:.0f}px}}
-    .callout-ring{{position:absolute;border:{4*scale:.0f}px solid {colors['accent_strong']};border-radius:50%;box-sizing:border-box;pointer-events:none;z-index:3}}
-    .phone-hl{{position:absolute;left:6%;right:6%;z-index:3}}
+    .phone-pan{{position:absolute;left:0;top:0;width:100%}}
+    .callout-draw{{position:absolute;overflow:visible;pointer-events:none;z-index:4;opacity:0}}
+    .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
+    .phone-hl{{position:absolute;left:4%;right:4%;z-index:3}}
     .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
     .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
     .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}

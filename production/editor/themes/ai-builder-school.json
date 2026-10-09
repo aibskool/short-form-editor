@@ -99,7 +99,7 @@
     "presence_hz": 4000,
     "presence_db": 4,
     "music_under_db": 25,
-    "music_default": true,
+    "music_default": false,
     "bed_bpm": 105
   },
   "content": {

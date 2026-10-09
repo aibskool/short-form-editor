@@ -11,7 +11,7 @@ from pathlib import Path
 
 EDITOR = Path(__file__).resolve().parent / "editor"
 sys.path.insert(0, str(EDITOR))
-from kallaway_motifs import stage_events, stage_windows  # noqa: E402
+from kallaway_motifs import ENTRANCE_SECONDS, motion_window, stage_events, stage_windows  # noqa: E402
 from kallaway_style import DEFAULT_THEME, load_theme  # noqa: E402
 
 FORBIDDEN = {"#e60000", "#ff2a2a", "#ff0000", "#d33633", "#00e676", "#0e0e0e"}
@@ -133,15 +133,45 @@ def check(timeline_path, words_path=None, project=None):
         warnings.append("ending: no word file supplied, so the final-syllable cut was not measured")
 
     music = data.get("music") or []
-    policy = data.get("audio_policy") or {}
-    if not music and not policy.get("user_opt_out"):
-        errors.append("audio: music bed is missing and there is no opt-out")
+    # Brandon adds the bed himself. A missing track is the default, not an error or a warning.
     for track in music:
         envelope = track.get("envelope") or []
         if len(envelope) >= 2 and float(envelope[-1].get("v", 1)) == 0:
             span = float(envelope[-1]["t"]) - float(envelope[-2]["t"])
             if span > 0.2:
                 errors.append("ending: music fades out instead of cutting on the last word")
+
+    for shot in shots:
+        for motif, start, end, stage in stage_windows(shot):
+            if motif == "highlight_box":
+                pops = [event for event in stage_events(motif, start, end, stage) if event["kind"] == "pop"]
+                if pops and float(pops[0]["at"]) + 0.001 < start + ENTRANCE_SECONDS:
+                    errors.append(
+                        f"callout: highlight on {shot.get('id', motif)} starts at {pops[0]['at']} "
+                        f"during the card entrance that ends at {round(start + ENTRANCE_SECONDS, 3)}")
+            if motif not in {"phone_frame", "broll_card"}:
+                continue
+            stored = stage.get("motion") or {}
+            if stored:
+                entrance_end = float(stored.get("entrance_end", start + ENTRANCE_SECONDS))
+                scroll_end = stored.get("scroll_end")
+            else:
+                window = motion_window(stage, start, end)
+                entrance_end = window["entrance_end"]
+                scroll_end = window["scroll_end"]
+            for key in ("callout", "highlight"):
+                block = stage.get(key)
+                if not isinstance(block, dict) or block.get("at") is None:
+                    continue
+                visible = float(block["at"])
+                if visible + 0.001 < entrance_end:
+                    errors.append(
+                        f"callout: {key} on {shot.get('id', motif)} starts at {visible} "
+                        f"during the frame entrance that ends at {entrance_end}")
+                if scroll_end is not None and visible + 0.001 < float(scroll_end):
+                    errors.append(
+                        f"callout: {key} on {shot.get('id', motif)} starts at {visible} "
+                        f"while the screenshot is still scrolling until {scroll_end}")
 
     sfx = data.get("sfx") or []
     for shot in shots:

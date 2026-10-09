@@ -131,8 +131,8 @@
           "description": "Pan a phone screenshot. 0 is the top of the image and 1 is the bottom."
         },
         "desaturate": {"type": "number", "minimum": 0, "maximum": 1},
-        "callout": {"type": "object", "description": "Circle on a phone or card. spoken is the word it lands on. x, y, w, h are fractions of the frame."},
-        "highlight": {"type": "object", "description": "Popped line on a phone screenshot. spoken is the word it lands on. label is the on-screen text."},
+        "callout": {"type": "object", "description": "Circle on a phone screenshot. spoken is the word it belongs to. x, y, w, h are fractions of the settled frame. The stroke waits until the phone has entered and the pan has settled, then draws in the screenshot's coordinates."},
+        "highlight": {"type": "object", "description": "Popped line on a phone screenshot. spoken is the word it belongs to. It waits out the entrance and the pan, and it moves with the screenshot."},
         "chip": {
           "type": "object",
           "additionalProperties": false,

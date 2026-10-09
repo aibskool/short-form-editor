@@ -80,7 +80,7 @@ def _try_transcribe(source, destination):
 
 
 def render(source, output, words_path=None, project=None, keyword=None, title=None, theme_mode="dark",
-           theme_path=None, stage_plan=None, music=True, emphasis=None, quality="draft", workers=1,
+           theme_path=None, stage_plan=None, music=None, emphasis=None, quality="draft", workers=1,
            skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None):
     source, output = Path(source).resolve(), Path(output).resolve()
     project = Path(project).resolve() if project else output.with_suffix("")
@@ -106,6 +106,8 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         raise SystemExit("tightened word times run past the cut video; check the source timestamps")
     words_file = project / "words.json"
     words_file.write_text(json.dumps(words, indent=2) + "\n")
+    if music is None:
+        music = bool(audio_cfg.get("music_default", False))
     music_path = None
     music_note = None
     if music:
@@ -184,7 +186,10 @@ def main():
     parser.add_argument("--stage-plan", default=None,
                         help="JSON list of motifs, or a kallaway-stage-plan/v1 object. See stage-plan.schema.json.")
     parser.add_argument("--emphasis", default=None, help="JSON map of word to normal|marker|green|amber")
-    parser.add_argument("--no-music", action="store_true")
+    parser.add_argument("--music", action="store_true",
+                        help="Mix the CC0 lo-fi bed under the voice. Off unless this flag is set; Brandon adds music on the platform. music_drops in a stage plan apply only with the bed.")
+    parser.add_argument("--no-music", action="store_true",
+                        help="Leave the bed out. This is the default.")
     parser.add_argument("--quality", choices=["draft", "standard", "high"], default="draft")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--skip-render", action="store_true")
@@ -195,10 +200,15 @@ def main():
     args = parser.parse_args()
     stage_plan = _load_stage_plan(args.stage_plan) if args.stage_plan else None
     emphasis = json.loads(args.emphasis) if args.emphasis else None
+    music = None
+    if args.music:
+        music = True
+    if args.no_music:
+        music = False
     report = render(
         args.source, args.output, words_path=args.words, project=args.project, keyword=args.cta_keyword,
         title=args.title, theme_mode=args.theme_mode, theme_path=args.theme, stage_plan=stage_plan,
-        music=not args.no_music, emphasis=emphasis, quality=args.quality, workers=args.workers,
+        music=music, emphasis=emphasis, quality=args.quality, workers=args.workers,
         skip_render=args.skip_render, target_lufs=args.target_lufs, true_peak=args.true_peak,
         codec_headroom_db=args.codec_headroom_db)
     print(json.dumps({"output": report.get("output"), "ok": report["postcheck"]["ok"],

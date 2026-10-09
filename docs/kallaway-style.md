@@ -16,7 +16,7 @@ The presenter-first house style stays on its own path. A timeline whose `style` 
 | Theme | Optional | `dark` (default) or `light`. Override the whole preset with `--theme /path/preset.json`. |
 | Stage plan | Optional | Per-reel graphic choices. See below. Without one, motifs rotate from a seed of the video path. |
 | Emphasis map | Optional | JSON object of lowercase word to `normal`, `marker`, `green`, or `amber`. |
-| Music | Optional | On by default. `--no-music` records an opt-out and skips the bed. |
+| Music | Off | Brandon adds music on the platform. `--music` mixes the CC0 bed. `--no-music` is the default. |
 
 On-screen text is plain English. Em dashes and en dashes are stripped.
 
@@ -51,7 +51,7 @@ What the runner does:
 
 1. Snaps word edges to the energy envelope, drops breaths, and cuts any pause longer than the theme gap (default 60 ms) down to that gap. Each join gets an 8 ms audio crossfade. The voice stays at 1x.
 2. High-passes, boosts presence around 4 kHz, compresses about 4:1, and loudnorm-targets the voice at -14 LUFS.
-3. Loops a CC0 lo-fi bed about 25 dB under the voice, and plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue.
+3. Plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
 4. Plans hook splits, a full-screen cut near 3s, body alternation, and a final split with the document fan.
 5. Runs the style check, builds the HyperFrames composition, checks the HTML for brand colors and fonts, renders, and finalizes the mix.
 
@@ -158,9 +158,9 @@ Some reels are not an automatic alternation that ends on the document fan. A pla
 
 Each beat has `spoken` (a phrase from the transcript) and `layout` (`split`, `full`, or `punch_in`). A split also has a `motif`. The beat runs until the next beat's phrase, and the last beat ends on the last word. There is no inserted end card. Put the `Comment KEYWORD` header on the beat where the ask actually happens.
 
-A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` land the circle or the highlight on that word.
+A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` name the word a circle or highlight belongs to. The stroke waits until the phone or card has finished entering and any screenshot pan has settled with the target in view. If that word arrives first, the pan starts with the shot and is shortened so it can settle on the word; if it still cannot, the stroke waits. The circle is drawn in the screenshot's own coordinates, so it rides the pixels, and the marker sound starts with the stroke. A highlight box on a card waits out the same entrance.
 
-`music_drops` is a list of `{spoken, until, hit}`. The bed goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo. The default bed is the CC0 loop at about 105 BPM. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
+`music_drops` is a list of `{spoken, until, hit}`. It does nothing unless the reel was rendered with `--music`. With the bed on, it goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo when `--music` is on. The bed is the CC0 loop at about 105 BPM. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
 
 The style check treats `structure: authored` differently from an automatic cut. The first full-screen or punch-in must start by 8 seconds, and the layout or the motif must change by 4 seconds. Automatic cuts still need a full-screen cut between 2.2 and 4.0 seconds. Captions are not forced through CSS lowercase, so `keep_case` survives. The builder still lowercases every other word.
 
@@ -179,13 +179,13 @@ python3 plugins/brandon-reel-engine/scripts/reel.py run check-style -- \
   --project /absolute/composition
 ```
 
-Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 4 words, uppercase captions, an ending more than 0.12s off the last word, music missing without an opt-out, a music fade longer than 0.2s, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. Kallaway's red, neon green, and near-black hexes are rejected.
+Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 4 words, uppercase captions, an ending more than 0.12s off the last word, a music fade longer than 0.2s when a bed is present, a callout or highlight that starts while its frame is still entering or its screenshot is still scrolling, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. A missing music bed is not an error and not a warning. Kallaway's red, neon green, and near-black hexes are rejected.
 
 Warnings cover body shots outside about 1.15-5.05s, caption groups of 3-4 words, and a timeline that was checked before HTML existed.
 
 `production/check_editorial.py` and `review_reel.py` belong to the house style. Do not use them as the Kallaway style gate. Watch the rendered MP4 after the style check passes.
 
-The house-style build gate still rejects music. A Kallaway timeline may include the bed. Through `reel.py run build`, a Kallaway timeline needs a `music` entry or `audio_policy.user_opt_out`.
+The house-style build gate still rejects music. A Kallaway timeline leaves the bed out unless the render was started with `--music`.
 
 ## Known gaps
 
@@ -196,6 +196,6 @@ The house-style build gate still rejects music. A Kallaway timeline may include 
 - Slow push-ins stay off.
 - The spring is GSAP `back.out`, which approximates an 80% to 110% to 100% pop. The slide ease is the spec cubic-bezier.
 - The split speaker card is 41% of the canvas. The graphic stage is the band above the captions, which sit just above the card.
-- Music is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized and mixed about 18 to 22 dB under the voice. Sources are in `THIRD_PARTY_NOTICES.md`.
+- The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized and mixed about 18 to 22 dB under the voice. Sources are in `THIRD_PARTY_NOTICES.md`.
 - Whisper is optional and not installed by this repo.
 - `sample_talking_head.py` builds a synthetic proof take (espeak-ng, Pillow, numpy). Do not ship its output.

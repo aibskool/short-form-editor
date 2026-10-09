@@ -59,7 +59,7 @@ python3 kallaway_plan.py --words /absolute/words.json --source /absolute/raw.mp4
 python3 ../check_kallaway_style.py --timeline /absolute/composition/timeline.json --words /absolute/composition/words.json --project /absolute/composition
 ```
 
-Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. The bed and SFX are the CC0 recordings in `music/` and `sfx/kallaway/`. `kallaway_audio.py` copies them into the composition.
+Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. SFX are the CC0 recordings in `sfx/kallaway/`. The lo-fi bed in `music/` stays off unless you pass `--music`. `kallaway_audio.py` copies whichever of those the render uses.
 
 ## Verification receipt
 
