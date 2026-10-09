@@ -12,6 +12,7 @@ from pathlib import Path
 EDITOR = Path(__file__).resolve().parent / "editor"
 sys.path.insert(0, str(EDITOR))
 from kallaway_motifs import ENTRANCE_SECONDS, motion_window, stage_events, stage_windows  # noqa: E402
+from kallaway_targets import box_in_viewport  # noqa: E402
 from kallaway_style import DEFAULT_THEME, load_theme  # noqa: E402
 
 FORBIDDEN = {"#e60000", "#ff2a2a", "#ff0000", "#d33633", "#00e676", "#0e0e0e"}
@@ -172,6 +173,10 @@ def check(timeline_path, words_path=None, project=None):
                     errors.append(
                         f"callout: {key} on {shot.get('id', motif)} starts at {visible} "
                         f"while the screenshot is still scrolling until {scroll_end}")
+                if not box_in_viewport(block, stage.get("frame")):
+                    errors.append(
+                        f"callout: {key} on {shot.get('id', motif)} is outside the phone "
+                        "after the pan settles")
 
     sfx = data.get("sfx") or []
     for shot in shots:

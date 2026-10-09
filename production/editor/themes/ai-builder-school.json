@@ -109,16 +109,16 @@
     "default_keyword": "VAULT"
   },
   "sfx_gain": {
-    "pop": 0.1,
-    "whoosh": 0.12,
-    "click": 0.11,
-    "typing": 0.09,
-    "ticking": 0.11,
-    "ding": 0.08,
-    "bass": 0.13,
-    "riser": 0.1,
-    "error": 0.09,
-    "marker": 0.09,
-    "paper": 0.1
+    "pop": 0.251,
+    "whoosh": 0.301,
+    "click": 0.276,
+    "typing": 0.226,
+    "ticking": 0.276,
+    "ding": 0.201,
+    "bass": 0.316,
+    "riser": 0.251,
+    "error": 0.226,
+    "marker": 0.226,
+    "paper": 0.251
   }
 }

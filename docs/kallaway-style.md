@@ -51,7 +51,7 @@ What the runner does:
 
 1. Snaps word edges to the energy envelope, drops breaths, and cuts any pause longer than the theme gap (default 60 ms) down to that gap. Each join gets an 8 ms audio crossfade. The voice stays at 1x.
 2. High-passes, boosts presence around 4 kHz, compresses about 4:1, and loudnorm-targets the voice at -14 LUFS.
-3. Plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
+3. Plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue. Levels come from the theme `sfx_gain` map and sit about 10 to 14 dB under the voice. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
 4. Plans hook splits, a full-screen cut near 3s, body alternation, and a final split with the document fan.
 5. Runs the style check, builds the HyperFrames composition, checks the HTML for brand colors and fonts, renders, and finalizes the mix.
 
@@ -140,7 +140,7 @@ Content fields the renderer reads:
 | `typing_ui` | `text` |
 | `mind_map` | `label`, `items` |
 | `logo_row` | `items` |
-| `phone_frame`, `broll_card` | `media`, `scroll` (`from`/`to`, 0 is the top of the image), `desaturate` (0 to 1), `callout` (circle), `highlight` (a popped line) |
+| `phone_frame`, `broll_card` | `media`, `scroll` (`from`/`to`, 0 is the top of the image), `desaturate` (0 to 1), `callout` (circle), `highlight` (a popped line). `callout.target_text` is a phrase in the screenshot. The pan ends with that phrase centered in the phone. |
 | `line_chart` | none |
 | `numbered_list` | `items`, `hold`, `active` (the box stays on that row) |
 | `counter` | `value`, `prefix`, `suffix`, `label` |
@@ -158,7 +158,7 @@ Some reels are not an automatic alternation that ends on the document fan. A pla
 
 Each beat has `spoken` (a phrase from the transcript) and `layout` (`split`, `full`, or `punch_in`). A split also has a `motif`. The beat runs until the next beat's phrase, and the last beat ends on the last word. There is no inserted end card. Put the `Comment KEYWORD` header on the beat where the ask actually happens.
 
-A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` name the word a circle or highlight belongs to. The stroke waits until the phone or card has finished entering and any screenshot pan has settled with the target in view. If that word arrives first, the pan starts with the shot and is shortened so it can settle on the word; if it still cannot, the stroke waits. The circle is drawn in the screenshot's own coordinates, so it rides the pixels, and the marker sound starts with the stroke. A highlight box on a card waits out the same entrance.
+A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` name the word a circle or highlight belongs to. `callout.target_text` (and the same field on a highlight) is a phrase Tesseract finds in the screenshot. The box is that text in the image's pixel coordinates. `group: "surface"` grows it to the card around the words, such as a heading plus the field and button under it. The pan's end position is computed from that box so the target finishes centered in the phone, and the style check fails if the box is still outside the phone after the pan. Without `target_text`, `x`, `y`, `w`, and `h` stay fractions of the settled frame. The stroke waits until the phone or card has finished entering and any screenshot pan has settled with the target in view. If that word arrives first, the pan starts with the shot and is shortened so it can settle on the word; if it still cannot, the stroke waits. The circle is drawn in the screenshot's own coordinates, so it rides the pixels, and the marker sound starts with the stroke. Phone frames and b-roll cards do not draw a progress bar unless the beat sets `progress` to true. A highlight box on a card waits out the same entrance.
 
 `music_drops` is a list of `{spoken, until, hit}`. It does nothing unless the reel was rendered with `--music`. With the bed on, it goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo when `--music` is on. The bed is the CC0 loop at about 105 BPM. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
 
@@ -179,7 +179,7 @@ python3 plugins/brandon-reel-engine/scripts/reel.py run check-style -- \
   --project /absolute/composition
 ```
 
-Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 4 words, uppercase captions, an ending more than 0.12s off the last word, a music fade longer than 0.2s when a bed is present, a callout or highlight that starts while its frame is still entering or its screenshot is still scrolling, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. A missing music bed is not an error and not a warning. Kallaway's red, neon green, and near-black hexes are rejected.
+Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 4 words, uppercase captions, an ending more than 0.12s off the last word, a music fade longer than 0.2s when a bed is present, a callout or highlight that starts while its frame is still entering or its screenshot is still scrolling, a callout whose box is outside the phone after the pan, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. A missing music bed is not an error and not a warning. Kallaway's red, neon green, and near-black hexes are rejected.
 
 Warnings cover body shots outside about 1.15-5.05s, caption groups of 3-4 words, and a timeline that was checked before HTML existed.
 
@@ -196,6 +196,6 @@ The house-style build gate still rejects music. A Kallaway timeline leaves the b
 - Slow push-ins stay off.
 - The spring is GSAP `back.out`, which approximates an 80% to 110% to 100% pop. The slide ease is the spec cubic-bezier.
 - The split speaker card is 41% of the canvas. The graphic stage is the band above the captions, which sit just above the card.
-- The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized and mixed about 18 to 22 dB under the voice. Sources are in `THIRD_PARTY_NOTICES.md`.
+- The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized, and mixed about 10 to 14 dB under the voice (`sfx_gain` in the theme). Sources are in `THIRD_PARTY_NOTICES.md`.
 - Whisper is optional and not installed by this repo.
 - `sample_talking_head.py` builds a synthetic proof take (espeak-ng, Pillow, numpy). Do not ship its output.

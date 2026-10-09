@@ -425,5 +425,101 @@ class KallawayTests(unittest.TestCase):
             self.assertIn("background music", str(caught.exception))
 
 
+    def test_sfx_gains_sit_about_ten_to_fourteen_db_under(self):
+        import math
+        gains = load_theme()[0]["sfx_gain"]
+        self.assertGreaterEqual(len(gains), 8)
+        for kind, gain in gains.items():
+            db = 20 * math.log10(float(gain))
+            self.assertGreaterEqual(db, -14.05, kind)
+            self.assertLessEqual(db, -9.95, kind)
+
+    def test_progress_bar_is_off_unless_the_beat_asks(self):
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
+        box = {"left": 0, "top": 0, "width": 400, "height": 700}
+        phone, anim, _events = motif_markup(
+            "phone_frame", {"motif": "phone_frame"}, 0.0, 2.0, box, colors, "stage-0", "shot.png")
+        self.assertNotIn("phone-bar", phone)
+        self.assertNotIn("-prog", anim)
+        opted, _anim, _events = motif_markup(
+            "phone_frame", {"motif": "phone_frame", "progress": True}, 0.0, 2.0, box, colors, "stage-1", "shot.png")
+        self.assertIn("phone-bar", opted)
+        card, anim, _events = motif_markup(
+            "broll_card", {"motif": "broll_card"}, 0.0, 2.0, box, colors, "stage-2", "clip.mp4")
+        self.assertNotIn("broll-progress", card)
+        self.assertNotIn("-bar", anim)
+
+    def test_target_text_centers_the_card_inside_the_phone(self):
+        from PIL import Image, ImageDraw, ImageFont
+        from kallaway_targets import locate_target, match_phrase, settle_pan, surface_box
+        from check_kallaway_style import check
+        font_path = Path(__file__).resolve().parent / "fonts" / "Inter-Black.ttf"
+        font = ImageFont.truetype(str(font_path), 52)
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Image.new("RGB", (800, 1400), (42, 47, 54))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((50, 480, 750, 860), fill=(255, 248, 241))
+            draw.text((90, 560), "Join our email list", fill=(20, 20, 20), font=font)
+            path = Path(tmp) / "page.png"
+            image.save(path)
+            tight = locate_target(path, "Join our email list", "text")
+            card = surface_box(path, {"x": 0.15, "y": 0.42, "w": 0.4, "h": 0.04})
+            self.assertLess(card["y"], tight["y"])
+            self.assertGreater(card["y"] + card["h"], tight["y"] + tight["h"])
+            self.assertLess(card["h"], 0.45)
+            stage = {
+                "motif": "phone_frame",
+                "media": str(path),
+                "scroll": {"from": 0},
+                "callout": {"at": 1.2, "target_text": "Join our email list", "group": "surface"},
+            }
+            resolve_annotations(stage, 0.0, 3.0, (400, 280))
+            callout = stage["callout"]
+            self.assertEqual(callout["space"], "image")
+            self.assertGreaterEqual(callout["at"], stage["motion"]["scroll_end"])
+            frame = stage["frame"]
+            view_top = frame["viewport_top"]
+            view_h = frame["viewport_height"]
+            center = (callout["y"] + callout["h"] / 2 - view_top) / view_h
+            self.assertAlmostEqual(center, 0.5, delta=0.08)
+            self.assertGreaterEqual(callout["y"], view_top - 0.01)
+            self.assertLessEqual(callout["y"] + callout["h"], view_top + view_h + 0.01)
+            scroll, _top = settle_pan(callout, view_h)
+            self.assertAlmostEqual(scroll, stage["scroll"]["to"], places=3)
+            with self.assertRaises(ValueError):
+                match_phrase(
+                    [{"text": "Join", "x": 0.1, "y": 0.2, "w": 0.1, "h": 0.02},
+                     {"text": "list", "x": 0.2, "y": 0.2, "w": 0.1, "h": 0.02},
+                     {"text": "Join", "x": 0.1, "y": 0.6, "w": 0.1, "h": 0.02},
+                     {"text": "list", "x": 0.2, "y": 0.6, "w": 0.1, "h": 0.02}],
+                    "Join list")
+            outside = {
+                "style": "kallaway", "theme": "ai-builder-school", "theme_mode": "dark",
+                "output": {"width": 1080, "height": 1920, "fps": 30},
+                "audio_policy": {"music_required": False}, "music": [],
+                "headers": [{"start": 0, "end": 2, "text": "Comment VAULT"}],
+                "cta": {"keyword": "VAULT"},
+                "shots": [{
+                    "id": "shot-00", "start": 0, "end": 2.2, "layout": "split",
+                    "stage": {
+                        "motif": "phone_frame",
+                        "scroll": {"from": 0, "to": 0},
+                        "motion": {"entrance_end": 0.4, "scroll_start": 0, "scroll_end": 0.4},
+                        "frame": {"img_h": 200, "viewport_height": 0.5, "viewport_top": 0.0, "scroll_to": 0},
+                        "callout": {"at": 1.0, "space": "image", "x": 0.1, "y": 0.8, "w": 0.4, "h": 0.1},
+                    },
+                }, {
+                    "id": "shot-01", "start": 2.2, "end": 3.2, "layout": "full",
+                }],
+                "sfx": [{"kind": "whoosh", "at": 0}, {"kind": "marker", "at": 1.0}],
+            }
+            spec = Path(tmp) / "timeline.json"
+            spec.write_text(json.dumps(outside))
+            report = check(spec, None)
+            self.assertFalse(report["ok"])
+            self.assertTrue(any("outside the phone" in error for error in report["errors"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -131,8 +131,9 @@
           "description": "Pan a phone screenshot. 0 is the top of the image and 1 is the bottom."
         },
         "desaturate": {"type": "number", "minimum": 0, "maximum": 1},
-        "callout": {"type": "object", "description": "Circle on a phone screenshot. spoken is the word it belongs to. x, y, w, h are fractions of the settled frame. The stroke waits until the phone has entered and the pan has settled, then draws in the screenshot's coordinates."},
-        "highlight": {"type": "object", "description": "Popped line on a phone screenshot. spoken is the word it belongs to. It waits out the entrance and the pan, and it moves with the screenshot."},
+        "progress": {"type": "boolean", "description": "Draw a filling bar on a phone or b-roll clip. Off unless set."},
+        "callout": {"type": "object", "description": "Circle on a phone screenshot. spoken is the word it belongs to. target_text is a phrase in the screenshot; Tesseract finds that box in the image. group surface grows the box to the card around the words (a form). Without target_text, x, y, w, h are fractions of the settled frame. The pan ends with a measured target centered in the phone. The stroke waits until the entrance and the pan have settled."},
+        "highlight": {"type": "object", "description": "Popped line on a phone screenshot. spoken is the word it belongs to. target_text locates it in the image the same way as a callout. It waits out the entrance and the pan, and it moves with the screenshot."},
         "chip": {
           "type": "object",
           "additionalProperties": false,
@@ -162,6 +163,8 @@
       "additionalProperties": false,
       "properties": {
         "spoken": {"type": "string", "description": "Word the circle or highlight lands on."},
+        "target_text": {"type": "string", "description": "Phrase to find in the screenshot. The box is that text in the image's own pixels."},
+        "group": {"type": "string", "enum": ["text", "surface"], "description": "text boxes the words. surface grows out to the card that holds them."},
         "at": {"type": "number"},
         "x": {"type": "number"},
         "y": {"type": "number"},
@@ -231,6 +234,7 @@
         "suffix": {"type": "string"},
         "scroll": {"type": "object"},
         "desaturate": {"type": "number"},
+        "progress": {"type": "boolean"},
         "chip": {"type": "object"},
         "kicker": {"type": "string"}
       }

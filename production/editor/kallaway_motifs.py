@@ -55,6 +55,9 @@ def _cue_time(block):
 
 
 def image_height_percent(stage):
+    frame = stage.get("frame") or {}
+    if frame.get("img_h"):
+        return float(frame["img_h"])
     scroll = stage.get("scroll") or {}
     if not scroll:
         return 100.0
@@ -109,14 +112,17 @@ def draw_moment(cue, motion, end):
     return round(min(moment, latest), 3)
 
 
-def resolve_annotations(stage, start, end):
+def resolve_annotations(stage, start, end, screen=None):
     """Write the draw time onto callout and highlight, and remember the pan window.
 
     `cue_at` keeps the spoken word. `at` becomes the moment the stroke starts.
+    A `target_text` box is measured on the screenshot before the pan is aimed.
     A second call leaves an already resolved stage alone.
     """
     if stage.get("motion"):
         return stage["motion"]
+    from kallaway_targets import place_targets
+    place_targets(stage, screen)
     motion = motion_window(stage, start, end)
     stage["motion"] = {
         "entrance_end": motion["entrance_end"],
@@ -136,7 +142,14 @@ def resolve_annotations(stage, start, end):
 
 
 def screenshot_box(block, img_h, scroll_to):
-    """Map a settled viewport box onto the tall screenshot, in percentages of that image."""
+    """Map a callout onto the screenshot, in percentages of that image.
+
+    An image-space box (from target_text) is already in those percentages.
+    A hand-authored box is a fraction of the settled phone window.
+    """
+    if block.get("space") == "image":
+        return (float(block.get("x", 0)) * 100.0, float(block.get("y", 0)) * 100.0,
+                float(block.get("w", 0.2)) * 100.0, float(block.get("h", 0.1)) * 100.0)
     extra = float(img_h) - 100.0
     to = float(scroll_to or 0)
     x = float(block.get("x", 0.3))
@@ -250,7 +263,10 @@ def _slide(selector, at):
 def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, track_index=2):
     stage = stage or {}
     if motif in {"phone_frame", "broll_card"}:
-        resolve_annotations(stage, start, end)
+        # The stage box is the padded phone's parent. 8px of pad at 1080 wide.
+        pad = 8 * (float(box["width"]) / 0.9) / 1080
+        screen = (float(box["width"]) - 2 * pad, float(box["height"]) - 2 * pad)
+        resolve_annotations(stage, start, end, screen)
     events = stage_events(motif, start, end, stage)
     animations = []
     duration = end - start
@@ -289,9 +305,12 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         img_h = image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
         scroll_to = float(scroll.get("to", 0)) if scroll else 0
+        # A measured target uses a pan whose aspect matches the file, so image
+        # percentages land on the same pixels. A hand-authored box keeps cover.
+        fit = "fill" if (stage.get("frame") or {}).get("img_h") else "cover"
         if media_url:
             picture = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
-                       f'style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;'
+                       f'style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:{fit};'
                        f'filter:saturate({sat:.3f})">')
         else:
             picture = (f'<div class="phone-fake"><b style="color:{text}">Preview</b>'
@@ -307,18 +326,24 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'stroke-dashoffset="{HAND_CIRCLE_LENGTH}"/></svg>')
         if stage.get("highlight"):
             highlight = stage["highlight"]
-            _left, top, _width, _height = screenshot_box(
-                {"x": 0, "y": highlight.get("y", 0.4), "w": 1, "h": 0.08}, img_h, scroll_to)
+            mapped = highlight if highlight.get("space") == "image" else {
+                "x": 0, "y": highlight.get("y", 0.4), "w": 1, "h": 0.08}
+            _left, top, _width, _height = screenshot_box(mapped, img_h, scroll_to)
             extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top:.2f}%">'
                        f'{_esc(highlight.get("label") or "")}</div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
         klass = "phone fill" if media_url and detailed else "phone"
+        # A filling bar reads as a stray underline. It is off unless the beat asks.
+        bar = ""
+        if stage.get("progress"):
+            bar = f'<div class="phone-bar"><div id="{ident}-prog"></div></div>'
         body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">'
-                f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.0f}%">{picture}{extras}</div>'
-                f'<div class="phone-bar"><div id="{ident}-prog"></div></div>{thumb}</div></div>')
+                f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
+                f'{bar}{thumb}</div></div>')
         animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
-        animations.append(
-            f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
+        if stage.get("progress"):
+            animations.append(
+                f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
         if not detailed:
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
@@ -349,11 +374,14 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
     elif motif == "broll_card":
         picture = (f'<img src="{_esc(media_url)}" alt="">' if media_url
                    else f'<div class="broll-fake"><span class="mono">B-ROLL</span></div>')
-        body = (f'<div id="{ident}-card" class="broll-card">{picture}'
-                f'<div class="broll-progress"><div id="{ident}-bar"></div></div></div>')
+        bar = ""
+        if stage.get("progress"):
+            bar = f'<div class="broll-progress"><div id="{ident}-bar"></div></div>'
+        body = f'<div id="{ident}-card" class="broll-card">{picture}{bar}</div>'
         animations.append(_slide(f"#{ident}-card", events[0]["at"]))
-        animations.append(
-            f'tl.fromTo("#{ident}-bar",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.35):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
+        if stage.get("progress"):
+            animations.append(
+                f'tl.fromTo("#{ident}-bar",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.35):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
 
     elif motif == "numbered_list":
         items = list(stage.get("items") or ["Open on the split", "Cut closer", "Show the proof", "Ask for the comment"])[:6]

@@ -20,8 +20,14 @@ MIN_SHOT = 0.5
 STAGE_KEYS = (
     "media", "items", "count", "value", "label", "text", "heights", "negative",
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
-    "chip", "reveal", "labels", "kicker", "disclaimer",
+    "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
 )
+
+
+def _phone_screen(theme, width, height):
+    layout = theme["layout"]
+    pad = 8 * (width / 1080)
+    return (layout["stage_width"] * width - 2 * pad, layout["stage_height"] * height - 2 * pad)
 
 
 def _tokens(text):
@@ -154,6 +160,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
 
     shots = []
     split_index = 0
+    screen = _phone_screen(theme, width, height)
     for item in resolved:
         beat = item["beat"]
         points = _cut_points(item["start"], item["end"], ordered)
@@ -204,7 +211,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                         stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
                 shot["stage"] = stage
                 if motif in {"phone_frame", "broll_card"}:
-                    resolve_annotations(stage, start, end)
+                    resolve_annotations(stage, start, end, screen)
                 overlays = []
                 for spec in beat.get("overlays") or []:
                     overlay = _overlay(spec, ordered, item["index"], start, end, only_split and piece_index == 0)
@@ -215,7 +222,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                 if overlays:
                     for overlay in overlays:
                         if overlay.get("motif") in {"phone_frame", "broll_card"}:
-                            resolve_annotations(overlay, overlay["start"], overlay["end"])
+                            resolve_annotations(overlay, overlay["start"], overlay["end"], screen)
                     shot["overlays"] = overlays
                 split_pieces.append(shot)
                 split_index += 1
