@@ -1,0 +1,309 @@
+"""Voice tightening, podcast leveling, and original sound cues for Kallaway-style edits.
+
+The pops, whooshes, clicks, ticks, dings, bass hits, risers, buzzes, marker squeaks,
+and the lo-fi bed are synthesized in this file. They are original, deterministic,
+and dedicated to the public domain under CC0 1.0. No third-party samples are used.
+"""
+import math
+import struct
+import subprocess
+import wave
+from pathlib import Path
+
+RATE = 48000
+SFX_KINDS = ("pop", "whoosh", "click", "typing", "ticking", "ding", "bass", "riser", "error", "marker")
+
+
+def _clamp(value):
+    return max(-1.0, min(1.0, value))
+
+
+def _noise(index):
+    value = (index * 1103515245 + 12345) & 0x7FFFFFFF
+    return value / 0x7FFFFFFF * 2 - 1
+
+
+def write_wav(path, samples, rate=RATE):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as handle:
+        handle.setparams((1, 2, rate, 0, "NONE", "not compressed"))
+        frames = bytearray()
+        for sample in samples:
+            frames += struct.pack("<h", int(_clamp(sample) * 32767))
+        handle.writeframes(frames)
+    return path
+
+
+def _normalize(samples, peak=0.9):
+    loudest = max(1e-6, max(abs(sample) for sample in samples))
+    gain = peak / loudest
+    return [sample * gain for sample in samples]
+
+
+def _synth(kind, rate=RATE):
+    if kind == "pop":
+        length = 0.13
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = (1 - t / length) ** 2 * min(1, t / 0.004)
+            samples.append(0.85 * env * math.sin(2 * math.pi * (720 - 380 * t) * t))
+        return samples
+    if kind == "whoosh":
+        length = 0.32
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.sin(math.pi * min(1, t / length)) ** 1.4
+            tone = math.sin(2 * math.pi * (280 + 900 * (t / length)) * t)
+            samples.append(env * (0.55 * _noise(n) + 0.2 * tone))
+        return samples
+    if kind == "click":
+        length = 0.03
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 90)
+            samples.append(env * (0.7 * _noise(n) + 0.4 * math.sin(2 * math.pi * 1800 * t)))
+        return samples
+    if kind == "typing":
+        length = 0.045
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 70)
+            samples.append(0.75 * env * (0.65 * _noise(n + 9) + 0.25 * math.sin(2 * math.pi * 2400 * t)))
+        return samples
+    if kind == "ticking":
+        length = 0.05
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 60)
+            samples.append(env * math.sin(2 * math.pi * 2100 * t))
+        return samples
+    if kind == "ding":
+        length = 0.42
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 5.5)
+            samples.append(env * (0.55 * math.sin(2 * math.pi * 880 * t) + 0.28 * math.sin(2 * math.pi * 1320 * t)))
+        return samples
+    if kind == "bass":
+        length = 0.46
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 6.5) * min(1, t / 0.008)
+            freq = 96 * math.exp(-t * 3.2) + 42
+            samples.append(env * math.sin(2 * math.pi * freq * t))
+        return samples
+    if kind == "riser":
+        length = 0.55
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = (t / length) ** 1.3
+            freq = 180 + 740 * (t / length)
+            samples.append(env * (0.35 * math.sin(2 * math.pi * freq * t) + 0.25 * _noise(n)))
+        return samples
+    if kind == "error":
+        length = 0.32
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.exp(-t * 4) * min(1, t / 0.01)
+            samples.append(env * (0.45 * math.sin(2 * math.pi * 140 * t) + 0.45 * math.sin(2 * math.pi * 186 * t)))
+        return samples
+    if kind == "marker":
+        length = 0.24
+        samples = []
+        for n in range(int(rate * length)):
+            t = n / rate
+            env = math.sin(math.pi * min(1, t / length))
+            freq = 700 + 1400 * (t / length)
+            samples.append(env * _noise(n) * (0.45 + 0.55 * abs(math.sin(2 * math.pi * freq * t))))
+        return samples
+    raise ValueError(f"unknown sfx kind: {kind}")
+
+
+def write_sfx_library(directory):
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    written = {}
+    for kind in SFX_KINDS:
+        path = directory / f"{kind}.wav"
+        write_wav(path, _normalize(_synth(kind)))
+        written[kind] = path
+    note = directory / "LICENSE.txt"
+    note.write_text(
+        "Original synthesized sound effects generated by production/editor/kallaway_audio.py.\n"
+        "Dedicated to the public domain under Creative Commons CC0 1.0.\n"
+        "https://creativecommons.org/publicdomain/zero/1.0/\n"
+    )
+    return written
+
+
+def write_bed(path, duration):
+    """Steady lo-fi bed: soft kick, hat, and a low chord. No vocals, no swell."""
+    duration = max(4.0, float(duration))
+    rate = RATE
+    total = int(duration * rate)
+    bpm = 82
+    beat = 60.0 / bpm
+    samples = []
+    for index in range(total):
+        t = index / rate
+        chord = (
+            0.16 * math.sin(2 * math.pi * 110 * t)
+            + 0.11 * math.sin(2 * math.pi * 164.81 * t)
+            + 0.09 * math.sin(2 * math.pi * 220 * t)
+            + 0.06 * math.sin(2 * math.pi * 329.63 * t)
+        )
+        chord *= 0.86 + 0.14 * math.sin(2 * math.pi * 0.12 * t)
+        bar = t % (beat * 4)
+        kick = 0.0
+        for hit in (0.0, beat * 2):
+            dt = bar - hit
+            if 0 <= dt < 0.2:
+                env = math.exp(-dt * 16)
+                freq = 130 * math.exp(-dt * 10) + 46
+                kick += 0.5 * env * math.sin(2 * math.pi * freq * dt)
+        hat = 0.0
+        for hit in (beat, beat * 3):
+            dt = bar - hit
+            if 0 <= dt < 0.045:
+                hat += 0.11 * math.exp(-dt * 48) * _noise(index)
+        samples.append(chord * 0.42 + kick + hat)
+    # Aim the file near -14 dBFS RMS so a later linear gain of 10^(-25/20)
+    # sits about 25 dB under a -14 LUFS voice.
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+    target = 10 ** (-14 / 20)
+    scaled = [sample * (target / max(rms, 1e-6)) for sample in samples]
+    peak = max(abs(sample) for sample in scaled)
+    if peak > 0.98:
+        scaled = [sample * (0.98 / peak) for sample in scaled]
+    write_wav(path, scaled, rate)
+    license_path = Path(path).with_name("BED-LICENSE.txt")
+    license_path.write_text(
+        "Original lo-fi bed synthesized by production/editor/kallaway_audio.py.\n"
+        "Dedicated to the public domain under Creative Commons CC0 1.0.\n"
+        "No third-party recording is included. Safe to ship when a supplied track is absent.\n"
+    )
+    return Path(path)
+
+
+def keep_ranges(words, source_duration, gap=0.1, handle=0.02):
+    """Drop pauses longer than `gap` seconds, cutting on word boundaries."""
+    if gap <= 0 or handle < 0:
+        raise ValueError("pause gap and handle must be non-negative")
+    ordered = sorted(words, key=lambda word: float(word["start"]))
+    if not ordered:
+        raise ValueError("no words to tighten")
+    source_duration = float(source_duration)
+    ranges = []
+    start = max(0.0, float(ordered[0]["start"]) - handle)
+    for prev, word in zip(ordered, ordered[1:]):
+        pause = float(word["start"]) - float(prev["end"])
+        if pause > gap:
+            ranges.append((start, min(source_duration, float(prev["end"]) + handle)))
+            start = max(0.0, float(word["start"]) - handle)
+    ranges.append((start, min(source_duration, float(ordered[-1]["end"]) + handle)))
+    merged = []
+    for begin, end in ranges:
+        if end - begin <= 0.01:
+            continue
+        if merged and begin <= merged[-1][1] + 1e-4:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((begin, end))
+    if not merged:
+        raise ValueError("tightening removed the entire take")
+    return merged
+
+
+def _probe_duration(path):
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True)
+    return float(result.stdout.strip())
+
+
+def _probe_rate(path):
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True)
+    num, _, den = result.stdout.strip().partition("/")
+    if den:
+        return float(num) / float(den)
+    return float(num or 30)
+
+
+def tighten_video(source, words, output, gap=0.1, handle=0.02):
+    """Write a gapless 1x cut of the talking-head take and remap word times."""
+    source, output = Path(source), Path(output)
+    duration = _probe_duration(source)
+    ranges = keep_ranges(words, duration, gap=gap, handle=handle)
+    filters = []
+    expected = 0.0
+    for index, (begin, end) in enumerate(ranges):
+        length = end - begin
+        filters.append(f"[0:v]trim=start={begin:.6f}:end={end:.6f},setpts=PTS-STARTPTS[v{index}]")
+        filters.append(
+            f"[0:a]atrim=start={begin:.6f}:end={end:.6f},asetpts=PTS-STARTPTS,"
+            f"afade=t=in:d=0.004,afade=t=out:st={max(0, length - 0.004):.6f}:d=0.004[a{index}]")
+        expected += length
+    labels = "".join(f"[v{i}][a{i}]" for i in range(len(ranges)))
+    filters.append(f"{labels}concat=n={len(ranges)}:v=1:a=1[vout][aout]")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    graph = output.with_suffix(".tighten.txt")
+    graph.write_text(";\n".join(filters))
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+         "-filter_complex_script", str(graph), "-map", "[vout]", "-map", "[aout]",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
+        check=True)
+    from edit import map_words
+    segments = [{"start": begin, "end": end} for begin, end in ranges]
+    mapped = map_words(words, segments)
+    return {"output": str(output), "words": mapped, "ranges": ranges,
+            "expected_duration": expected, "duration": _probe_duration(output),
+            "fps": _probe_rate(output)}
+
+
+def _loudnorm_measure(path, target, peak, chain):
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
+         f"{chain},loudnorm=I={target}:TP={peak}:LRA=7:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr[-4000:])
+    import json
+    import re
+    blocks = re.findall(r'\{\s*"input_i".*?\}', result.stderr, re.S)
+    if not blocks:
+        raise RuntimeError("voice loudnorm returned no measurement")
+    return json.loads(blocks[-1])
+
+
+def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4000, presence_db=4):
+    """Compress about 4:1, add a presence lift, and level the voice to the target."""
+    source, output = Path(source), Path(output)
+    chain = (f"highpass=f=80,equalizer=f={presence_hz}:t=q:w=1.3:g={presence_db},"
+             "acompressor=threshold=-18dB:ratio=4:attack=8:release=110:makeup=3")
+    measured = _loudnorm_measure(source, target_lufs, true_peak, chain)
+    effect = (f"{chain},loudnorm=I={target_lufs}:TP={true_peak}:LRA=7:"
+              f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
+              f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
+              f"offset={measured['target_offset']}:linear=true")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+         "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-af", effect,
+         "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(output)],
+        check=True)
+    return {"output": str(output), "measurement": measured, "target_lufs": target_lufs}

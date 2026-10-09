@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kallaway-stage-plan/v1",
+  "title": "Kallaway stage plan",
+  "description": "Per-reel graphic choices for the split shots of a Kallaway talking-head edit. Author this from the transcript. The closing split stays the lead-magnet document fan and is not listed here. Without a plan, the editor rotates motifs from a seed of the video path and does not repeat a motif on back-to-back split shots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "stages"],
+  "properties": {
+    "schema": {"const": "kallaway-stage-plan/v1"},
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One object per split shot you want to art-direct, in spoken order. Omit a shot and the seeded rotation fills it. A list of motif names is also accepted by the planner and means the same thing as stages with only a motif, applied in slot order.",
+      "items": {"$ref": "#/$defs/stage"}
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motif"],
+      "properties": {
+        "motif": {
+          "enum": [
+            "thumbnail_grid", "phone_frame", "broll_card", "numbered_list",
+            "line_chart", "bar_chart", "counter", "highlight_box", "hand_circle",
+            "typing_ui", "mind_map", "logo_row"
+          ]
+        },
+        "spoken": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A short phrase copied from stage_slots.spoken for the split shot this graphic illustrates. When any stage sets spoken or word_range, every stage must set one of them."
+        },
+        "word_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {"type": "integer", "minimum": 0},
+          "description": "[start, end) indexes into the word list this timeline was planned against. The start word must fall inside a split shot."
+        },
+        "why": {
+          "type": "string",
+          "description": "Author note for the next editor. Not drawn on screen."
+        },
+        "note": {"type": "string"},
+        "media": {
+          "type": "string",
+          "description": "Local image or video for phone_frame, broll_card, or highlight_box. Absolute path, or a path relative to the plan file's directory when the runner loads it next to the timeline."
+        },
+        "items": {"type": "array", "items": {"type": "string"}},
+        "count": {"type": "integer", "minimum": 1},
+        "value": {"type": "integer"},
+        "label": {"type": "string"},
+        "text": {"type": "string", "description": "Sentence typed on screen for typing_ui."},
+        "heights": {
+          "type": "array",
+          "items": {"type": "number"},
+          "description": "Bar heights as percentages for bar_chart."
+        },
+        "negative": {"type": "boolean", "description": "Amber first bar on bar_chart."},
+        "pages": {
+          "type": "array",
+          "description": "Not used on body shots. The closing doc_fan pages come from the theme.",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

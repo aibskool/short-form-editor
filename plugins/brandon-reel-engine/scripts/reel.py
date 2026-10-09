@@ -32,6 +32,8 @@ COMMANDS = {
     'render': ('python', 'production/editor/edit.py', 'render'),
     'finalize': ('python', 'production/finalize_render.py'),
     'check': ('python', 'production/check_editorial.py'),
+    'check-style': ('python', 'production/check_kallaway_style.py'),
+    'talking-head': ('python', 'production/editor/talking_head.py'),
     'review-player': ('python', 'production/build_review.py'),
     'manychat-prepare': ('python', 'production/delivery/manychat_adapter.py', 'prepare'),
 }
@@ -94,7 +96,10 @@ def main():
                 spec_path = selected.spec if selected.spec.is_absolute() else project / selected.spec
                 timeline = json.loads(spec_path.read_text())
                 policy = timeline.get('audio_policy', {})
-                if policy.get('music_required') is not False or timeline.get('music'):
+                if timeline.get('style') == 'kallaway':
+                    if not timeline.get('music') and not policy.get('user_opt_out'):
+                        raise ValueError('A Kallaway talking-head edit needs a music bed or audio_policy.user_opt_out')
+                elif policy.get('music_required') is not False or timeline.get('music'):
                     raise ValueError('Brandon short-form exports require music_required:false and no music entries')
             return subprocess.run([executable, str(project / relative), *fixed, *forwarded], cwd=project).returncode
         result = {'project_root': str(project), 'project_resolution': basis, 'plugin_root': str(PLUGIN),

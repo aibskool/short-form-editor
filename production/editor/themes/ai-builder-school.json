@@ -1,0 +1,121 @@
+{
+  "id": "ai-builder-school",
+  "name": "AI Builder School",
+  "default_mode": "dark",
+  "measurement_note": "Layout fractions are reconciled to reference frames (540x960 grabs of the dark reels). The speaker card body sits about 6.5% in from each side and starts near 71% down, which is wider than the 40px estimate in the written spec. Caption glyphs land near 65-68% down. The first large layout cut in reel 03 is at 3.0s.",
+  "modes": {
+    "dark": {
+      "background": "#1A1A1A",
+      "contrast": "#111111",
+      "surface": "#242424",
+      "border": "#3A3A3A",
+      "accent": "#54C947",
+      "accent_strong": "#43AD38",
+      "accent_soft": "#7BE06F",
+      "text": "#F2F2F0",
+      "muted": "#A8A8A2",
+      "warning": "#ECC94B",
+      "warning_text": "#ECC94B",
+      "on_accent": "#1A1A1A",
+      "grid": "#3A3A3A",
+      "grid_style": "dots",
+      "caption_shadow": "0 2px 8px rgba(0,0,0,0.45)",
+      "card_shadow": "0 10px 20px rgba(0,0,0,0.4)"
+    },
+    "light": {
+      "background": "#FBF8F1",
+      "contrast": "#211C18",
+      "surface": "#FFFFFF",
+      "border": "#E4DDD0",
+      "accent": "#54C947",
+      "accent_strong": "#43AD38",
+      "accent_soft": "#7BE06F",
+      "text": "#211C18",
+      "muted": "#5E584F",
+      "warning": "#ECC94B",
+      "warning_text": "#7A5E12",
+      "on_accent": "#1A1A1A",
+      "grid": "#E4DDD0",
+      "grid_style": "lines",
+      "caption_shadow": "0 1px 0 rgba(255,255,255,0.9)",
+      "card_shadow": "0 15px 30px rgba(0,0,0,0.15)",
+      "muted_note": "Light-mode muted and warning_text are darkened so small type stays readable on ticket cream. Grid is a warm line derived for that cream field."
+    }
+  },
+  "fonts": {
+    "display": {
+      "family": "Permanent Marker",
+      "file": "fonts/PermanentMarker-Regular.ttf",
+      "weight": 400
+    },
+    "caption": {
+      "family": "Inter",
+      "file": "fonts/Inter-Black.ttf",
+      "weight": 900
+    },
+    "caption_bold": {
+      "family": "Inter",
+      "file": "fonts/Inter-ExtraBold.ttf",
+      "weight": 800
+    },
+    "mono": {
+      "family": "IBM Plex Mono",
+      "file": "fonts/IBMPlexMono-Medium.ttf",
+      "weight": 500
+    }
+  },
+  "layout": {
+    "card_margin_x": 0.065,
+    "card_top": 0.715,
+    "card_bottom": 0.985,
+    "card_radius": 28,
+    "caption_split_y": 0.648,
+    "caption_full_y": 0.68,
+    "title_top": 0.05,
+    "stage_left": 0.05,
+    "stage_top": 0.145,
+    "stage_width": 0.9,
+    "stage_height": 0.47,
+    "caption_font_px": 76,
+    "title_font_px": 112,
+    "mono_font_px": 22,
+    "punch_scale": 1.16,
+    "tight_scale": 1.15,
+    "wide_scale": 1.0,
+    "dot_spacing": 36,
+    "object_position": "50% 32%"
+  },
+  "voice": {
+    "plain_english": true,
+    "forbid_characters": ["\u2014", "\u2013"]
+  },
+  "audio": {
+    "pause_gap_seconds": 0.1,
+    "join_handle_seconds": 0.02,
+    "voice_lufs": -14,
+    "voice_true_peak": -1.5,
+    "compression_ratio": 4,
+    "presence_hz": 4000,
+    "presence_db": 4,
+    "music_under_db": 25,
+    "music_default": true
+  },
+  "content": {
+    "lead_magnet_title": "AI Business Idea Vault",
+    "lead_magnet_detail": "30+ AI business ideas, each with an A to Z guide to landing the first client",
+    "cta_template": "Comment {keyword}",
+    "default_keyword": "VAULT"
+  },
+  "sfx_gain": {
+    "pop": 0.46,
+    "whoosh": 0.4,
+    "click": 0.38,
+    "typing": 0.3,
+    "ticking": 0.24,
+    "ding": 0.42,
+    "bass": 0.52,
+    "riser": 0.36,
+    "error": 0.34,
+    "marker": 0.4
+  }
+}

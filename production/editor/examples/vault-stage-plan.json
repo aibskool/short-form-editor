@@ -1,0 +1,41 @@
+{
+  "schema": "kallaway-stage-plan/v1",
+  "stages": [
+    {
+      "spoken": "this one change",
+      "motif": "line_chart",
+      "why": "The hook names a change. A line climbing across the stage shows it before the first full-screen cut."
+    },
+    {
+      "spoken": "no longer works",
+      "motif": "hand_circle",
+      "label": "no longer",
+      "why": "Negative claim. The circle lands on the words, and the amber caption emphasis is separate."
+    },
+    {
+      "spoken": "pop the grid",
+      "motif": "thumbnail_grid",
+      "items": ["Hook", "Proof", "Offer", "Cut", "List", "Chart", "Note", "CTA"],
+      "why": "He says grid. Eight thumbnails pop in on that phrase."
+    },
+    {
+      "spoken": "the secret",
+      "motif": "highlight_box",
+      "label": "the line that matters",
+      "why": "Punch the one line. Add media when a real screenshot should sit behind the highlight."
+    },
+    {
+      "spoken": "show a list",
+      "motif": "numbered_list",
+      "items": ["Open on the split", "Cut closer", "Show the proof", "Ask them to comment"],
+      "why": "Four steps, one click per row. Copy the actual steps from the transcript."
+    },
+    {
+      "spoken": "the number",
+      "motif": "counter",
+      "value": 30,
+      "label": "ideas",
+      "why": "The vault is 30+ ideas. The counter rolls to the number he says."
+    }
+  ]
+}
