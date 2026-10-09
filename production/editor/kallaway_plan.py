@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 
-from kallaway_motifs import MOTIFS, stage_events
+from kallaway_motifs import MOTIFS, stage_events, stage_windows
 from kallaway_style import load_theme
 
 NEGATIVE = {"no", "not", "never", "broken", "failed", "worse", "bad", "wrong", "stop"}
@@ -18,7 +18,7 @@ NEGATIVE = {"no", "not", "never", "broken", "failed", "worse", "bad", "wrong", "
 LIBRARY = (
     "thumbnail_grid", "line_chart", "bar_chart", "numbered_list", "counter",
     "highlight_box", "hand_circle", "typing_ui", "phone_frame", "broll_card",
-    "mind_map", "logo_row",
+    "mind_map", "logo_row", "quote_card", "offer_pair", "flow_line", "pill",
 )
 AUTHOR_KEYS = {"motif", "spoken", "word_range", "why", "note", "covers", "schema"}
 
@@ -142,6 +142,14 @@ def _stage_for(motif, words, theme, keyword):
         return {"motif": motif}
     if motif == "line_chart":
         return {"motif": motif}
+    if motif == "quote_card":
+        return {"motif": motif, "text": "We already have one."}
+    if motif == "offer_pair":
+        return {"motif": motif, "items": ["Voice agent", "Site audit"]}
+    if motif == "flow_line":
+        return {"motif": motif, "items": ["New money", "You"]}
+    if motif == "pill":
+        return {"motif": motif, "label": keyword}
     return {"motif": motif}
 
 
@@ -241,10 +249,9 @@ def _match_entry(entry, slots, ordered, claimed):
 def _cover_sfx(shots, words, styles, gains):
     events = []
     for shot in shots:
-        if shot["layout"] != "split":
-            continue
-        for event in stage_events(shot["stage"]["motif"], shot["start"], shot["end"], shot["stage"]):
-            events.append(event)
+        for motif, start, end, stage in stage_windows(shot):
+            for event in stage_events(motif, start, end, stage):
+                events.append(event)
     if shots:
         events.append({"at": 0.0, "kind": "bass"})
     for word in words:
@@ -281,6 +288,12 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
     styles.setdefault(keyword.lower(), "green")
     for token in NEGATIVE:
         styles.setdefault(token, "amber")
+    if isinstance(stage_plan, dict) and stage_plan.get("beats"):
+        from kallaway_beats import plan_authored
+        return plan_authored(
+            ordered, source_path, words_path, theme, mode, path, keyword, stage_plan,
+            music_path=music_path, music=music, emphasis=styles,
+            width=width, height=height, fps=fps)
     if any(_token(word) == "works" for word in ordered) and any(_token(word) in {"no", "not", "never"} for word in ordered):
         styles.setdefault("works", "amber")
     seed = video_seed(source_path if seed_path is None else seed_path)

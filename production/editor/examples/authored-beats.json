@@ -1,0 +1,54 @@
+{
+  "schema": "kallaway-stage-plan/v1",
+  "bed_bpm": 104,
+  "punch_scale": 1.2,
+  "object_position": "50% 28%",
+  "captions": {"keep_case": ["PAID", "AI"]},
+  "emphasis": {"no": "green", "not": "green"},
+  "music_drops": [
+    {"spoken": "not a no", "until": "good site", "hit": true}
+  ],
+  "chips": [
+    {"after": "comment PAID", "text": "Comment PAID", "place": "stage-corner"}
+  ],
+  "beats": [
+    {
+      "spoken": "almost every",
+      "layout": "split",
+      "crop": "wide",
+      "motif": "phone_frame",
+      "header": {
+        "lines": ["We already have a website?", "Pitch this instead"],
+        "green_lines": [1],
+        "size": 64
+      },
+      "scroll": {"from": 0, "to": 0.45},
+      "desaturate": 0.8,
+      "callout": {"spoken": "list like this", "x": 0.62, "y": 0.34, "w": 0.28, "h": 0.16},
+      "overlays": [
+        {"spoken": "paid", "motif": "counter", "value": 5, "suffix": "%", "label": "to wake it up"}
+      ]
+    },
+    {
+      "spoken": "wake it up",
+      "layout": "punch_in",
+      "scale": 1.2
+    },
+    {
+      "spoken": "not a no",
+      "layout": "full"
+    },
+    {
+      "spoken": "comment PAID",
+      "layout": "split",
+      "crop": "tight",
+      "motif": "pill",
+      "label": "Comment PAID",
+      "header": {
+        "text": "Comment PAID",
+        "emphasis": ["PAID"],
+        "sub": "AI Business Idea Vault"
+      }
+    }
+  ]
+}

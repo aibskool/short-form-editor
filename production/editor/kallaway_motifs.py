@@ -6,7 +6,7 @@ import json
 MOTIFS = (
     "thumbnail_grid", "phone_frame", "broll_card", "numbered_list", "line_chart",
     "bar_chart", "counter", "highlight_box", "hand_circle", "doc_fan", "typing_ui",
-    "mind_map", "logo_row",
+    "mind_map", "logo_row", "quote_card", "offer_pair", "flow_line", "pill",
 )
 
 
@@ -29,6 +29,34 @@ def _times(start, end, count, window=1.25):
     return [round(min(start + index * step, end - 0.05), 3) for index in range(count)]
 
 
+def _clamp(moment, start, end):
+    """Keep a cue inside the shot. Events must start at or after `start` and finish before `end`."""
+    moment = float(moment)
+    latest = max(start, end - 0.04)
+    return round(min(max(moment, start), latest), 3)
+
+
+def _stage_chip(ident, stage):
+    chip = stage.get("chip")
+    if not chip:
+        return ""
+    if isinstance(chip, str):
+        chip = {"text": chip}
+    tone = chip.get("tone") if chip.get("tone") in {"green", "amber"} else "green"
+    return f'<div id="{ident}-chip" class="stage-chip {tone}">{_esc(chip.get("text", ""))}</div>'
+
+
+def stage_windows(shot):
+    """Motif windows on one shot: the split stage, then any timed overlay."""
+    windows = []
+    if shot.get("layout") == "split" and shot.get("stage"):
+        stage = shot["stage"]
+        windows.append((stage.get("motif"), float(shot["start"]), float(shot["end"]), stage))
+    for overlay in shot.get("overlays") or []:
+        windows.append((overlay.get("motif"), float(overlay["start"]), float(overlay["end"]), overlay))
+    return windows
+
+
 def stage_events(motif, start, end, stage=None):
     """SFX cues for one stage shot. Times match the entrance animations."""
     stage = stage or {}
@@ -39,15 +67,27 @@ def stage_events(motif, start, end, stage=None):
         count = max(4, min(8, int(stage.get("count", 8))))
         return [{"at": t, "kind": "pop"} for t in _times(start, end, count, 1.35)]
     if motif in {"phone_frame", "broll_card"}:
-        return [{"at": round(start, 3), "kind": "whoosh"}]
+        events = [{"at": round(start, 3), "kind": "whoosh"}]
+        if stage.get("callout"):
+            events.append({"at": _clamp((stage.get("callout") or {}).get("at", start + 0.35), start, end), "kind": "marker"})
+        if stage.get("highlight"):
+            events.append({"at": _clamp((stage.get("highlight") or {}).get("at", start + 0.4), start, end), "kind": "pop"})
+        return events
     if motif == "numbered_list":
         items = stage.get("items") or ["One", "Two", "Three", "Four"]
+        if stage.get("hold"):
+            return [{"at": round(start, 3), "kind": "click"}]
         return [{"at": t, "kind": "click"} for t in _times(start, end, min(6, len(items)), 1.6)]
     if motif == "line_chart":
         nodes = _times(start + 0.16, end, 3, 0.9)
         return [{"at": round(start, 3), "kind": "whoosh"}] + [{"at": t, "kind": "ding"} for t in nodes]
     if motif == "bar_chart":
-        return [{"at": t, "kind": "pop"} for t in _times(start, end, int(stage.get("count", 4)), 0.8)]
+        if stage.get("reveal") == "slice":
+            rise = min(0.55, max(0.28, (end - start) * 0.4))
+            return [{"at": round(start, 3), "kind": "riser"},
+                    {"at": _clamp(start + rise, start, end), "kind": "ding"}]
+        count = int(stage.get("count") or len(stage.get("heights") or []) or 4)
+        return [{"at": t, "kind": "pop"} for t in _times(start, end, max(1, count), 0.8)]
     if motif == "counter":
         ticks = _times(start, min(end, start + 0.9), 6, 0.8)
         events = [{"at": t, "kind": "ticking"} for t in ticks]
@@ -68,6 +108,19 @@ def stage_events(motif, start, end, stage=None):
     if motif == "logo_row":
         return [{"at": t, "kind": "pop"} for t in _times(start, end, 3, 0.7)] + [
             {"at": round(min(end - 0.05, start + 0.2), 3), "kind": "whoosh"}]
+    if motif == "quote_card":
+        events = [{"at": round(start, 3), "kind": "pop"}]
+        if stage.get("strike"):
+            events.append({"at": _clamp(stage.get("strike_at", start + 0.35), start, end), "kind": "error"})
+        return events
+    if motif == "offer_pair":
+        return [{"at": round(start, 3), "kind": "pop"},
+                {"at": _clamp(start + 0.16, start, end), "kind": "pop"}]
+    if motif == "flow_line":
+        return [{"at": round(start, 3), "kind": "whoosh"},
+                {"at": _clamp(start + 0.28, start, end), "kind": "ding"}]
+    if motif == "pill":
+        return [{"at": round(start, 3), "kind": "pop"}]
     return []
 
 
@@ -81,7 +134,7 @@ def _slide(selector, at):
             f'immediateRender:false}},{at});')
 
 
-def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None):
+def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, track_index=2):
     stage = stage or {}
     events = stage_events(motif, start, end, stage)
     animations = []
@@ -114,16 +167,53 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None):
         body = f'<div class="thumb-grid" style="grid-template-columns:repeat({cols},1fr)">{"".join(cards)}</div>'
 
     elif motif == "phone_frame":
-        screen = (f'<img src="{_esc(media_url)}" alt="">' if media_url
-                  else f'<div class="phone-fake"><b style="color:{text}">Preview</b><span class="mono" style="color:{muted}">9:16</span></div>')
-        body = (f'<div id="{ident}-phone" class="phone"><div class="phone-screen">{screen}'
-                f'<div class="phone-bar"><div id="{ident}-prog"></div></div>'
-                f'<div id="{ident}-thumb" class="thumb-dot"></div></div></div>')
+        scroll = stage.get("scroll") or {}
+        desat = float(stage.get("desaturate") or 0)
+        detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
+        img_h = 168 if scroll else 100
+        sat = max(0.0, min(1.0, 1.0 - desat))
+        if media_url:
+            screen = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
+                      f'style="position:absolute;left:0;top:0;width:100%;height:{img_h}%;object-fit:cover;'
+                      f'filter:saturate({sat:.3f})">')
+        else:
+            screen = (f'<div class="phone-fake"><b style="color:{text}">Preview</b>'
+                      f'<span class="mono" style="color:{muted}">9:16</span></div>')
+        extras = ""
+        if stage.get("callout"):
+            callout = stage["callout"]
+            extras += (f'<div id="{ident}-ring" class="callout-ring" style="left:{float(callout.get("x", 0.3))*100:.2f}%;'
+                       f'top:{float(callout.get("y", 0.3))*100:.2f}%;width:{float(callout.get("w", 0.28))*100:.2f}%;'
+                       f'height:{float(callout.get("h", 0.16))*100:.2f}%"></div>')
+        if stage.get("highlight"):
+            highlight = stage["highlight"]
+            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" '
+                       f'style="top:{float(highlight.get("y", 0.4))*100:.2f}%">{_esc(highlight.get("label") or "")}</div>')
+        thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
+        klass = "phone fill" if media_url and detailed else "phone"
+        body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">{screen}{extras}'
+                f'<div class="phone-bar"><div id="{ident}-prog"></div></div>{thumb}</div></div>')
         animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         animations.append(
-            f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.35});')
-        animations.append(
-            f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
+            f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
+        if not detailed:
+            animations.append(
+                f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
+        if scroll:
+            extra = img_h - 100
+            fro = float(scroll.get("from", 0)) * extra
+            to = float(scroll.get("to", 0.45)) * extra
+            animations.append(
+                f'tl.fromTo("#{ident}-img",{{top:"{fro:.2f}%"}},{{top:"{to:.2f}%",duration:{max(0.45, duration-0.3):.3f},'
+                f'ease:"power1.inOut",immediateRender:false}},{start+0.12});')
+        if stage.get("callout"):
+            at = next(event["at"] for event in events if event["kind"] == "marker")
+            animations.append(
+                f'tl.fromTo("#{ident}-ring",{{scale:1.18,opacity:0}},{{scale:1,opacity:1,duration:0.35,ease:"back.out(1.7)",'
+                f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
+        if stage.get("highlight"):
+            at = next(event["at"] for event in events if event["kind"] == "pop")
+            animations.append(_pop(f"#{ident}-hl", at))
 
     elif motif == "broll_card":
         picture = (f'<img src="{_esc(media_url)}" alt="">' if media_url
@@ -137,22 +227,27 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None):
     elif motif == "numbered_list":
         items = list(stage.get("items") or ["Open on the split", "Cut closer", "Show the proof", "Ask for the comment"])[:6]
         row_h = 100 / max(1, len(items))
+        holding = bool(stage.get("hold"))
+        active = max(0, min(len(items) - 1, int(stage.get("active", 0)))) if holding else 0
         rows = []
         for index, item in enumerate(items):
-            blur = "filter:blur(4px);opacity:0.45;" if index else ""
+            blur = "filter:blur(4px);opacity:0.45;" if index > active else ""
             rows.append(
                 f'<div id="{ident}-row{index}" class="nrow" style="height:{row_h:.2f}%;{blur}">'
                 f'<span class="mono">{index+1:02d}</span><b>{_esc(item)}</b></div>')
         body = (f'<div class="nlist">{"".join(rows)}'
-                f'<div id="{ident}-box" class="nbox" style="height:{row_h - 2:.2f}%"></div></div>')
-        for index, event in enumerate(events):
-            y = index * row_h
-            animations.append(f'tl.set("#{ident}-box",{{top:"{y:.2f}%"}},{event["at"]});')
-            for row in range(len(items)):
-                if row > index:
-                    animations.append(f'tl.set("#{ident}-row{row}",{{filter:"blur(4px)",opacity:0.45}},{event["at"]});')
-                else:
-                    animations.append(f'tl.set("#{ident}-row{row}",{{filter:"blur(0px)",opacity:1}},{event["at"]});')
+                f'<div id="{ident}-box" class="nbox" style="height:{row_h - 2:.2f}%;top:{active * row_h:.2f}%"></div></div>')
+        if holding:
+            animations.append(f'tl.set("#{ident}-box",{{top:"{active * row_h:.2f}%"}},{events[0]["at"]});')
+        else:
+            for index, event in enumerate(events):
+                y = index * row_h
+                animations.append(f'tl.set("#{ident}-box",{{top:"{y:.2f}%"}},{event["at"]});')
+                for row in range(len(items)):
+                    if row > index:
+                        animations.append(f'tl.set("#{ident}-row{row}",{{filter:"blur(4px)",opacity:0.45}},{event["at"]});')
+                    else:
+                        animations.append(f'tl.set("#{ident}-row{row}",{{filter:"blur(0px)",opacity:1}},{event["at"]});')
 
     elif motif == "line_chart":
         body = (
@@ -171,31 +266,39 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None):
                 f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{events[index + 1]["at"]});')
 
     elif motif == "bar_chart":
-        heights = stage.get("heights") or [42, 68, 38, 88]
+        heights = list(stage.get("heights") or [42, 68, 38, 88])
+        labels = list(stage.get("labels") or [])
         negative = bool(stage.get("negative"))
+        sliced = stage.get("reveal") == "slice"
+        count = min(len(heights), 5 if sliced else len(events))
         bars = []
-        count = min(len(heights), len(events), 5)
         for index in range(count):
             color = warning if negative and index == 0 else (accent if index == count - 1 else border)
+            caption = _esc(labels[index]) if index < len(labels) else f"{index+1:02d}"
             bars.append(
                 f'<div class="bar-col"><div id="{ident}-b{index}" class="bar" '
                 f'style="height:{heights[index]}%;background:{color}"></div>'
-                f'<span class="mono">{index+1:02d}</span></div>')
+                f'<span class="mono">{caption}</span></div>')
+            at = events[0]["at"] if sliced else events[index]["at"]
             animations.append(
-                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:0.36,ease:"back.out(1.4)",'
-                f'transformOrigin:"50% 100%",immediateRender:false}},{events[index]["at"]});')
+                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:0.42,ease:"back.out(1.4)",'
+                f'transformOrigin:"50% 100%",immediateRender:false}},{at});')
         body = f'<div class="bars">{"".join(bars)}</div>'
 
     elif motif == "counter":
         target = int(stage.get("value", 30))
-        label = stage.get("label") or "ideas"
-        body = (f'<div class="counter"><div id="{ident}-num" class="count-num">0</div>'
-                f'<div class="mono count-label">{_esc(label)}</div></div>')
+        label = stage.get("label") or ""
+        prefix = json.dumps(str(stage.get("prefix") or ""))
+        suffix = json.dumps(str(stage.get("suffix") or ""))
+        variable = ident.replace("-", "_") + "n"
+        label_html = f'<div class="mono count-label">{_esc(label)}</div>' if label else ""
+        body = (f'<div class="counter"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
+                f'{label_html}</div>')
         animations.append(
-            f'const {ident.replace("-", "_")}n={{v:0}};'
-            f'tl.to({ident.replace("-", "_")}n,{{v:{target},duration:0.9,ease:"power2.out",'
+            f'const {variable}={{v:0}};'
+            f'tl.to({variable},{{v:{target},duration:0.9,ease:"power2.out",'
             f'onUpdate:()=>{{const el=document.getElementById("{ident}-num");'
-            f'if(el) el.textContent=Math.round({ident.replace("-", "_")}n.v).toLocaleString("en-US");}}}},{start});')
+            f'if(el) el.textContent={prefix}+Math.round({variable}.v).toLocaleString("en-US")+{suffix};}}}},{start});')
         animations.append(_pop(f"#{ident}-num", start))
 
     elif motif == "highlight_box":
@@ -291,13 +394,59 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None):
             f'tl.fromTo("#{ident}-d0",{{strokeDashoffset:200}},{{strokeDashoffset:0,duration:0.4,ease:"power2.out"}},{events[-1]["at"]});')
         animations.append(
             f'tl.fromTo("#{ident}-d1",{{strokeDashoffset:200}},{{strokeDashoffset:0,duration:0.4,ease:"power2.out"}},{events[-1]["at"]});')
+
+    elif motif == "quote_card":
+        quote = stage.get("text") or stage.get("label") or "We already have one."
+        strike = ""
+        if stage.get("strike"):
+            strike = f'<div id="{ident}-strike" class="quote-strike"></div>'
+            at = next(event["at"] for event in events if event["kind"] == "error")
+            animations.append(
+                f'tl.fromTo("#{ident}-strike",{{scaleX:0}},{{scaleX:1,duration:0.22,ease:"power2.out",'
+                f'transformOrigin:"0% 50%",immediateRender:false}},{at});')
+        body = (f'<div id="{ident}-quote" class="quote-card"><div class="quote-text">{_esc(quote)}{strike}</div></div>')
+        animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
+
+    elif motif == "offer_pair":
+        items = list(stage.get("items") or ["First offer", "Second offer"])[:2]
+        while len(items) < 2:
+            items.append("Offer")
+        kicker = f'<div class="mono offer-kicker">{_esc(stage["kicker"])}</div>' if stage.get("kicker") else ""
+        note = stage.get("disclaimer") or ""
+        note_html = f'<div class="offer-note">{_esc(note)}</div>' if note else ""
+        cards = []
+        for index, item in enumerate(items):
+            cards.append(f'<div id="{ident}-o{index}" class="offer-card">{_esc(item)}</div>')
+            animations.append(_pop(f"#{ident}-o{index}", events[index]["at"]))
+        body = f'<div class="offer-col">{kicker}<div class="offer-row">{"".join(cards)}</div>{note_html}</div>'
+
+    elif motif == "flow_line":
+        items = list(stage.get("items") or ["From", "To"])[:2]
+        while len(items) < 2:
+            items.append("Next")
+        body = (f'<div class="flow"><div id="{ident}-f0" class="flow-label">{_esc(items[0])}</div>'
+                f'<div id="{ident}-dash" class="flow-dash"></div>'
+                f'<div id="{ident}-f1" class="flow-label">{_esc(items[1])}</div></div>')
+        animations.append(_pop(f"#{ident}-f0", events[0]["at"]))
+        animations.append(_pop(f"#{ident}-f1", events[1]["at"]))
+        animations.append(
+            f'tl.fromTo("#{ident}-dash",{{scaleX:0,opacity:0}},{{scaleX:1,opacity:1,duration:0.35,ease:"power2.out",'
+            f'transformOrigin:"0% 50%",immediateRender:false}},{events[1]["at"]});')
+
+    elif motif == "pill":
+        label = stage.get("label") or stage.get("text") or "Comment"
+        body = (f'<div class="pill-wrap"><div id="{ident}-pill" class="pill">{_esc(label)}</div></div>')
+        animations.append(_pop(f"#{ident}-pill", events[0]["at"]))
+
     else:
         raise ValueError(f"unknown stage motif: {motif}")
+
+    body += _stage_chip(ident, stage)
 
     # Colors that motifs reference through classes are set on the section via custom properties.
     section = (
         f'<section id="{ident}" class="stage clip" data-start="{start:.3f}" data-duration="{duration:.3f}" '
-        f'data-track-index="2" data-layout-allow-overflow '
+        f'data-track-index="{int(track_index)}" data-layout-allow-overflow '
         f'style="left:{box["left"]}px;top:{box["top"]}px;width:{box["width"]}px;height:{box["height"]}px;'
         f'--accent:{accent};--strong:{strong};--text:{text};--muted:{muted};--surface:{surface};'
         f'--border:{border};--contrast:{contrast};--warning:{warning};--on:{on_accent};--soft:{soft};">'

@@ -60,8 +60,15 @@ def card_state(layout, crop, width, height, layout_spec, colors):
             "borderRadius": 0, "boxShadow": "none", "scale": scale}
 
 
-def _caption_text(word, omit_punct=True):
+def _caption_text(word, omit_punct=True, keep_case=()):
+    """On-screen caption. `display` is the authored spelling. `keep_case` preserves PAID, AI, ADA."""
+    if word.get("display"):
+        return str(word["display"])
     text = str(word.get("word", word.get("text", ""))).strip()
+    bare = text.strip(".,!?:;\"'").lower()
+    kept = {item.lower(): item for item in keep_case}
+    if bare in kept:
+        return kept[bare]
     if omit_punct:
         text = text.strip(".,!?:;\"'")
     return text.lower()
@@ -70,7 +77,7 @@ def _caption_text(word, omit_punct=True):
 def _word_style(word, styles):
     if word.get("style") in {"normal", "marker", "green", "amber"}:
         return word["style"]
-    token = _caption_text(word).lower()
+    token = "".join(ch for ch in str(word.get("word", word.get("text", ""))).lower() if ch.isalnum() or ch == "'")
     return styles.get(token, "normal")
 
 
@@ -154,10 +161,15 @@ def build_kallaway(spec, spec_path, project):
             if banned in shot:
                 raise ValueError(f"shot {index} uses {banned}; kallaway layouts are hard cuts")
         state = card_state(layout, shot.get("crop", "wide"), width, height, layout_spec, colors)
+        if shot.get("scale"):
+            state["scale"] = float(shot["scale"])
         payload = {key: state[key] for key in ("left", "top", "width", "height", "borderRadius", "boxShadow")}
         animations.append(f'tl.set("#speaker-card",{json.dumps(payload)},{start});')
         animations.append(
             f'tl.set("#presenter-camera",{{scale:{state["scale"]},transformOrigin:"50% 30%"}},{start});')
+        if shot.get("object_position"):
+            animations.append(
+                f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
         caption_y = layout_spec["caption_split_y"] if layout == "split" else layout_spec["caption_full_y"]
         animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%"}},{start});')
         if layout == "split" and shot.get("stage"):
@@ -167,10 +179,18 @@ def build_kallaway(spec, spec_path, project):
                 stage.get("motif", "thumbnail_grid"), stage, start, end, stage_box, colors, f"stage-{index}", media_url)
             parts.append(section)
             animations.extend(motion)
+        for overlay_index, overlay in enumerate(shot.get("overlays") or []):
+            overlay_media = media(overlay["media"]) if overlay.get("media") else None
+            section, motion, _events = motif_markup(
+                overlay.get("motif"), overlay, float(overlay["start"]), float(overlay["end"]),
+                stage_box, colors, f"over-{index}-{overlay_index}", overlay_media, track_index=3)
+            parts.append(section)
+            animations.extend(motion)
 
     words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
     captions = spec.get("captions", {})
     styles = {str(key).lower(): value for key, value in captions.get("word_styles", {}).items()}
+    keep_case = captions.get("keep_case") or []
     phrases = captions.get("phrases") or []
     if phrases:
         groups = []
@@ -193,7 +213,8 @@ def build_kallaway(spec, spec_path, project):
         spans = []
         for word in group:
             style = _word_style(word, styles)
-            spans.append(f'<span class="cap {style}">{escape(_caption_text(word))}</span>')
+            spans.append(
+                f'<span class="cap {style}">{escape(_caption_text(word, captions.get("omit_terminal_punctuation", True), keep_case))}</span>')
         parts.append(
             f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.04, end-start):.4f}" '
             f'data-track-index="5"><div id="capbox-{index}" class="caption-text">{" ".join(spans)}</div></div>')
@@ -207,8 +228,17 @@ def build_kallaway(spec, spec_path, project):
             continue
         kind = header.get("variant", "headline")
         emphasis = {word.lower() for word in header.get("emphasis") or []}
-        if kind == "label":
-            inner = f'<div class="header-label">{escape(header.get("text", ""))}</div>'
+        size_style = f' style="font-size:{float(header["size"]) * scale:.1f}px"' if header.get("size") else ""
+        lines = header.get("lines") or []
+        if lines:
+            green = {int(line_no) for line_no in header.get("green_lines") or []}
+            blocks = []
+            for line_index, line in enumerate(lines):
+                css_class = "header-line key" if line_index in green else "header-line"
+                blocks.append(f'<div class="{css_class}">{escape(line)}</div>')
+            inner = f'<div class="header-text"{size_style}>{"".join(blocks)}</div>'
+        elif kind == "label":
+            inner = f'<div class="header-label"{size_style}>{escape(header.get("text", ""))}</div>'
         else:
             pieces = []
             for token in str(header.get("text", "")).split(" "):
@@ -222,6 +252,20 @@ def build_kallaway(spec, spec_path, project):
         parts.append(
             f'<div id="hdr-{index}" class="header clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
             f'data-track-index="4">{inner}</div>')
+
+    mono_family = theme["fonts"]["mono"]["family"]
+    for index, notice in enumerate(spec.get("notices") or []):
+        start, end = float(notice["start"]), float(notice["end"])
+        parts.append(
+            f'<div id="notice-{index}" class="notice clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
+            f'data-track-index="6" style="color:{colors["muted"]};background:{colors["surface"]};'
+            f"font-family:'{mono_family}',monospace\">{escape(notice.get('text', ''))}</div>")
+    for index, chip in enumerate(spec.get("chips") or []):
+        start, end = float(chip["start"]), float(chip["end"])
+        parts.append(
+            f'<div id="chip-{index}" class="chip-corner clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
+            f'data-track-index="7" style="background:{colors["accent"]};color:{colors["on_accent"]};'
+            f"font-family:'{mono_family}',monospace\">{escape(chip.get('text', ''))}</div>")
 
     from kallaway_audio import SFX_KINDS, write_sfx_library
     library = spec_path.parent / "sfx"
@@ -273,16 +317,17 @@ def build_kallaway(spec, spec_path, project):
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{first['borderRadius']}px;box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
     #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
-    .stage{{position:absolute;z-index:2}}
+    .stage{{position:absolute;z-index:2;overflow:hidden}}
     #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
-    .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:{caption_px:.1f}px;line-height:1.02;letter-spacing:-0.03em;color:{colors['text']};text-shadow:{colors['caption_shadow']};text-transform:lowercase}}
+    .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:{caption_px:.1f}px;line-height:1.02;letter-spacing:-0.03em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .cap.marker{{font-family:'{display}',cursive;font-weight:400;font-size:1.12em;letter-spacing:0}}
     .cap.green{{color:{colors['accent']}}}
     .cap.amber{{color:{colors['warning_text']}}}
     .header{{position:absolute;top:{layout_spec['title_top']*100:.2f}%;left:7%;width:86%;z-index:8;text-align:center}}
     .header-text{{font-family:'{display}',cursive;font-weight:400;font-size:{title_px:.1f}px;line-height:0.98;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
-    .header-text .key{{color:{colors['accent']}}}
+    .header-line{{display:block}}
+    .header-text .key,.header-line.key{{color:{colors['accent']}}}
     .header-sub{{margin-top:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.08em;text-transform:uppercase;color:{colors['muted']}}}
     .header-label{{display:inline-block;background:{colors['accent']};color:{colors['on_accent']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{title_px*0.62:.1f}px;line-height:1;padding:0.22em 0.45em;border-radius:8px}}
     .mono{{font-family:'{mono}',monospace;letter-spacing:0.08em;text-transform:uppercase}}
@@ -337,6 +382,28 @@ def build_kallaway(spec, spec_path, project):
     .logo-row{{position:absolute;left:0;right:0;top:34%;display:flex;justify-content:space-between;padding:0 8%;z-index:2}}
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
+    .phone.fill{{width:100%;height:100%;margin:0;padding:{8*scale:.0f}px;border-radius:{28*scale:.0f}px}}
+    .callout-ring{{position:absolute;border:{4*scale:.0f}px solid {colors['accent_strong']};border-radius:50%;box-sizing:border-box;pointer-events:none;z-index:3}}
+    .phone-hl{{position:absolute;left:6%;right:6%;z-index:3}}
+    .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
+    .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
+    .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}
+    .quote-card{{height:100%;display:flex;align-items:center;justify-content:center;padding:6%}}
+    .quote-text{{position:relative;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1.05;color:{colors['text']};text-align:center}}
+    .quote-strike{{position:absolute;left:-4%;right:-4%;top:54%;height:{6*scale:.0f}px;background:{colors['warning']};transform:scaleX(0);transform-origin:0 50%}}
+    .offer-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
+    .offer-kicker{{color:{colors['muted']};font-size:{mono_px:.1f}px}}
+    .offer-row{{flex:1;display:flex;gap:{12*scale:.0f}px}}
+    .offer-card{{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6%;background:{colors['surface']};border:1px solid {colors['border']};border-radius:16px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05}}
+    .offer-note{{text-align:center;color:{colors['muted']};font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.02em}}
+    .flow{{height:100%;display:flex;align-items:center;justify-content:space-between;gap:{10*scale:.0f}px;padding:0 2%}}
+    .flow-label{{flex:1;text-align:center;background:{colors['surface']};border:1px solid {colors['border']};border-radius:16px;padding:{16*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{28*scale:.0f}px;line-height:1.05}}
+    .flow-dash{{flex:0.55;height:0;border-top:{4*scale:.0f}px dashed {colors['accent']}}}
+    .pill-wrap{{height:100%;display:flex;align-items:center;justify-content:center}}
+    .pill{{background:{colors['accent']};color:{colors['on_accent']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{40*scale:.0f}px;line-height:1;padding:0.35em 0.7em;border-radius:999px}}
+    .notice{{position:absolute;left:6%;top:11%;z-index:7;max-width:70%;font-size:{mono_px:.1f}px;letter-spacing:0.02em;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px}}
+    .chip-corner{{position:absolute;top:7.2%;right:4.5%;z-index:7;font-size:{mono_px:.1f}px;letter-spacing:0.04em;padding:{8*scale:.0f}px {12*scale:.0f}px;border-radius:10px}}
+    .bar-col .mono{{max-width:100%;text-align:center;white-space:normal;line-height:1.1}}
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     speaker = f'<div id="speaker-card"><div id="presenter-camera" data-layout-allow-overflow>{"".join(part for part in parts if part.startswith("<video"))}</div></div>'

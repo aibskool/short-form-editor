@@ -11,7 +11,7 @@ from pathlib import Path
 
 EDITOR = Path(__file__).resolve().parent / "editor"
 sys.path.insert(0, str(EDITOR))
-from kallaway_motifs import stage_events  # noqa: E402
+from kallaway_motifs import stage_events, stage_windows  # noqa: E402
 from kallaway_style import DEFAULT_THEME, load_theme  # noqa: E402
 
 FORBIDDEN = {"#e60000", "#ff2a2a", "#ff0000", "#d33633", "#00e676", "#0e0e0e"}
@@ -80,7 +80,21 @@ def check(timeline_path, words_path=None, project=None):
             errors.append(f"shots:{shot.get('id', index)}: gap or overlap at the layout cut")
         if layout == "split" and not shot.get("stage"):
             errors.append(f"shots:{shot.get('id', index)}: split shot has no graphic stage")
-    if duration >= 6:
+    if duration >= 6 and data.get("structure") == "authored":
+        fulls = [shot for shot in shots if shot.get("layout") in {"full", "punch_in"}]
+        if not fulls or min(float(shot["start"]) for shot in fulls) > 8.0:
+            errors.append("hook: authored reel has no full-screen or punch-in by 8.0s")
+        changed = False
+        for shot in shots:
+            if float(shot["start"]) <= 0.05 or float(shot["start"]) > 4.0:
+                continue
+            if shot.get("layout") != shots[0].get("layout"):
+                changed = True
+            elif shot.get("stage") and shots[0].get("stage") and shot["stage"].get("motif") != shots[0]["stage"].get("motif"):
+                changed = True
+        if not changed:
+            errors.append("hook: authored reel does not change layout or motif by 4.0s")
+    elif duration >= 6:
         fulls = [shot for shot in shots if shot.get("layout") in {"full", "punch_in"}]
         if not fulls or not any(2.2 <= float(shot["start"]) <= 4.0 for shot in fulls):
             errors.append("hook: no hard cut to full-screen or punch-in between 2.2s and 4.0s")
@@ -131,12 +145,11 @@ def check(timeline_path, words_path=None, project=None):
 
     sfx = data.get("sfx") or []
     for shot in shots:
-        if shot.get("layout") != "split" or not shot.get("stage"):
-            continue
-        for event in stage_events(shot["stage"].get("motif"), shot["start"], shot["end"], shot["stage"]):
-            if not any(abs(float(item.get("at", -99)) - float(event["at"])) <= 0.12 for item in sfx):
-                errors.append(f"sfx: no sound within 0.12s of {shot['stage'].get('motif')} at {event['at']}")
-                break
+        for motif, start, end, stage in stage_windows(shot):
+            for event in stage_events(motif, start, end, stage):
+                if not any(abs(float(item.get("at", -99)) - float(event["at"])) <= 0.12 for item in sfx):
+                    errors.append(f"sfx: no sound within 0.12s of {motif} at {event['at']}")
+                    break
     if shots and not sfx:
         errors.append("sfx: no sound effects were scheduled")
 

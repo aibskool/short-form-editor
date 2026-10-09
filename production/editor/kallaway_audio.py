@@ -146,12 +146,16 @@ def write_sfx_library(directory):
     return written
 
 
-def write_bed(path, duration):
-    """Steady lo-fi bed: soft kick, hat, and a low chord. No vocals, no swell."""
+def write_bed(path, duration, bpm=82):
+    """Steady lo-fi bed: soft kick, hat, and a low chord. No vocals, no swell.
+
+    `bpm` changes the kick and hat spacing. The default stays 82 so existing
+    reels keep the same bed. A stage plan can ask for a faster pulse.
+    """
     duration = max(4.0, float(duration))
     rate = RATE
     total = int(duration * rate)
-    bpm = 82
+    bpm = float(bpm) if bpm else 82.0
     beat = 60.0 / bpm
     samples = []
     for index in range(total):

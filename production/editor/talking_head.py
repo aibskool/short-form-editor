@@ -34,17 +34,27 @@ def _read_words(path):
     return [word for segment in data.get("segments", []) for word in segment.get("words", [])]
 
 
+def _resolve_media(entry, base):
+    if not isinstance(entry, dict) or not entry.get("media"):
+        return
+    media = Path(entry["media"]).expanduser()
+    if not media.is_absolute():
+        entry["media"] = str((base / media).resolve())
+
+
 def _load_stage_plan(path):
     path = Path(path)
     data = json.loads(path.read_text())
+    base = path.resolve().parent
     entries = data.get("stages") if isinstance(data, dict) else data
     if isinstance(entries, list):
-        base = path.resolve().parent
         for entry in entries:
-            if isinstance(entry, dict) and entry.get("media"):
-                media = Path(entry["media"]).expanduser()
-                if not media.is_absolute():
-                    entry["media"] = str((base / media).resolve())
+            _resolve_media(entry, base)
+    if isinstance(data, dict):
+        for beat in data.get("beats") or []:
+            _resolve_media(beat, base)
+            for overlay in beat.get("overlays") or []:
+                _resolve_media(overlay, base)
     return data
 
 
@@ -71,7 +81,7 @@ def _try_transcribe(source, destination):
 
 def render(source, output, words_path=None, project=None, keyword=None, title=None, theme_mode="dark",
            theme_path=None, stage_plan=None, music=True, emphasis=None, quality="draft", workers=1,
-           skip_render=False):
+           skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None):
     source, output = Path(source).resolve(), Path(output).resolve()
     project = Path(project).resolve() if project else output.with_suffix("")
     project.mkdir(parents=True, exist_ok=True)
@@ -98,7 +108,12 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     music_note = None
     if music:
         try:
-            music_path = write_bed(project / "music" / "bed.wav", max(8, words[-1]["end"] + 0.25))
+            bpm = 82
+            if isinstance(stage_plan, dict) and stage_plan.get("bed_bpm"):
+                bpm = float(stage_plan["bed_bpm"])
+            elif theme.get("audio", {}).get("bed_bpm"):
+                bpm = float(theme["audio"]["bed_bpm"])
+            music_path = write_bed(project / "music" / "bed.wav", max(8, words[-1]["end"] + 0.25), bpm=bpm)
             music_path = str(Path(music_path).resolve())
         except Exception as exc:  # degrade: a missing bed must not block the picture
             music = False
@@ -139,9 +154,16 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     # warning on stderr would fail a good file, so the mix runs with a clean env.
     env = os.environ.copy()
     env.pop("LD_LIBRARY_PATH", None)
-    subprocess.run([sys.executable, str(HERE.parent / "finalize_render.py"),
-                    "--input", str(rendered), "--output", str(final),
-                    "--receipt", str(project / "final-receipt.json")], check=True, env=env)
+    finalize = [sys.executable, str(HERE.parent / "finalize_render.py"),
+                "--input", str(rendered), "--output", str(final),
+                "--receipt", str(project / "final-receipt.json")]
+    if target_lufs is not None:
+        finalize.extend(["--target-lufs", str(target_lufs)])
+    if true_peak is not None:
+        finalize.extend(["--true-peak", str(true_peak)])
+    if codec_headroom_db is not None:
+        finalize.extend(["--codec-headroom-db", str(codec_headroom_db)])
+    subprocess.run(finalize, check=True, env=env)
     report["output"] = str(final)
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -164,6 +186,10 @@ def main():
     parser.add_argument("--quality", choices=["draft", "standard", "high"], default="draft")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--skip-render", action="store_true")
+    parser.add_argument("--target-lufs", type=float, default=None)
+    parser.add_argument("--true-peak", type=float, default=None)
+    parser.add_argument("--codec-headroom-db", type=float, default=None,
+                        help="Limiter headroom before AAC. Lower this when the deliverable true peak is -1 dBTP.")
     args = parser.parse_args()
     stage_plan = _load_stage_plan(args.stage_plan) if args.stage_plan else None
     emphasis = json.loads(args.emphasis) if args.emphasis else None
@@ -171,7 +197,8 @@ def main():
         args.source, args.output, words_path=args.words, project=args.project, keyword=args.cta_keyword,
         title=args.title, theme_mode=args.theme_mode, theme_path=args.theme, stage_plan=stage_plan,
         music=not args.no_music, emphasis=emphasis, quality=args.quality, workers=args.workers,
-        skip_render=args.skip_render)
+        skip_render=args.skip_render, target_lufs=args.target_lufs, true_peak=args.true_peak,
+        codec_headroom_db=args.codec_headroom_db)
     print(json.dumps({"output": report.get("output"), "ok": report["postcheck"]["ok"],
                       "warnings": report["postcheck"]["warnings"], "music_note": report.get("music_note"),
                       "stage_slots": report.get("stage_slots")}, indent=2))

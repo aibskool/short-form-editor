@@ -125,7 +125,7 @@ List form, in slot order. A string is a motif name. An object can carry the same
 ["line_chart", {"motif": "highlight_box", "label": "the line that matters"}]
 ```
 
-Motifs: `thumbnail_grid`, `phone_frame`, `broll_card`, `numbered_list`, `line_chart`, `bar_chart`, `counter`, `highlight_box`, `hand_circle`, `typing_ui`, `mind_map`, `logo_row`.
+Motifs: `thumbnail_grid`, `phone_frame`, `broll_card`, `numbered_list`, `line_chart`, `bar_chart`, `counter`, `highlight_box`, `hand_circle`, `typing_ui`, `mind_map`, `logo_row`, `quote_card`, `offer_pair`, `flow_line`, `pill`. `doc_fan` stays reserved for the automatic closing shot, and an authored beat may use it mid-reel.
 
 Content fields the renderer reads:
 
@@ -140,10 +140,29 @@ Content fields the renderer reads:
 | `typing_ui` | `text` |
 | `mind_map` | `label`, `items` |
 | `logo_row` | `items` |
-| `phone_frame`, `broll_card` | `media` |
+| `phone_frame`, `broll_card` | `media`, `scroll` (`from`/`to`, 0 is the top of the image), `desaturate` (0 to 1), `callout` (circle), `highlight` (a popped line) |
 | `line_chart` | none |
+| `numbered_list` | `items`, `hold`, `active` (the box stays on that row) |
+| `counter` | `value`, `prefix`, `suffix`, `label` |
+| `bar_chart` | `heights`, `labels`, `reveal` (`slice` rises the bars together), `negative` |
+| `quote_card` | `text`, `strike` (an amber line through the quote) |
+| `offer_pair` | `items` (two cards), `kicker`, `disclaimer` |
+| `flow_line` | `items` (two labels and a dashed connector) |
+| `pill` | `label` |
 
-Entrances are a spring scale pop (GSAP `back.out`) or an ease-out slide (`cubic-bezier(0.25, 1, 0.5, 1)`). Layout changes are hard cuts. Each motif reports the same event times to the animation and the SFX list.
+`chip` on a stage is a small corner label, `tone` `green` or `amber`. Entrances are a spring scale pop (GSAP `back.out`) or an ease-out slide (`cubic-bezier(0.25, 1, 0.5, 1)`). Layout changes are hard cuts. Each motif reports the same event times to the animation and the SFX list.
+
+## Authored beats
+
+Some reels are not an automatic alternation that ends on the document fan. A plan with `beats` is that cut. The example is `production/editor/examples/authored-beats.json`.
+
+Each beat has `spoken` (a phrase from the transcript) and `layout` (`split`, `full`, or `punch_in`). A split also has a `motif`. The beat runs until the next beat's phrase, and the last beat ends on the last word. There is no inserted end card. Put the `Comment KEYWORD` header on the beat where the ask actually happens.
+
+A beat longer than 5.4 seconds is cut on a word. The extra piece becomes a full-screen or punch-in, so the motif is not repeated. Two split shots in a row still cannot share a motif. `overlays` are extra motifs on the same split, timed with their own `spoken` phrase, and they cannot repeat the shot motif. `callout.spoken` and `highlight.spoken` land the circle or the highlight on that word.
+
+`music_drops` is a list of `{spoken, until, hit}`. The bed goes silent at `spoken` and returns at `until`. The last envelope point stays at full volume, so this is not an ending fade. `hit` adds a bass accent when the bed returns. `chips` are persistent corner labels: `from` is the word they appear on, `after` is a beat phrase and the chip starts when that beat ends. `disclaimer` on a beat stays on screen for the whole beat, including its full-screen pieces. `captions.keep_case` preserves tokens such as `PAID`, `AI`, and `ADA`. A word's own `display` field (for example `5%` or `$1,600`) is what the caption shows. `emphasis` colors a word, and an explicit color wins over the automatic amber list. `bed_bpm` sets this reel's bed tempo. The default bed stays 82. `punch_scale` and `object_position` override the theme for this plan. A shot can still set `scale`.
+
+The style check treats `structure: authored` differently from an automatic cut. The first full-screen or punch-in must start by 8 seconds, and the layout or the motif must change by 4 seconds. Automatic cuts still need a full-screen cut between 2.2 and 4.0 seconds. Captions are not forced through CSS lowercase, so `keep_case` survives. The builder still lowercases every other word.
 
 ## Automatic fallback
 
