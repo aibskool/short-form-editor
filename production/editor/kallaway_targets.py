@@ -6,9 +6,13 @@ source image, and the pan ends with that box centered in the phone.
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image
+
+_STILL = {".png", ".jpg", ".jpeg", ".webp"}
+_VIDEO = {".mp4", ".mov", ".webm", ".m4v"}
 
 
 # Phone screen inside the default 1080x1920 stage (0.9 by 0.35, 8px pad).
@@ -196,11 +200,28 @@ def surface_box(path, text_box):
     return box
 
 
+def raster_for_target(path, at=None):
+    """A still for OCR. A screen recording uses one frame so a callout can land on it."""
+    path = Path(path)
+    if path.suffix.lower() in _STILL:
+        return path
+    if path.suffix.lower() not in _VIDEO:
+        raise ValueError(f"target_text needs a still image or a video frame, not {path.name}")
+    moment = 0.4 if at is None else float(at)
+    dest = Path(tempfile.gettempdir()) / f"kallaway-target-{path.stem}-{moment:.3f}.png"
+    if not dest.is_file() or dest.stat().st_mtime < path.stat().st_mtime:
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{moment:.3f}",
+             "-i", str(path), "-frames:v", "1", str(dest)],
+            check=True)
+    return dest
+
+
 def locate_target(path, phrase, group="text"):
     path = Path(path)
     if not path.is_file():
         raise ValueError(f"screenshot for target_text {phrase!r} is missing: {path}")
-    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+    if path.suffix.lower() not in _STILL:
         raise ValueError(f"target_text needs a still image, not {path.name}")
     words = _ocr_words(path)
     found = match_phrase(words, phrase)
@@ -278,14 +299,18 @@ def place_targets(stage, screen=None):
         if block.get("space") == "image" and stage.get("frame"):
             anchors.append(block)
             continue
-        media = stage.get("media")
-        box = locate_target(media, block["target_text"], block.get("group") or "text")
+        media = stage.get("target_still") or stage.get("media")
+        moment = stage.get("target_time") if stage.get("target_time") is not None else stage.get("poster_time")
+        still = raster_for_target(media, moment)
+        box = locate_target(still, block["target_text"], block.get("group") or "text")
         block.update(box)
         block["space"] = "image"
         anchors.append(block)
     if not anchors:
         return None
-    with Image.open(stage["media"]) as image:
+    moment = stage.get("target_time") if stage.get("target_time") is not None else stage.get("poster_time")
+    still = raster_for_target(stage.get("target_still") or stage["media"], moment)
+    with Image.open(still) as image:
         image_size = image.size
     frame = frame_geometry(image_size, screen or DEFAULT_SCREEN)
     anchor = _union(anchors)

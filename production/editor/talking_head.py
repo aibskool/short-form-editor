@@ -132,6 +132,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
     timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
+    timeline["joins"] = tightened.get("joins") or []
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)

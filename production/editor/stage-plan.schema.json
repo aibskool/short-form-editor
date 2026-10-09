@@ -66,7 +66,8 @@
     },
     "bed_bpm": {"type": "number", "minimum": 70, "maximum": 130, "description": "Lo-fi bed tempo for this reel. The default bed stays 82 when this is omitted."},
     "punch_scale": {"type": "number", "description": "Scale for punch-in shots in this plan. The theme default stays 1.16."},
-    "object_position": {"type": "string", "description": "CSS object-position for the face, such as 50% 28%."}
+    "object_position": {"type": "string", "description": "CSS object-position for the face, such as 50% 28%."},
+    "omit_cta": {"type": "boolean", "description": "Reach reel. No Comment header and no keyword chip. The style check skips the comment requirement."}
   },
   "$defs": {
     "stage": {
@@ -79,7 +80,7 @@
             "thumbnail_grid", "phone_frame", "broll_card", "numbered_list",
             "line_chart", "bar_chart", "counter", "highlight_box", "hand_circle",
             "typing_ui", "mind_map", "logo_row", "quote_card", "offer_pair",
-            "flow_line", "pill", "doc_fan"
+            "flow_line", "pill", "doc_fan", "cursor_mock", "vacuum_merge", "state_swap"
           ]
         },
         "spoken": {
@@ -140,7 +141,8 @@
           "required": ["text"],
           "properties": {
             "text": {"type": "string"},
-            "tone": {"type": "string", "enum": ["green", "amber"]}
+            "tone": {"type": "string", "enum": ["green", "amber"]},
+            "place": {"type": "string", "enum": ["top", "bottom"], "description": "bottom is the article-credit chip."}
           }
         },
         "strike": {"type": "boolean"},
@@ -187,7 +189,7 @@
             "thumbnail_grid", "phone_frame", "broll_card", "numbered_list",
             "line_chart", "bar_chart", "counter", "highlight_box", "hand_circle",
             "typing_ui", "mind_map", "logo_row", "quote_card", "offer_pair",
-            "flow_line", "pill", "doc_fan"
+            "flow_line", "pill", "doc_fan", "cursor_mock", "vacuum_merge", "state_swap"
           ]
         },
         "header": {
@@ -236,7 +238,13 @@
         "desaturate": {"type": "number"},
         "progress": {"type": "boolean"},
         "chip": {"type": "object"},
-        "kicker": {"type": "string"}
+        "kicker": {"type": "string"},
+        "media_start": {"type": "number"},
+        "playback_rate": {"type": "number"},
+        "poster_time": {"type": "number"},
+        "target_time": {"type": "number"},
+        "target_still": {"type": "string"},
+        "typing": {"type": "boolean"}
       }
     }
   }

@@ -19,6 +19,7 @@ LIBRARY = (
     "thumbnail_grid", "line_chart", "bar_chart", "numbered_list", "counter",
     "highlight_box", "hand_circle", "typing_ui", "phone_frame", "broll_card",
     "mind_map", "logo_row", "quote_card", "offer_pair", "flow_line", "pill",
+    "cursor_mock", "vacuum_merge", "state_swap",
 )
 AUTHOR_KEYS = {"motif", "spoken", "word_range", "why", "note", "covers", "schema"}
 
@@ -246,23 +247,44 @@ def _match_entry(entry, slots, ordered, claimed):
     return hits[0]
 
 
+# A whoosh leads the picture. A second whoosh that would stack on the first becomes a pop.
+_WHOOSH_LEAD = 0.07
+_WHOOSH_GAP = 0.32
+_MAX_BOOMS = 3
+
+
 def _cover_sfx(shots, words, styles, gains):
+    """Sounds on graphic entrances only. Punch-ins, layout cuts, and exits stay silent."""
     events = []
     for shot in shots:
+        if shot.get("layout") != "split":
+            continue
         for motif, start, end, stage in stage_windows(shot):
             for event in stage_events(motif, start, end, stage):
-                events.append(event)
+                events.append(dict(event))
     if shots:
         events.append({"at": 0.0, "kind": "bass"})
-    for word in words:
-        if styles.get(_token(word)) == "amber":
-            events.append({"at": round(float(word["start"]), 3), "kind": "error"})
+    events.sort(key=lambda item: (float(item["at"]), item["kind"]))
+    last_whoosh = -10.0
+    booms = 0
     sfx = []
     for event in events:
-        if event["at"] < 0:
+        kind = event["kind"]
+        at = float(event["at"])
+        if kind in {"whoosh", "riser"}:
+            led = max(0.0, at - _WHOOSH_LEAD)
+            if led - last_whoosh < _WHOOSH_GAP:
+                kind = "pop"
+            else:
+                at = led
+                last_whoosh = at
+        if kind == "bass":
+            booms += 1
+            if booms > _MAX_BOOMS:
+                continue
+        if at < 0:
             continue
-        sfx.append({"kind": event["kind"], "at": round(float(event["at"]), 3),
-                    "gain": gains.get(event["kind"], 0.35)})
+        sfx.append({"kind": kind, "at": round(at, 3), "gain": gains.get(kind, 0.16)})
     return sfx
 
 
@@ -456,6 +478,11 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
             "motif": shot["stage"]["motif"],
             "authored": role != "cta" and id(shot) in claimed,
         })
+    from kallaway_beats import apply_emphasis_punches
+    shots = apply_emphasis_punches(
+        shots, ordered, styles,
+        float(theme["layout"].get("full_scale", 1.13)),
+        float(theme["layout"].get("punch_step", 1.12)))
     return {
         "style": "kallaway",
         "theme": theme["id"],

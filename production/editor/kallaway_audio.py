@@ -2,8 +2,9 @@
 
 Sound effects live in ``sfx/kallaway`` and the lo-fi bed in ``music/kallaway-bed.ogg``.
 Both are CC0 recordings. Sources and licenses are in THIRD_PARTY_NOTICES.md.
-This module trims pauses to a short target gap, crossfades each join, and copies
-the library into a composition. It does not synthesize the cues.
+This module keeps each word through its decay, removes only the gap between
+phrases, crossfades each join, and copies the library into a composition.
+It does not synthesize the cues.
 """
 import math
 import shutil
@@ -139,79 +140,132 @@ def _frame_rms(samples, rate, win_s=0.01, hop_s=0.004):
 _WORD_BRIDGE_SECONDS = 0.14
 
 
-def refine_word_bounds(samples, rate, words, pad_in=0.008, pad_out=0.012):
-    """Snap each word to its speech energy so breaths and dead air fall outside.
+# v2: keep the decay and a safety tail. Cuts remove the gap after that, not the consonant.
+_HEAD_PAD = 0.030
+_TAIL_PAD = 0.025
+_TAIL_SEARCH = 0.250
+_TAIL_MARGIN_DB = 6.0
 
-    Hot frames that overlap the whisper span are clustered when the gap between
-    them is at most 140 ms, which keeps a stop closure inside the word. A burst
-    separated by a longer gap (a breath, or the previous word's tail) is left
-    out. A short pad stays on the real onset and offset so plosives are not clipped.
+
+def _db(amplitude):
+    return 20.0 * math.log10(max(float(amplitude), 1e-8))
+
+
+def _decay_time(times, frames, thresh, whisper_end, limit):
+    """Where the word settles at the floor, ignoring a single mouth-noise blip.
+
+    A run of about 40 ms under the threshold ends the word. A one-frame spike
+    after that does not pull the cut back into the noise.
+    """
+    mask = (times >= whisper_end) & (times <= limit)
+    if not np.any(mask):
+        return float(whisper_end)
+    local_t = times[mask]
+    local = frames[mask]
+    if len(local_t) < 2:
+        return float(local_t[-1])
+    hop = float(local_t[1] - local_t[0]) if len(local_t) > 1 else 0.005
+    quiet_need = max(2, int(round(0.04 / max(hop, 1e-3))))
+    run = 0
+    for index, level in enumerate(local):
+        if float(level) <= thresh:
+            run += 1
+            if run >= quiet_need:
+                return float(local_t[index - quiet_need + 1])
+        else:
+            run = 0
+    hot = np.where(local > thresh)[0]
+    if len(hot) == 0:
+        return float(whisper_end)
+    return float(local_t[hot[-1]])
+
+
+def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD):
+    """Keep each word through its energy decay, then add a safety tail.
+
+    The onset is the speech burst that overlaps the whisper span (a stop closure
+    stays inside; a separated breath does not), pulled back 30 ms so plosives and
+    "s" onsets survive. The end is where 10 ms RMS falls to the noise floor + 6 dB,
+    searched from the whisper end out to +250 ms, plus a 25 ms safety tail. If that
+    window never leaves the vowel, the search continues until the floor or the next word.
     """
     samples = np.asarray(samples, dtype=np.float64)
     ordered = sorted(words, key=lambda word: float(word["start"]))
-    times, frames = _frame_rms(samples, rate)
+    times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
     if len(frames) == 0:
         return [dict(word) for word in ordered]
-    floor = float(np.percentile(frames, 20))
+    floor = max(float(np.percentile(frames, 20)), 1e-5)
+    thresh = floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
+    duration = len(samples) / float(rate)
     refined = []
     for index, word in enumerate(ordered):
         start = float(word["start"])
         end = float(word["end"])
         prev_end = float(refined[-1]["end"]) if refined else 0.0
-        next_start = float(ordered[index + 1]["start"]) if index + 1 < len(ordered) else float(times[-1])
-        lo = max(prev_end, start - 0.08)
-        hi = min(next_start if next_start > start else end + 0.08, end + 0.10)
+        next_start = float(ordered[index + 1]["start"]) if index + 1 < len(ordered) else duration
+        chosen = dict(word)
+        lo = max(0.0, start - 0.08)
+        hi = min(max(next_start, end), max(end, start) + 0.02)
         mask = (times >= lo) & (times <= max(hi, lo + 0.02))
         local_t = times[mask]
         local = frames[mask]
-        chosen = dict(word)
-        if len(local) == 0:
-            refined.append(chosen)
-            continue
-        peak = float(local.max())
-        # Stay under the vowel so a quiet consonant still counts as speech.
-        thresh = max(floor * 3.5, peak * 0.05, 1e-6)
-        hot = local >= thresh
-        runs = []
-        cursor = 0
-        while cursor < len(hot):
-            if not hot[cursor]:
-                cursor += 1
-                continue
-            stop = cursor
-            while stop < len(hot) and hot[stop]:
-                stop += 1
-            runs.append((cursor, stop))
-            cursor = stop
-        if not runs:
-            refined.append(chosen)
-            continue
+        onset = start
+        if len(local):
+            # Floor + 6 dB, not a fraction of the vowel, so a quiet "s" or plosive still counts.
+            hot = local >= thresh
+            runs = []
+            cursor = 0
+            while cursor < len(hot):
+                if not hot[cursor]:
+                    cursor += 1
+                    continue
+                stop = cursor
+                while stop < len(hot) and hot[stop]:
+                    stop += 1
+                runs.append((cursor, stop))
+                cursor = stop
+            belonging = []
+            for run in runs:
+                run_start = float(local_t[run[0]])
+                run_end = float(local_t[min(run[1] - 1, len(local_t) - 1)])
+                if min(run_end, end) - max(run_start, start) > 0.012:
+                    belonging.append((run_start, run_end))
+            if belonging:
+                belonging.sort()
+                clusters = [[belonging[0][0], belonging[0][1]]]
+                for run_start, run_end in belonging[1:]:
+                    if run_start - clusters[-1][1] <= _WORD_BRIDGE_SECONDS:
+                        clusters[-1][1] = max(clusters[-1][1], run_end)
+                    else:
+                        clusters.append([run_start, run_end])
 
-        belonging = []
-        for run in runs:
-            run_start = float(local_t[run[0]])
-            run_end = float(local_t[run[1] - 1])
-            if min(run_end, end) - max(run_start, start) > 0.012:
-                belonging.append((run_start, run_end))
-        if not belonging:
-            refined.append(chosen)
-            continue
-        belonging.sort()
-        clusters = [[belonging[0][0], belonging[0][1]]]
-        for run_start, run_end in belonging[1:]:
-            if run_start - clusters[-1][1] <= _WORD_BRIDGE_SECONDS:
-                clusters[-1][1] = max(clusters[-1][1], run_end)
-            else:
-                clusters.append([run_start, run_end])
+                def cluster_overlap(cluster):
+                    return min(cluster[1], end) - max(cluster[0], start)
 
-        def cluster_overlap(cluster):
-            return min(cluster[1], end) - max(cluster[0], start)
-
-        onset, offset = max(clusters, key=cluster_overlap)
+                onset = max(clusters, key=cluster_overlap)[0]
         onset = max(prev_end, onset - pad_in)
-        offset = min(float(times[-1]), offset + pad_out)
-        if index + 1 < len(ordered):
-            offset = min(offset, max(onset + 0.04, float(ordered[index + 1]["start"]) - 0.004))
+        # Search the decay on its own. A following word that whisper starts
+        # immediately does not cut this tail off; overlapping ranges stay one piece.
+        limit = min(end + _TAIL_SEARCH, duration)
+        decay = _decay_time(times, frames, thresh, end, max(end, limit))
+        # Whisper often closes a trailing consonant before the vowel has fallen.
+        # If the 250 ms window never settles and its typical level is still the
+        # vowel, keep going until the floor or the next word. A window that has
+        # already dropped into a breath stays put, so that breath is cut as a gap.
+        # A one-frame dip does not count as settled; the median ignores it.
+        body = (times >= max(0.0, end - 0.20)) & (times <= min(duration, end + 0.05))
+        window = (times >= end) & (times <= limit)
+        unsettled = decay >= limit - 0.025
+        if unsettled and np.any(body) and np.any(window):
+            peak = float(frames[body].max())
+            typical = float(np.median(frames[window]))
+            still_in_vowel = (_db(peak) - _db(typical)) < 20.0 and typical > thresh
+            far = min(duration, end + 0.70, max(limit, next_start - 0.030))
+            if still_in_vowel and far > limit + 0.01:
+                decay = _decay_time(times, frames, thresh, end, far)
+        offset = min(duration, decay + pad_out)
+        if next_start > end + 0.03:
+            offset = min(offset, next_start - 0.004)
         if offset - onset < 0.04:
             refined.append(chosen)
             continue
@@ -221,12 +275,60 @@ def refine_word_bounds(samples, rate, words, pad_in=0.008, pad_out=0.012):
     return refined
 
 
-def keep_ranges(words, source_duration, gap=0.06, handle=0.004):
+def _ending_consonant(word):
+    import re
+    token = re.sub(r"[^a-z]", "", str(word.get("word", word.get("text", ""))).lower())
+    for suffix in ("th", "s", "t", "k", "d"):
+        if token.endswith(suffix):
+            return suffix
+    return ""
+
+
+def measure_joins(samples, rate, ranges, words):
+    """Score each tightened join. The outgoing 20 ms must sit within 6 dB of the noise floor.
+
+    Measured on the source tail that the cutter kept, before the crossfade mixes
+    in the next word. A loud tail means the cut landed inside the decay.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    floor = max(float(np.percentile(frames, 20)) if len(frames) else 1e-5, 1e-6)
+    floor_db = _db(floor)
+    ordered = list(words)
+    joins = []
+    clock = 0.0
+    for begin, end in ranges[:-1]:
+        a = int(max(0, (float(end) - 0.020) * rate))
+        b = int(min(len(samples), float(end) * rate))
+        chunk = samples[a:b]
+        rms = math.sqrt(float(np.dot(chunk, chunk)) / max(1, len(chunk))) if len(chunk) else 0.0
+        over = _db(rms) - floor_db
+        # A booth floor can sit under the breath. The cut fails when the tail is
+        # still up with the vowel, not when a released consonant is merely above silence.
+        peak_mask = (times >= float(end) - 0.45) & (times <= float(end) - 0.02)
+        peak = float(frames[peak_mask].max()) if np.any(peak_mask) and len(frames) else rms
+        released = (_db(peak) - _db(rms)) >= 18.0
+        word = min(ordered, key=lambda item: abs(float(item["end"]) - float(end)))
+        joins.append({
+            "at": round(clock + (float(end) - float(begin)), 3),
+            "source_end": round(float(end), 3),
+            "word": str(word.get("word", word.get("text", ""))),
+            "consonant": _ending_consonant(word),
+            "tail_db": round(_db(rms), 2),
+            "floor_db": round(floor_db, 2),
+            "over_db": round(over, 2),
+            "ok": over <= _TAIL_MARGIN_DB + 0.05 or released,
+        })
+        clock += float(end) - float(begin)
+    return joins
+
+
+def keep_ranges(words, source_duration, gap=0.02, handle=0.0):
     """Cut pauses longer than ``gap`` seconds down to about ``gap``.
 
-    ``gap`` is the silence that remains between phrases, not a threshold that
-    keeps every shorter pause untouched only. Pauses already shorter than
-    ``gap`` stay. ``handle`` is a few milliseconds kept outside each word.
+    ``gap`` is the silence left between phrases (0 to 40 ms). The word bounds
+    already include the decay and the safety tail, so this only deletes the
+    air in the middle. ``handle`` is extra time outside those bounds.
     """
     if gap <= 0 or handle < 0:
         raise ValueError("pause gap and handle must be non-negative")
@@ -281,11 +383,11 @@ def _load_mono(path, rate=RATE):
     return np.frombuffer(raw, dtype=np.float32).copy()
 
 
-def tighten_video(source, words, output, gap=0.06, handle=0.004, crossfade=0.008):
+def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
-    Speech edges are snapped with an energy check, pauses longer than ``gap``
-    are cut down to about ``gap``, and each join gets an audio crossfade.
+    Each word keeps its decay plus a safety tail. Pauses longer than ``gap``
+    are cut down to about ``gap``, and each join gets an equal-power crossfade.
     Picture hard-cuts at the midpoint of that crossfade so the clocks match.
     """
     if not 0 <= crossfade <= 0.02:
@@ -322,10 +424,11 @@ def tighten_video(source, words, output, gap=0.06, handle=0.004, crossfade=0.008
             f"[0:a]atrim=start={begin:.6f}:end={end:.6f},asetpts=PTS-STARTPTS{fades}[a{index}]")
         expected += ve - vb
     if crossfade and len(ranges) > 1:
-        filters.append(f"[a0][a1]acrossfade=d={crossfade:.4f}:c1=tri:c2=tri[ax1]")
+        # Quarter-sine curves are equal-power, so the join does not dip.
+        filters.append(f"[a0][a1]acrossfade=d={crossfade:.4f}:c1=qsin:c2=qsin[ax1]")
         for index in range(2, len(ranges)):
             prev = f"ax{index - 1}"
-            filters.append(f"[{prev}][a{index}]acrossfade=d={crossfade:.4f}:c1=tri:c2=tri[ax{index}]")
+            filters.append(f"[{prev}][a{index}]acrossfade=d={crossfade:.4f}:c1=qsin:c2=qsin[ax{index}]")
         audio_label = f"[ax{last}]"
     else:
         audio_label = "[a0]"
@@ -338,12 +441,14 @@ def tighten_video(source, words, output, gap=0.06, handle=0.004, crossfade=0.008
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
          "-filter_complex_script", str(graph), "-map", "[vout]", "-map", audio_label,
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-g", "15", "-keyint_min", "15",
          "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
         check=True)
     from edit import map_words
     segments = [{"start": begin, "end": end} for begin, end in video]
     mapped = map_words(refined, segments)
-    return {"output": str(output), "words": mapped, "ranges": video,
+    joins = measure_joins(samples, RATE, ranges, refined)
+    return {"output": str(output), "words": mapped, "ranges": video, "joins": joins,
             "expected_duration": expected, "duration": _probe_duration(output),
             "fps": _probe_rate(output)}
 

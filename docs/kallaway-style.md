@@ -49,9 +49,9 @@ The command refuses to overwrite `--output`. Render goes through `production/edi
 
 What the runner does:
 
-1. Snaps word edges to the energy envelope, drops breaths, and cuts any pause longer than the theme gap (default 60 ms) down to that gap. Each join gets an 8 ms audio crossfade. The voice stays at 1x.
+1. Keeps each word through its energy decay (noise floor + 6 dB, searched 250 ms past the whisper end) plus a 25 ms safety tail and a 30 ms head pad. If that window is still inside the vowel, the search continues until the floor or the next word. Silence between phrases is cut down to about 20 ms. Each join gets a 12 ms equal-power crossfade. The voice stays at 1x. The style check fails a join whose last 20 ms is still more than 6 dB above the noise floor and has not fallen at least 18 dB from the vowel.
 2. High-passes, boosts presence around 4 kHz, compresses about 4:1, and loudnorm-targets the voice at -14 LUFS.
-3. Plays recorded SFX on graphic-stage events only. Hard camera cuts stay silent. Two or three takes rotate inside each cue. Levels come from the theme `sfx_gain` map and sit about 10 to 14 dB under the voice. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
+3. Plays recorded SFX on graphic entrances and emphasis events only. Punch-ins, layout cuts, and exits stay silent. Whooshes lead the picture by about 70 ms and are low-passed. A hook can layer one sub boom with a whoosh, and a reel keeps at most three booms. Levels come from the theme `sfx_gain` map: pops, clicks, ticks, and typing about 16 dB under the voice, whooshes about 18 dB under, dings about 14 dB under, booms about 8 dB under. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
 4. Plans hook splits, a full-screen cut near 3s, body alternation, and a final split with the document fan.
 5. Runs the style check, builds the HyperFrames composition, checks the HTML for brand colors and fonts, renders, and finalizes the mix.
 
@@ -125,7 +125,7 @@ List form, in slot order. A string is a motif name. An object can carry the same
 ["line_chart", {"motif": "highlight_box", "label": "the line that matters"}]
 ```
 
-Motifs: `thumbnail_grid`, `phone_frame`, `broll_card`, `numbered_list`, `line_chart`, `bar_chart`, `counter`, `highlight_box`, `hand_circle`, `typing_ui`, `mind_map`, `logo_row`, `quote_card`, `offer_pair`, `flow_line`, `pill`. `doc_fan` stays reserved for the automatic closing shot, and an authored beat may use it mid-reel.
+Motifs: `thumbnail_grid`, `phone_frame`, `broll_card`, `numbered_list`, `line_chart`, `bar_chart`, `counter`, `highlight_box`, `hand_circle`, `typing_ui`, `mind_map`, `logo_row`, `quote_card`, `offer_pair`, `flow_line`, `pill`, `cursor_mock`, `vacuum_merge`, `state_swap`. `doc_fan` stays reserved for the automatic closing shot, and an authored beat may use it mid-reel. `cursor_mock` eases a pointer onto a button and clicks. `vacuum_merge` slides a group into the center and pops the result. `state_swap` shows a wrong card, swipes it off, and pops the right card in green.
 
 Content fields the renderer reads:
 
@@ -189,13 +189,13 @@ The house-style build gate still rejects music. A Kallaway timeline leaves the b
 
 ## Known gaps
 
-- No face tracking. The crop is a fixed `object-position` (default `50% 38%`, eyes about a third of the way down the split card) plus a wide split scale of 1.0, a tight split scale of 1.08, and a punch-in scale of 1.16. `track_face.py` belongs to the house style.
+- No face tracking. The crop is a fixed `object-position` (default `50% 38%`, eyes about a third of the way down the split card) plus a wide split scale of 1.0, a tight split scale of 1.08, a full-screen scale of 1.13, and punch-ins that stack 12% tighter from there. Inside a full-screen stretch the planner adds those punch-ins on emphasis words (numbers, contrast words, and any word the emphasis map colors), about every 1.5 seconds, then punches back out. `track_face.py` belongs to the house style.
 - Motifs are stylized recreations, not his After Effects projects. Mind maps and dashed logo connectors are simple.
 - The automatic motif picker rotates. It does not read the sentence. Pass `--stage-plan` and real screenshots when the graphic should match the line.
 - Full-screen movie B-roll is not a default. B-roll stays in a card or phone.
 - Slow push-ins stay off.
 - The spring is GSAP `back.out`, which approximates an 80% to 110% to 100% pop. The slide ease is the spec cubic-bezier.
 - The split speaker card is 41% of the canvas. The graphic stage is the band above the captions, which sit just above the card.
-- The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed CC0 recordings, peak-normalized, and mixed about 10 to 14 dB under the voice (`sfx_gain` in the theme). Sources are in `THIRD_PARTY_NOTICES.md`.
+- The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are trimmed Mixkit recordings, peak-normalized, and mixed at the v2 levels in `sfx_gain`. Sources are in `THIRD_PARTY_NOTICES.md`. A reach reel can set `omit_cta` so the style check does not require a Comment header. Phone and b-roll motifs play an mp4 (`media_start`, `playback_rate`). `target_text` can be measured on a video frame via `poster_time` or `target_time`, or on `target_still`. A stage `chip` with `"place": "bottom"` is the article credit. `@bjmeaux` is on every frame.
 - Whisper is optional and not installed by this repo.
 - `sample_talking_head.py` builds a synthetic proof take (espeak-ng, Pillow, numpy). Do not ship its output.

@@ -187,6 +187,11 @@ def check(timeline_path, words_path=None, project=None):
                     break
     if shots and not sfx:
         errors.append("sfx: no sound effects were scheduled")
+    for join in data.get("joins") or []:
+        if join.get("ok") is False:
+            errors.append(
+                f"join: outgoing tail at {join.get('at')}s ({join.get('word')}) is "
+                f"{join.get('over_db')} dB above the noise floor; the cut clips the word")
 
     cta = data.get("cta") or {}
     headers = data.get("headers") or []
@@ -196,10 +201,12 @@ def check(timeline_path, words_path=None, project=None):
         errors.append("hook: title header does not start on frame 1")
     keyword = str(cta.get("keyword") or "")
     closing = " ".join(str(header.get("text", "")) for header in headers).lower()
-    if "comment" not in closing:
-        errors.append("cta: no Comment header on the ending")
-    if keyword and keyword.lower() not in closing:
-        errors.append(f"cta: header does not show the keyword {keyword}")
+    # A reach reel sets cta.required false and ends on the last word with no comment ask.
+    if cta.get("required", not cta.get("omit", False)):
+        if "comment" not in closing:
+            errors.append("cta: no Comment header on the ending")
+        if keyword and keyword.lower() not in closing:
+            errors.append(f"cta: header does not show the keyword {keyword}")
 
     html_path = None
     if project:

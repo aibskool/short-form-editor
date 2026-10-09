@@ -20,7 +20,7 @@
       "grid": "#3A3A3A",
       "grid_style": "dots",
       "caption_shadow": "0 2px 8px rgba(0,0,0,0.45)",
-      "card_shadow": "0 10px 20px rgba(0,0,0,0.4)"
+      "card_shadow": "0 28px 64px rgba(0,0,0,0.28)"
     },
     "light": {
       "background": "#FBF8F1",
@@ -79,7 +79,8 @@
     "caption_font_px": 76,
     "title_font_px": 112,
     "mono_font_px": 22,
-    "punch_scale": 1.16,
+    "full_scale": 1.13,
+    "punch_scale": 1.27,
     "tight_scale": 1.08,
     "wide_scale": 1.0,
     "dot_spacing": 36,
@@ -90,9 +91,9 @@
     "forbid_characters": ["\u2014", "\u2013"]
   },
   "audio": {
-    "pause_gap_seconds": 0.06,
-    "join_handle_seconds": 0.004,
-    "cut_crossfade_seconds": 0.008,
+    "pause_gap_seconds": 0.02,
+    "join_handle_seconds": 0.0,
+    "cut_crossfade_seconds": 0.012,
     "voice_lufs": -14,
     "voice_true_peak": -1.5,
     "compression_ratio": 4,
@@ -109,16 +110,16 @@
     "default_keyword": "VAULT"
   },
   "sfx_gain": {
-    "pop": 0.251,
-    "whoosh": 0.301,
-    "click": 0.276,
-    "typing": 0.226,
-    "ticking": 0.276,
-    "ding": 0.201,
-    "bass": 0.316,
-    "riser": 0.251,
-    "error": 0.226,
-    "marker": 0.226,
-    "paper": 0.251
+    "pop": 0.1585,
+    "whoosh": 0.1259,
+    "click": 0.1585,
+    "typing": 0.1585,
+    "ticking": 0.1585,
+    "ding": 0.1995,
+    "bass": 0.3981,
+    "riser": 0.1259,
+    "error": 0.1585,
+    "marker": 0.1585,
+    "paper": 0.1585
   }
 }

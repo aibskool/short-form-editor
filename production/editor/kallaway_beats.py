@@ -21,7 +21,73 @@ STAGE_KEYS = (
     "media", "items", "count", "value", "label", "text", "heights", "negative",
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
+    "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
 )
+
+# Full-screen sits 13% tighter than a wide split. Each punch stacks another 12%.
+FULL_SCALE = 1.13
+PUNCH_STEP = 1.12
+CONTRAST_WORDS = {"but", "so", "now", "most", "never", "stop", "you"}
+
+
+def _is_emphasis(word, styles):
+    token = _token(word)
+    if not token:
+        return False
+    style = styles.get(token)
+    if style not in (None, "", "normal"):
+        return True
+    if any(char.isdigit() for char in token):
+        return True
+    return token in CONTRAST_WORDS and style != "normal"
+
+
+def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUNCH_STEP):
+    """Hard punch-ins on emphasis words inside a full-screen stretch. Silent cuts.
+
+    The first piece stays full-screen at ``full_scale``. Later pieces jump 12%
+    tighter, up to three steps, then punch back out to the full-screen scale.
+    """
+    built = []
+    for shot in shots:
+        start, end = float(shot["start"]), float(shot["end"])
+        if shot.get("layout") == "punch_in" and "scale" not in shot:
+            shot = dict(shot)
+            shot["scale"] = round(float(full_scale) * float(step), 3)
+            built.append(shot)
+            continue
+        if shot.get("layout") != "full":
+            built.append(shot)
+            continue
+        cuts = [start]
+        if end - start >= 1.55:
+            picked = []
+            for word in words:
+                at = float(word["start"])
+                if start + 0.55 <= at <= end - 0.55 and _is_emphasis(word, styles):
+                    if not picked or at - picked[-1] >= 1.5:
+                        picked.append(at)
+            for at in picked:
+                if at - cuts[-1] >= 0.5 and end - at >= 0.5:
+                    cuts.append(at)
+        cuts.append(end)
+        level = 0
+        for index, (left, right) in enumerate(zip(cuts, cuts[1:])):
+            piece = {key: value for key, value in shot.items() if key != "stage"}
+            piece["start"] = round(left, 3)
+            piece["end"] = round(right, 3)
+            if index == 0 or level >= 3:
+                piece["layout"] = "full"
+                piece["scale"] = round(float(full_scale), 3)
+                level = 0
+            else:
+                level += 1
+                piece["layout"] = "punch_in"
+                piece["scale"] = round(float(full_scale) * (float(step) ** level), 3)
+            built.append(piece)
+    for index, shot in enumerate(built):
+        shot["id"] = f"shot-{index:02d}"
+    return built
 
 
 def _phone_screen(theme, width, height):
@@ -135,8 +201,15 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         raise ValueError("an authored stage plan needs a non-empty beats list")
     ordered = list(words)
     duration = round(float(ordered[-1]["end"]), 3)
+    omit_cta = bool(stage_plan.get("omit_cta"))
+    passed_keyword = str(keyword or "")
+    if omit_cta:
+        keyword = ""
     styles = {str(key).lower(): value for key, value in (emphasis or {}).items()}
-    styles.setdefault(keyword.lower(), "green")
+    if keyword:
+        styles.setdefault(keyword.lower(), "green")
+    if omit_cta and passed_keyword.lower() not in {str(key).lower() for key in (stage_plan.get("emphasis") or {})}:
+        styles.pop(passed_keyword.lower(), None)
     for token in NEGATIVE:
         styles.setdefault(token, "amber")
     # A plan color is intentional. It wins over the automatic amber list.
@@ -238,6 +311,10 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                     "put a full-screen cut or a different motif between them")
         if right["end"] - right["start"] > 5.5:
             raise ValueError(f"{right['id']} is longer than 5.5s")
+
+    full_scale = float(stage_plan.get("full_scale") or theme["layout"].get("full_scale") or FULL_SCALE)
+    step = float(stage_plan.get("punch_step") or PUNCH_STEP)
+    shots = apply_emphasis_punches(shots, ordered, styles, full_scale, step)
 
     headers = []
     notices = []
@@ -357,7 +434,8 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         "theme_mode": mode,
         "theme_path": str(theme_path),
         "title": title,
-        "cta": {"keyword": keyword, "lead_magnet": theme["content"]["lead_magnet_title"]},
+        "cta": {"keyword": keyword, "lead_magnet": theme["content"]["lead_magnet_title"],
+                "omit": omit_cta, "required": not omit_cta},
         "output": {"width": width, "height": height, "fps": fps},
         "source": {"path": source_path, "object_position": position,
                    "segments": [{"start": 0, "end": duration}]},

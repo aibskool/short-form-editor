@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import shutil
 
-from edit import escape, map_words, probe, read_words, resolve, validate_music
+from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -55,7 +55,10 @@ def card_state(layout, crop, width, height, layout_spec, colors):
             "borderRadius": round(layout_spec["card_radius"] * width / 1080),
             "boxShadow": colors["card_shadow"], "scale": scale,
         }
-    scale = layout_spec["punch_scale"] if layout == "punch_in" else 1
+    if layout == "punch_in":
+        scale = float(layout_spec.get("punch_scale", 1.27))
+    else:
+        scale = float(layout_spec.get("full_scale", 1.13))
     return {"left": 0, "top": 0, "width": width, "height": height,
             "borderRadius": 0, "boxShadow": "none", "scale": scale}
 
@@ -342,13 +345,15 @@ def build_kallaway(spec, spec_path, project):
     .thumb{{position:relative;border-radius:{16*scale:.0f}px;overflow:hidden;transform:scale(0.8);display:flex;flex-direction:column;justify-content:flex-end;padding:{12*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{22*scale:.0f}px}}
     .thumb .mono{{position:absolute;top:{10*scale:.0f}px;left:{10*scale:.0f}px;color:{colors['muted']};font-size:{mono_px*0.8:.1f}px}}
     .thumb i{{position:absolute;right:{12*scale:.0f}px;bottom:{12*scale:.0f}px;color:{colors['muted']};font-style:normal;font-size:{16*scale:.0f}px}}
-    .phone{{width:{430*scale:.0f}px;height:92%;margin:0 auto;background:{colors['contrast']};border-radius:{36*scale:.0f}px;padding:{12*scale:.0f}px;box-shadow:{colors['card_shadow']}}}
+    .phone{{width:{430*scale:.0f}px;height:92%;margin:0 auto;background:{colors['contrast']};border-radius:{36*scale:.0f}px;padding:{12*scale:.0f}px;box-shadow:{colors['card_shadow']},0 0 48px {colors['accent']}55}}
     .phone-screen{{position:relative;height:100%;border-radius:{26*scale:.0f}px;overflow:hidden;background:{colors['surface']};border:1px solid {colors['border']}}}
-    .phone-screen img,.broll-card img,.shotcard img{{width:100%;height:100%;object-fit:cover}}
+    .phone-screen img,.broll-card img,.shotcard img,.phone-screen video,.broll-card video,.shotcard video{{width:100%;height:100%;object-fit:cover}}
+    .ig-handle{{position:absolute;left:0;right:0;bottom:2.2%;z-index:9;text-align:center;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em;color:{colors['text']};text-shadow:{colors['caption_shadow']};pointer-events:none}}
     .phone-fake,.broll-fake{{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:linear-gradient(160deg,{colors['surface']},{colors['contrast']});color:{colors['text']};font-family:'{caption}',sans-serif}}
     .phone-bar{{position:absolute;left:8%;right:8%;bottom:8%;height:{8*scale:.0f}px;border-radius:99px;background:{colors['border']};overflow:hidden}}
     .phone-bar div,.broll-progress div{{height:100%;width:100%;background:{colors['accent']};transform:scaleX(0);transform-origin:0 50%}}
     .thumb-dot{{position:absolute;left:50%;bottom:18%;width:{54*scale:.0f}px;height:{54*scale:.0f}px;margin-left:{-27*scale:.0f}px;border-radius:50%;background:{colors['text']};opacity:0.9}}
+    .broll-card,.quote-card,.offer-card,.shotcard,.cursor-ui,.swap-card,.vac-result{{box-shadow:{colors['card_shadow']}}}
     .broll-card{{width:100%;height:78%;border-radius:{22*scale:.0f}px;overflow:hidden;background:{colors['surface']};border:1px solid {colors['border']};position:relative}}
     .broll-progress{{position:absolute;left:0;right:0;bottom:0;height:{10*scale:.0f}px;background:{colors['border']}}}
     .nlist{{position:relative;height:100%}}
@@ -395,6 +400,17 @@ def build_kallaway(spec, spec_path, project):
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
     .phone-hl{{position:absolute;left:4%;right:4%;z-index:3}}
     .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
+    .stage-chip.bottom{{top:auto;bottom:{10*scale:.0f}px;left:{10*scale:.0f}px;right:{10*scale:.0f}px;text-align:center;white-space:normal;line-height:1.2;font-size:{mono_px*0.72:.1f}px;letter-spacing:0.03em}}
+    .cursor-ui{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
+    .cursor-btn{{padding:{18*scale:.0f}px {36*scale:.0f}px;border-radius:14px;background:{colors['accent']};color:{colors['on_accent']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{36*scale:.0f}px}}
+    .cursor-ptr{{position:absolute;left:58%;top:58%;width:0;height:0;border-left:{18*scale:.0f}px solid {colors['text']};border-top:{8*scale:.0f}px solid transparent;border-bottom:{8*scale:.0f}px solid transparent;filter:drop-shadow(0 8px 12px rgba(0,0,0,0.35))}}
+    .vac{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
+    .vac-chip{{position:absolute;padding:{10*scale:.0f}px {16*scale:.0f}px;border-radius:999px;background:{colors['surface']};color:{colors['text']};border:1px solid {colors['border']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{26*scale:.0f}px}}
+    .vac-result{{position:relative;padding:{16*scale:.0f}px {22*scale:.0f}px;border-radius:16px;background:{colors['accent']};color:{colors['on_accent']};font-family:'{display}',cursive;font-size:{40*scale:.0f}px;box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
+    .swap{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
+    .swap-card{{position:absolute;width:78%;padding:8% 6%;border-radius:18px;text-align:center;font-family:'{display}',cursive;font-size:{42*scale:.0f}px;color:{colors['text']}}}
+    .swap-card.bad{{background:{colors['surface']};border:2px solid {colors['warning']};box-shadow:{colors['card_shadow']},0 0 36px {colors['warning']}55}}
+    .swap-card.good{{background:{colors['surface']};border:2px solid {colors['accent']};box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
     .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
     .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}
     .quote-card{{height:100%;display:flex;align-items:center;justify-content:center;padding:6%}}
@@ -423,11 +439,14 @@ def build_kallaway(spec, spec_path, project):
         "for(var i=0;i<5;i++){var dx=sx(u)-t,den=(3*ax*u+2*bx)*u+cx; if(Math.abs(den)<1e-5) break; u-=dx/den;}"
         "return sy(Math.max(0,Math.min(1,u)));}"
     )
+    body = f'{speaker}{"".join(rest)}{"".join(audio)}<div class="ig-handle">@bjmeaux</div>'
+    # Caption clips start on almost every word. An exit that lands on one needs a hard kill.
+    animations.extend(boundary_hard_kills("".join(animations), body))
     markup = (
         f'<!doctype html><html><head><meta charset="utf-8"><title>{escape(spec.get("title", "Talking head reel"))}</title>'
         f'<script src="assets/gsap.min.js"></script><style>{css}</style></head><body>'
         f'<div id="root" data-composition-id="main" data-width="{width}" data-height="{height}" data-duration="{duration}" data-fps="{fps}">'
-        f'{speaker}{"".join(rest)}{"".join(audio)}</div><script>{slide}const tl=gsap.timeline({{paused:true}});'
+        f'{body}</div><script>{slide}const tl=gsap.timeline({{paused:true}});'
         f'{"".join(animations)}window.__timelines=window.__timelines||{{}};window.__timelines.main=tl;</script></body></html>'
     )
     (project / "index.html").write_text(markup)

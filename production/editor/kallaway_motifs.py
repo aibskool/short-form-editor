@@ -7,11 +7,38 @@ MOTIFS = (
     "thumbnail_grid", "phone_frame", "broll_card", "numbered_list", "line_chart",
     "bar_chart", "counter", "highlight_box", "hand_circle", "doc_fan", "typing_ui",
     "mind_map", "logo_row", "quote_card", "offer_pair", "flow_line", "pill",
+    "cursor_mock", "vacuum_merge", "state_swap",
 )
 
 
 def _esc(value):
     return html.escape(str(value), quote=True)
+
+
+def _is_video_url(url):
+    """Screen recordings play in the phone or card. Stills stay images."""
+    if not url:
+        return False
+    path = str(url).lower().split("?", 1)[0]
+    return path.endswith((".mp4", ".mov", ".webm", ".m4v"))
+
+
+def _media_tag(ident, media_url, start, end, fit, sat, track_index, stage):
+    style = (f"position:absolute;left:0;top:0;width:100%;height:100%;object-fit:{fit};"
+             f"filter:saturate({sat:.3f})")
+    if not _is_video_url(media_url):
+        return f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" style="{style}">'
+    # The video carries its own clip timing. The stage section must not, or
+    # HyperFrames rejects a video nested in a timed element.
+    offset = float(stage.get("media_start") or 0)
+    rate = float(stage.get("playback_rate") or 1)
+    rate_attr = f' data-playback-rate="{rate:.3f}"' if abs(rate - 1.0) > 0.01 else ""
+    return (
+        f'<video id="{ident}-img" class="clip" src="{_esc(media_url)}" '
+        f'data-start="{float(start):.3f}" data-duration="{max(0.04, float(end) - float(start)):.3f}" '
+        f'data-media-start="{offset:.3f}"{rate_attr} data-track-index="{int(track_index)}" '
+        f'muted playsinline style="{style}"></video>'
+    )
 
 
 def _rgba(hex_color, alpha):
@@ -168,7 +195,8 @@ def _stage_chip(ident, stage):
     if isinstance(chip, str):
         chip = {"text": chip}
     tone = chip.get("tone") if chip.get("tone") in {"green", "amber"} else "green"
-    return f'<div id="{ident}-chip" class="stage-chip {tone}">{_esc(chip.get("text", ""))}</div>'
+    place = " bottom" if chip.get("place") == "bottom" else ""
+    return f'<div id="{ident}-chip" class="stage-chip{place} {tone}">{_esc(chip.get("text", ""))}</div>'
 
 
 def stage_windows(shot):
@@ -197,6 +225,9 @@ def stage_events(motif, start, end, stage=None):
             events.append({"at": float(stage["callout"].get("at", start + ENTRANCE_SECONDS)), "kind": "marker"})
         if stage.get("highlight"):
             events.append({"at": float(stage["highlight"].get("at", start + ENTRANCE_SECONDS)), "kind": "pop"})
+        if stage.get("typing"):
+            for moment in _times(start + 0.14, min(end, start + 1.15), 6, 0.9):
+                events.append({"at": moment, "kind": "typing"})
         return events
     if motif == "numbered_list":
         items = stage.get("items") or ["One", "Two", "Three", "Four"]
@@ -247,16 +278,32 @@ def stage_events(motif, start, end, stage=None):
                 {"at": _clamp(start + 0.28, start, end), "kind": "ding"}]
     if motif == "pill":
         return [{"at": round(start, 3), "kind": "pop"}]
+    if motif == "cursor_mock":
+        return [{"at": round(start, 3), "kind": "whoosh"},
+                {"at": _clamp(start + 0.42, start, end), "kind": "click"}]
+    if motif == "vacuum_merge":
+        items = stage.get("items") or ["One", "Two", "Three", "Four"]
+        count = max(2, min(6, len(items)))
+        events = [{"at": t, "kind": "pop"} for t in _times(start, end, count, 0.28)]
+        events.append({"at": _clamp(start + 0.55, start, end), "kind": "whoosh"})
+        events.append({"at": _clamp(start + 0.78, start, end), "kind": "ding"})
+        return events
+    if motif == "state_swap":
+        return [{"at": round(start, 3), "kind": "pop"},
+                {"at": _clamp(start + 0.42, start, end), "kind": "error"},
+                {"at": _clamp(start + 0.62, start, end), "kind": "ding"}]
     return []
 
 
 def _pop(selector, at):
-    return (f'tl.fromTo("{selector}",{{scale:0.8}},{{scale:1,duration:0.34,ease:"back.out(1.7)",'
+    # 0 to about 110% and back to 100% in a quarter second. back.out overshoots.
+    return (f'tl.fromTo("{selector}",{{scale:0}},{{scale:1,duration:0.26,ease:"back.out(1.7)",'
             f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
 
 
 def _slide(selector, at):
-    return (f'tl.fromTo("{selector}",{{y:78,opacity:0}},{{y:0,opacity:1,duration:0.4,ease:kallawaySlide,'
+    # Slide up with a slight overshoot, fast enough to read as formed on the cut.
+    return (f'tl.fromTo("{selector}",{{y:72,opacity:0}},{{y:0,opacity:1,duration:0.24,ease:"back.out(1.4)",'
             f'immediateRender:false}},{at});')
 
 
@@ -309,9 +356,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         # percentages land on the same pixels. A hand-authored box keeps cover.
         fit = "fill" if (stage.get("frame") or {}).get("img_h") else "cover"
         if media_url:
-            picture = (f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" '
-                       f'style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:{fit};'
-                       f'filter:saturate({sat:.3f})">')
+            picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:
             picture = (f'<div class="phone-fake"><b style="color:{text}">Preview</b>'
                        f'<span class="mono" style="color:{muted}">9:16</span></div>')
@@ -368,12 +413,14 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         if stage.get("highlight"):
             at = float(stage["highlight"]["at"])
             animations.append(
-                f'tl.fromTo("#{ident}-hl",{{opacity:0,scale:0.92}},{{opacity:1,scale:1,duration:0.28,'
-                f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{at:.3f});')
+                f'tl.fromTo("#{ident}-hl",{{opacity:0,scaleX:0}},{{opacity:1,scaleX:1,duration:0.28,'
+                f'ease:"power2.out",transformOrigin:"0% 50%",immediateRender:false}},{at:.3f});')
 
     elif motif == "broll_card":
-        picture = (f'<img src="{_esc(media_url)}" alt="">' if media_url
-                   else f'<div class="broll-fake"><span class="mono">B-ROLL</span></div>')
+        if media_url:
+            picture = _media_tag(ident, media_url, start, end, "cover", 1.0, track_index, stage)
+        else:
+            picture = '<div class="broll-fake"><span class="mono">B-ROLL</span></div>'
         bar = ""
         if stage.get("progress"):
             bar = f'<div class="broll-progress"><div id="{ident}-bar"></div></div>'
@@ -432,7 +479,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         count = min(len(heights), 5 if sliced else len(events))
         bars = []
         for index in range(count):
-            color = warning if negative and index == 0 else (accent if index == count - 1 else border)
+            short = float(heights[index]) <= 12
+            color = warning if (negative and index == 0) or short else (accent if index == count - 1 else border)
             caption = _esc(labels[index]) if index < len(labels) else f"{index+1:02d}"
             bars.append(
                 f'<div class="bar-col"><div id="{ident}-b{index}" class="bar" '
@@ -470,8 +518,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<div class="fake-line" style="width:66%"></div></div>')
         animations.append(_slide(f"#{ident}-shot", events[0]["at"]))
         animations.append(
-            f'tl.fromTo("#{ident}-hl",{{opacity:0,scale:0.92}},{{opacity:1,scale:1,duration:0.28,'
-            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{events[1]["at"]});')
+            f'tl.fromTo("#{ident}-hl",{{opacity:0,scaleX:0}},{{opacity:1,scaleX:1,duration:0.28,'
+            f'ease:"power2.out",transformOrigin:"0% 50%",immediateRender:false}},{events[1]["at"]});')
 
     elif motif == "hand_circle":
         phrase = stage.get("label") or "this"
@@ -599,17 +647,83 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         body = (f'<div class="pill-wrap"><div id="{ident}-pill" class="pill">{_esc(label)}</div></div>')
         animations.append(_pop(f"#{ident}-pill", events[0]["at"]))
 
+    elif motif == "cursor_mock":
+        label = stage.get("label") or stage.get("text") or "Publish"
+        body = (f'<div id="{ident}-ui" class="cursor-ui"><div id="{ident}-btn" class="cursor-btn">{_esc(label)}</div>'
+                f'<div id="{ident}-cursor" class="cursor-ptr"></div></div>')
+        animations.append(_slide(f"#{ident}-ui", events[0]["at"]))
+        click_at = events[1]["at"]
+        animations.append(
+            f'tl.fromTo("#{ident}-cursor",{{x:86,y:48,opacity:0}},{{x:8,y:6,opacity:1,duration:0.32,'
+            f'ease:"power2.out",immediateRender:false}},{events[0]["at"] + 0.08:.3f});')
+        animations.append(
+            f'tl.to("#{ident}-btn",{{scale:0.94,duration:0.08,yoyo:true,repeat:1,ease:"power1.inOut"}},{click_at:.3f});')
+
+    elif motif == "vacuum_merge":
+        items = list(stage.get("items") or ["Hook", "Proof", "Offer", "Close"])[:6]
+        result = stage.get("label") or "One system"
+        chips = []
+        pop_events = [event for event in events if event["kind"] == "pop"]
+        offsets = ((-90, -36), (90, -28), (-70, 42), (84, 40), (-16, -62), (24, 58))
+        for index, item in enumerate(items):
+            chips.append(f'<div id="{ident}-v{index}" class="vac-chip">{_esc(item)}</div>')
+            at = pop_events[index]["at"] if index < len(pop_events) else start
+            ox, oy = offsets[index % len(offsets)]
+            animations.append(_pop(f"#{ident}-v{index}", at))
+            animations.append(f'tl.set("#{ident}-v{index}",{{x:{ox},y:{oy}}},{at:.3f});')
+            animations.append(
+                f'tl.to("#{ident}-v{index}",{{x:0,y:0,opacity:0,duration:0.26,ease:"power2.in"}},'
+                f'{_clamp(start + 0.48, start, end):.3f});')
+        merge_at = next(event["at"] for event in events if event["kind"] == "ding")
+        body = (f'<div class="vac">{"".join(chips)}'
+                f'<div id="{ident}-result" class="vac-result">{_esc(result)}</div></div>')
+        animations.append(_pop(f"#{ident}-result", merge_at))
+
+    elif motif == "state_swap":
+        items = list(stage.get("items") or ["Wrong", "Right"])[:2]
+        while len(items) < 2:
+            items.append("Right")
+        swipe = next(event["at"] for event in events if event["kind"] == "error")
+        good = next(event["at"] for event in events if event["kind"] == "ding")
+        # The winning card stays hidden until it pops. A later fromTo does not
+        # hide it during the opening, so the wrong state would never read alone.
+        body = (f'<div class="swap"><div id="{ident}-bad" class="swap-card bad">{_esc(items[0])}</div>'
+                f'<div id="{ident}-good" class="swap-card good" style="opacity:0">{_esc(items[1])}</div></div>')
+        animations.append(_pop(f"#{ident}-bad", events[0]["at"]))
+        animations.append(
+            f'tl.to("#{ident}-bad",{{x:220,opacity:0,rotation:8,duration:0.22,ease:"power2.in"}},{swipe:.3f});')
+        animations.append(f'tl.set("#{ident}-good",{{scale:0,opacity:0}},{float(start):.3f});')
+        animations.append(
+            f'tl.fromTo("#{ident}-good",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.26,'
+            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{float(good):.3f});')
+
     else:
         raise ValueError(f"unknown stage motif: {motif}")
 
     body += _stage_chip(ident, stage)
 
-    # Colors that motifs reference through classes are set on the section via custom properties.
-    section = (
-        f'<section id="{ident}" class="stage clip" data-start="{start:.3f}" data-duration="{duration:.3f}" '
-        f'data-track-index="{int(track_index)}" data-layout-allow-overflow '
-        f'style="left:{box["left"]}px;top:{box["top"]}px;width:{box["width"]}px;height:{box["height"]}px;'
-        f'--accent:{accent};--strong:{strong};--text:{text};--muted:{muted};--surface:{surface};'
-        f'--border:{border};--contrast:{contrast};--warning:{warning};--on:{on_accent};--soft:{soft};">'
-        f'{body}</section>')
+    # A slow push so a held graphic never sits dead still.
+    hold = max(0.6, float(end) - float(start) - 0.28)
+    drift = 1.0 + min(0.08, max(0.03, hold * 0.012))
+    animations.append(
+        f'tl.fromTo("#{ident}",{{scale:1}},{{scale:{drift:.3f},duration:{hold:.3f},ease:"none",'
+        f'transformOrigin:"50% 46%",immediateRender:false}},{float(start) + 0.22:.3f});')
+
+    style = (f'left:{box["left"]}px;top:{box["top"]}px;width:{box["width"]}px;height:{box["height"]}px;'
+             f'--accent:{accent};--strong:{strong};--text:{text};--muted:{muted};--surface:{surface};'
+             f'--border:{border};--contrast:{contrast};--warning:{warning};--on:{on_accent};--soft:{soft};')
+    # A playing screen recording times itself. Nesting that video in a timed section
+    # fails HyperFrames' video_nested_in_timed_element lint, so the chrome shows with GSAP.
+    if _is_video_url(media_url):
+        if float(start) > 0.02:
+            animations.append(f'tl.set("#{ident}",{{autoAlpha:0}},0);')
+        animations.append(f'tl.set("#{ident}",{{autoAlpha:1}},{float(start):.3f});')
+        animations.append(f'tl.set("#{ident}",{{autoAlpha:0}},{float(end):.3f});')
+        section = (f'<section id="{ident}" class="stage" data-layout-allow-overflow '
+                   f'style="visibility:hidden;opacity:0;{style}">{body}</section>')
+    else:
+        section = (
+            f'<section id="{ident}" class="stage clip" data-start="{start:.3f}" data-duration="{duration:.3f}" '
+            f'data-track-index="{int(track_index)}" data-layout-allow-overflow style="{style}">'
+            f'{body}</section>')
     return section, animations, events

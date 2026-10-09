@@ -83,8 +83,10 @@ class KallawayTests(unittest.TestCase):
         breath = ((t >= 0.05) & (t < 0.12)).astype(np.float64) * 0.05 * np.random.default_rng(1).standard_normal(rate)
         refined = refine_word_bounds(tone + breath, rate, [{"word": "hey", "start": 0.05, "end": 0.50}])
         self.assertGreater(refined[0]["start"], 0.2)
-        self.assertLess(refined[0]["end"], 0.48)
-        self.assertGreater(refined[0]["end"], 0.40)
+        self.assertLess(refined[0]["start"], 0.30)
+        # The whisper mark already sits past the tone, so the safety tail stays on it.
+        self.assertGreater(refined[0]["end"], 0.50)
+        self.assertLess(refined[0]["end"], 0.56)
 
     def test_energy_trim_keeps_a_stop_closure_inside_the_word(self):
         rate = 16000
@@ -94,6 +96,23 @@ class KallawayTests(unittest.TestCase):
         refined = refine_word_bounds(first + second, rate, [{"word": "reactivation", "start": 0.22, "end": 0.92}])
         self.assertLess(refined[0]["start"], 0.24)
         self.assertGreater(refined[0]["end"], 0.85)
+
+    def test_word_end_follows_energy_past_an_early_whisper_mark(self):
+        rate = 16000
+        t = np.arange(rate) / rate
+        tone = ((t >= 0.20) & (t < 0.62)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
+        refined = refine_word_bounds(tone, rate, [{"word": "most", "start": 0.22, "end": 0.40}])
+        self.assertLess(refined[0]["start"], 0.22)
+        self.assertGreater(refined[0]["end"], 0.62)
+        self.assertLess(refined[0]["end"], 0.68)
+
+    def test_word_end_keeps_searching_when_the_vowel_outlasts_the_window(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.2)) / rate
+        tone = ((t >= 0.20) & (t < 0.78)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
+        refined = refine_word_bounds(tone, rate, [{"word": "leverage", "start": 0.22, "end": 0.40}])
+        self.assertGreater(refined[0]["end"], 0.78)
+        self.assertLess(refined[0]["end"], 0.86)
 
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
         theme, _, _, _ = load_theme("dark")
@@ -105,7 +124,9 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(layout["caption_split_y"], layout["stage_top"] + layout["stage_height"])
         self.assertEqual(layout["wide_scale"], 1.0)
         self.assertAlmostEqual(layout["tight_scale"], 1.08)
-        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.06)
+        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.02)
+        self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.012)
+        self.assertAlmostEqual(theme["layout"]["full_scale"], 1.13)
         self.assertIn("paper", SFX_KINDS)
         self.assertGreaterEqual(len(sfx_variants("whoosh")), 2)
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
@@ -425,14 +446,20 @@ class KallawayTests(unittest.TestCase):
             self.assertIn("background music", str(caught.exception))
 
 
-    def test_sfx_gains_sit_about_ten_to_fourteen_db_under(self):
+    def test_sfx_gains_follow_the_v2_bands(self):
         import math
         gains = load_theme()[0]["sfx_gain"]
-        self.assertGreaterEqual(len(gains), 8)
-        for kind, gain in gains.items():
-            db = 20 * math.log10(float(gain))
-            self.assertGreaterEqual(db, -14.05, kind)
-            self.assertLessEqual(db, -9.95, kind)
+        bands = {
+            "pop": (-18.1, -13.9), "click": (-18.1, -13.9), "typing": (-18.1, -13.9),
+            "ticking": (-18.1, -13.9), "marker": (-18.1, -13.9), "paper": (-18.1, -13.9),
+            "error": (-18.1, -13.9), "whoosh": (-20.1, -15.9), "riser": (-20.1, -15.9),
+            "ding": (-16.1, -11.9), "bass": (-10.1, -5.9),
+        }
+        self.assertEqual(set(gains), set(bands))
+        for kind, (low, high) in bands.items():
+            db = 20 * math.log10(float(gains[kind]))
+            self.assertGreaterEqual(db, low, kind)
+            self.assertLessEqual(db, high, kind)
 
     def test_progress_bar_is_off_unless_the_beat_asks(self):
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
@@ -519,6 +546,91 @@ class KallawayTests(unittest.TestCase):
             report = check(spec, None)
             self.assertFalse(report["ok"])
             self.assertTrue(any("outside the phone" in error for error in report["errors"]))
+
+    def test_screen_recording_is_its_own_timed_video(self):
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
+        box = {"left": 0, "top": 0, "width": 400, "height": 700}
+        stage = {"motif": "phone_frame", "media_start": 1.25, "playback_rate": 1.4,
+                 "chip": {"text": "Source: the article", "place": "bottom", "tone": "green"}}
+        section, animations, _events = motif_markup(
+            "phone_frame", stage, 1.2, 3.0, box, colors, "stage-9", "clip.mp4")
+        self.assertIn("<video", section)
+        self.assertIn('data-media-start="1.250"', section)
+        self.assertIn('data-playback-rate="1.400"', section)
+        self.assertNotIn('class="stage clip"', section)
+        self.assertIn("stage-chip bottom", section)
+        script = "".join(animations)
+        self.assertIn('tl.set("#stage-9",{autoAlpha:1},1.200);', script)
+        self.assertIn('tl.set("#stage-9",{autoAlpha:0},3.000);', script)
+
+    def test_state_swap_exit_is_hard_killed_on_a_clip_boundary(self):
+        from edit import boundary_hard_kills
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
+        box = {"left": 0, "top": 0, "width": 400, "height": 700}
+        stage = {"motif": "state_swap", "items": ["One payment ends", "Monthly plan stays"]}
+        section, animations, events = motif_markup(
+            "state_swap", stage, 2.0, 5.0, box, colors, "stage-13")
+        swipe = next(event["at"] for event in events if event["kind"] == "error")
+        boundary = round(swipe + 0.22, 3)
+        markup = section + f'<div class="caption clip" data-start="{boundary:.3f}" data-duration="0.40"></div>'
+        kills = boundary_hard_kills("".join(animations), markup)
+        self.assertTrue(any("#stage-13-bad" in kill and "opacity:0" in kill for kill in kills), kills)
+        script = "".join(animations)
+        self.assertIn('tl.set("#stage-13-good",{scale:0,opacity:0},2.000);', script)
+        self.assertIn('style="opacity:0"', section)
+
+    def test_reach_reel_can_omit_the_comment_ask(self):
+        from check_kallaway_style import check
+        tokens = "Charging two thousand is a most expensive mistake and then you stop paying".split()
+        words = []
+        cursor = 0.08
+        for token in tokens:
+            words.append({"word": token, "start": round(cursor, 3), "end": round(cursor + 0.24, 3)})
+            cursor += 0.46
+        plan = {
+            "schema": "kallaway-stage-plan/v1",
+            "omit_cta": True,
+            "emphasis": {"thousand": "green", "mistake": "marker", "paying": "amber"},
+            "beats": [
+                {"spoken": "Charging", "layout": "split", "motif": "offer_pair",
+                 "items": ["$2,000 UPFRONT", "FREE BUILD"],
+                 "header": {"lines": ["Never sell a website for", "$2,000"], "green_lines": [1]}},
+                {"spoken": "is a most", "layout": "full"},
+                {"spoken": "stop paying", "layout": "split", "motif": "state_swap",
+                 "items": ["One payment ends", "Monthly plan stays"]},
+            ],
+        }
+        timeline = plan_timeline(words, "/reels/reach.mp4", "words.json", music=False, stage_plan=plan)
+        self.assertFalse(timeline["cta"]["required"])
+        self.assertEqual(timeline["cta"]["keyword"], "")
+        punches = [shot for shot in timeline["shots"] if shot["layout"] == "punch_in"]
+        self.assertTrue(punches)
+        self.assertGreater(punches[0]["scale"], timeline["shots"][0].get("scale", 1))
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "timeline.json"
+            spec.write_text(json.dumps(timeline))
+            report = check(spec, None)
+            self.assertTrue(report["ok"], report)
+
+    def test_join_tail_stays_near_the_noise_floor(self):
+        from kallaway_audio import measure_joins
+        rate = 16000
+        t = np.arange(int(rate * 1.4)) / rate
+        tone = (((t >= 0.10) & (t < 0.40)) | ((t >= 0.90) & (t < 1.20))).astype(np.float64)
+        samples = tone * 0.3 * np.sin(2 * np.pi * 200 * t)
+        words = [
+            {"word": "costs", "start": 0.12, "end": 0.38},
+            {"word": "stop", "start": 0.92, "end": 1.18},
+        ]
+        refined = refine_word_bounds(samples, rate, words)
+        ranges = keep_ranges(refined, 1.4, gap=0.02, handle=0)
+        self.assertGreater(refined[0]["end"], 0.40)
+        joins = measure_joins(samples, rate, ranges, refined)
+        self.assertTrue(joins)
+        self.assertTrue(all(item["ok"] for item in joins), joins)
+        self.assertEqual(joins[0]["consonant"], "s")
 
 
 if __name__ == "__main__":
