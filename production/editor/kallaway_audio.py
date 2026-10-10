@@ -450,6 +450,27 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
             refined.append(chosen)
             continue
         cluster = max(bridged, key=lambda run: (peak(run), _overlap(run, start, end), run[1] - run[0]))
+        # A stop can split one word ("plan", the /z/ of "ends") by more than the
+        # 140 ms bridge. Keep that half when it is still this word and still loud.
+        # A breath is much quieter than the vowel, so it stays out.
+        main_peak = peak(cluster)
+        pieces = [cluster]
+        for other in bridged:
+            if other == cluster:
+                continue
+            if other[1] <= cluster[0]:
+                gap = cluster[0] - other[1]
+            elif other[0] >= cluster[1]:
+                gap = other[0] - cluster[1]
+            else:
+                continue
+            if gap > 0.24:
+                continue
+            if peak(other) < main_peak * (10 ** (-12.0 / 20.0)):
+                continue
+            pieces.append(other)
+        if len(pieces) > 1:
+            cluster = (min(item[0] for item in pieces), max(item[1] for item in pieces))
         speech_end = cluster[1]
         # Stop at the next syllable. A continuous phrase still crosses one run, and
         # the high band would otherwise carry this word through every word after it.
@@ -482,6 +503,25 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                                 next_onset = tail + 0.004
                             break
                     break
+        # One stop release after the vowel (the /dʒ/ of "leverage"). A blip
+        # shorter than 40 ms, or anything that belongs to the next word, stays out.
+        if next_onset is None or next_onset > speech_end + 0.13:
+            for run in runs:
+                if run[0] <= speech_end + 0.015:
+                    continue
+                if run[0] > speech_end + 0.12:
+                    break
+                if run[1] - run[0] < 0.04:
+                    continue
+                if next_onset is not None and run[0] >= next_onset - 0.01:
+                    break
+                if nxt and _overlap(run, next_start, next_end) > 0.02:
+                    break
+                burst = peak(run)
+                if burst < max(main_peak * (10 ** (-12.0 / 20.0)), 10 ** (-34.0 / 20.0)):
+                    continue
+                speech_end = run[1]
+                break
         guard = 0
         while guard < 8 and speech_end < min(duration, end + 0.70):
             guard += 1

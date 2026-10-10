@@ -136,6 +136,39 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(refined[0]["start"], 0.24)
         self.assertGreater(refined[0]["end"], 0.85)
 
+    def test_a_stop_attack_150ms_ahead_stays_with_the_word(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.2)) / rate
+        attack = _voiced(t, 180, 0.3, (t >= 0.30) & (t < 0.38))
+        vowel = _voiced(t, 180, 0.4, (t >= 0.53) & (t < 0.78))
+        refined = refine_word_bounds(attack + vowel, rate, [{"word": "plan", "start": 0.28, "end": 0.80}])
+        self.assertLess(refined[0]["start"], 0.32)
+        self.assertGreater(refined[0]["end"], 0.75)
+
+    def test_a_delayed_voiced_coda_stays_with_the_word(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.4)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.34))
+        coda = _voiced(t, 220, 0.22, (t >= 0.56) & (t < 0.68))
+        nxt = _voiced(t, 180, 0.35, (t >= 0.90) & (t < 1.10))
+        refined = refine_word_bounds(vowel + coda + nxt, rate, [
+            {"word": "ends", "start": 0.18, "end": 0.72},
+            {"word": "it", "start": 0.88, "end": 1.12},
+        ])
+        self.assertLess(refined[0]["start"], 0.22)
+        self.assertGreater(refined[0]["end"], 0.66)
+        self.assertLess(refined[0]["end"], 0.80)
+        self.assertGreater(refined[1]["start"], 0.85)
+
+    def test_a_stop_release_after_the_vowel_is_kept(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.40))
+        release = _voiced(t, 240, 0.25, (t >= 0.50) & (t < 0.60))
+        refined = refine_word_bounds(vowel + release, rate, [{"word": "leverage", "start": 0.18, "end": 0.42}])
+        self.assertGreater(refined[0]["end"], 0.58)
+        self.assertLess(refined[0]["end"], 0.72)
+
     def test_word_end_follows_energy_past_an_early_whisper_mark(self):
         rate = 16000
         t = np.arange(rate) / rate
