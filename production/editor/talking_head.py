@@ -164,6 +164,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     # Scene snap can pull the last face back under a second and a half.
     timeline["shots"] = lengthen_closing_face(
         timeline["shots"], timeline.get("headers"), minimum=1.52)
+    # Shot edges moved after the plan, so the cues have to be built again
+    # or a counter ding lands on the old time and the style check rejects it.
+    from kallaway_plan import _cover_sfx, sfx_placement_rows
+    timeline["sfx"] = _cover_sfx(
+        timeline["shots"], words, (timeline.get("captions") or {}).get("word_styles") or {},
+        theme.get("sfx_under_db") or {}, timeline.get("output", {}).get("fps", 30),
+        timeline.get("headers"))
+    timeline["sfx_log"] = sfx_placement_rows(timeline["sfx"])
     timeline["source_ranges"] = [
         [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
     ]

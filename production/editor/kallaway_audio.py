@@ -990,6 +990,77 @@ def _ends_sentence(word):
     return text.endswith((".", "!", "?"))
 
 
+def _tail_released(samples, rate, end, times, frames):
+    """True when the last 20 ms is a release, not the middle of a vowel or a burst."""
+    a = int(max(0, (float(end) - 0.020) * rate))
+    b = int(min(len(samples), float(end) * rate))
+    chunk = samples[a:b]
+    if len(chunk) < 8:
+        return True
+    rms = math.sqrt(float(np.dot(chunk, chunk)) / len(chunk))
+    peak_mask = (times >= float(end) - 0.45) & (times <= float(end) - 0.02)
+    peak = float(frames[peak_mask].max()) if np.any(peak_mask) else rms
+    drop = _db(peak) - _db(rms)
+    return drop >= 12.0 or _db(rms) <= -27.0
+
+
+def settle_join_tails(samples, rate, ranges, words):
+    """Move a join off a loud 20 ms window without eating the next word.
+
+    A stop burst can sit a few milliseconds after the planned end. Step
+    forward into the decay first. Step back only when the forward side is
+    already the next word, and never earlier than the word itself.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    updated = []
+    for index, (begin, end) in enumerate(ranges):
+        begin, end = float(begin), float(end)
+        if index == len(ranges) - 1 or _tail_released(samples, rate, end, times, frames):
+            updated.append((begin, end))
+            continue
+        nxt = float(ranges[index + 1][0])
+        word = min(words, key=lambda item: abs(float(item["end"]) - end))
+        word_end = float(word["end"])
+        ceiling = min(end + 0.18, nxt - 0.02)
+        found = None
+        moment = end
+        while moment + 0.005 <= ceiling + 1e-9:
+            moment = round(moment + 0.005, 4)
+            if _tail_released(samples, rate, moment, times, frames):
+                found = moment
+                break
+        if found is None:
+            moment = end
+            floor_end = max(begin + 0.05, word_end - 0.005)
+            while moment - 0.005 >= floor_end - 1e-9:
+                moment = round(moment - 0.005, 4)
+                if _tail_released(samples, rate, moment, times, frames):
+                    found = moment
+                    break
+        updated.append((begin, found if found is not None else end))
+    return updated
+
+
+def snap_quiet_word_ends(samples, rate, ranges, words):
+    """A word bound that runs into the pause after a quiet cut is the pause.
+
+    The keep range already ends in silence. Leave that air cut, and stop the
+    word at the cut so the gap is not reported as a clipped syllable.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    for word in words or []:
+        start, end = float(word["start"]), float(word["end"])
+        for begin, stop in ranges or []:
+            stop = float(stop)
+            if not (start + 0.02 < stop < end - 0.012):
+                continue
+            if _rms_db(samples, rate, stop, 0.02) <= -40.0:
+                word["end"] = round(stop, 4)
+            break
+    return words
+
+
 def measure_joins(samples, rate, ranges, words):
     """Score each tightened join. The outgoing 20 ms must sit within 3 dB of the noise floor.
 
@@ -1405,6 +1476,8 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     ranges = seal_word_interiors(ranges, refined)
     ranges = shorten_long_air(samples, RATE, ranges)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
+    ranges = settle_join_tails(samples, RATE, ranges, refined)
+    snap_quiet_word_ends(samples, RATE, ranges, refined)
     # Picture hard-cuts on the word boundary. The crossfade lives in the silence
     # after the safety tail, so it does not eat the fricative.
     video = list(ranges)

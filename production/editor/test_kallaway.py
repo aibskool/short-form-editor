@@ -921,6 +921,27 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(item["ok"] for item in joins), joins)
         self.assertEqual(joins[0]["consonant"], "s")
 
+    def test_a_join_steps_past_the_burst_and_a_quiet_cut_ends_the_word(self):
+        from kallaway_audio import measure_joins, settle_join_tails, snap_quiet_word_ends
+        rate = 16000
+        t = np.arange(int(rate * 1.2)) / rate
+        vowel = (t >= 0.10) & (t < 0.30)
+        burst = (t >= 0.40) & (t < 0.43)
+        nxt = (t >= 0.80) & (t < 1.00)
+        samples = _voiced(t, 180, 0.25, vowel | nxt) + _voiced(t, 400, 0.2, burst)
+        words = [{"word": "it.", "start": 0.10, "end": 0.32}, {"word": "The", "start": 0.80, "end": 1.00}]
+        ranges = [(0.10, 0.415), (0.80, 1.05)]
+        settled = settle_join_tails(samples, rate, ranges, words)
+        self.assertGreater(settled[0][1], 0.43)
+        self.assertLess(settled[0][1], 0.70)
+        joins = measure_joins(samples, rate, settled, words)
+        self.assertTrue(joins[0]["ok"], joins[0])
+        quiet = np.zeros(int(rate * 1.0))
+        quiet[int(0.1 * rate):int(0.3 * rate)] = 0.2
+        hung = [{"word": "fees.", "start": 0.10, "end": 0.55}]
+        snap_quiet_word_ends(quiet, rate, [(0.10, 0.32), (0.80, 0.95)], hung)
+        self.assertAlmostEqual(hung[0]["end"], 0.32, places=3)
+
     def test_a_pause_after_the_word_keeps_the_release(self):
         from kallaway_audio import refine_word_bounds
         rate = 16000
