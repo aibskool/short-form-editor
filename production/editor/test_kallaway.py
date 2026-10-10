@@ -762,6 +762,51 @@ class KallawayTests(unittest.TestCase):
             failed = check(project / "timeline.json", project / "mapped-words.json", project)
             self.assertTrue(any(error.startswith("matte:") for error in failed["errors"]), failed)
 
+    def test_guided_feather_smooths_a_blocky_crown_and_casts_a_shadow(self):
+        from kallaway_matte import refine_frame
+        height = width = 180
+        yy, xx = np.ogrid[:height, :width]
+        center, radius = 90, 58
+        disk = (yy - center) ** 2 + (xx - center) ** 2 <= radius ** 2
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (18, 18, 20)
+        rgb[disk] = (232, 186, 170)
+        block = 6
+        small = disk[::block, ::block]
+        coarse = np.repeat(np.repeat(small, block, axis=0), block, axis=1)[:height, :width].astype(np.float32)
+        person, _straight, out_a, _field = refine_frame(rgb, coarse)
+
+        def steps(alpha, level):
+            tops = []
+            for column in range(40, 140):
+                hit = np.where(alpha[:, column] > level)[0]
+                if hit.size:
+                    tops.append(hit[0])
+            return np.abs(np.diff(np.asarray(tops, dtype=np.float64)))
+
+        coarse_steps = steps(coarse, 0.5)
+        smooth_steps = steps(person, 0.5)
+        self.assertGreater(coarse_steps.max(), 2)
+        self.assertLessEqual(smooth_steps.max(), 2)
+        self.assertGreater(person[center, center], 0.98)
+        # The 0.2 to 0.8 band is a few pixels, not a hard stair and not a wide halo.
+        widths = []
+        for column in range(50, 130, 3):
+            column_alpha = person[:, column]
+            high = np.where(column_alpha > 0.8)[0]
+            low = np.where(column_alpha < 0.2)[0]
+            if high.size and low.size:
+                below = low[low < high[0]]
+                if below.size:
+                    widths.append(high[0] - below[-1])
+        self.assertTrue(widths)
+        self.assertGreaterEqual(np.median(widths), 2)
+        self.assertLessEqual(np.median(widths), 5)
+        below = out_a[center + radius + 3:center + radius + 16, center - 8:center + 8].mean()
+        above = out_a[center - radius - 16:center - radius - 3, center - 8:center + 8].mean()
+        self.assertGreater(below, above + 0.04)
+        self.assertLess(below, 0.75)
+
 
 if __name__ == "__main__":
     unittest.main()

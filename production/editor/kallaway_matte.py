@@ -4,10 +4,11 @@ The speaker card keeps the normal footage. Above the card's top edge, only the
 person is drawn, so the head and hands sit on the graphics. The matte is built
 once per source video and reused.
 
-MediaPipe Selfie Segmentation runs on the CPU at a reduced size. A short
-temporal median plus a one-pixel close kills flicker and pinholes. The stored
-mask is a full-size gray video; the composition packs it into a VP9 alpha WebM
-on the same frames as the picture.
+MediaPipe Selfie Segmentation runs on the CPU. Its model grid is coarse, so the
+stored prior stays soft and the composition pass upsamples it with a guided
+filter against the full-resolution frame, feathers the silhouette, and bakes a
+soft contact shadow. The result is a straight-alpha QuickTime on the same
+frames as the picture.
 """
 import hashlib
 import os
@@ -17,14 +18,26 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-MODEL = "mediapipe-selfie-0.10.14-general"
+MODEL = "mediapipe-selfie-0.10.14-general-edge-v2"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
 # Median head sits this far above the card, as a fraction of head height.
 POP_FRACTION = 0.15
 POP_FLOOR = 0.10
 POP_CAP = 0.20
 HOLE_AREA_FRACTION = 0.004
-SEAM_PX = 2
+# The pop layer overlaps the card by this many pixels so the clip does not
+# land on the card edge. The overlap is opaque chest, so it does not draw a line.
+SEAM_PX = 4
+ANALYSIS_LONG_EDGE = 720
+GUIDE_RADIUS = 6
+GUIDE_EPS = 8e-4
+# Distance from fully clear to fully solid. About a 3px visible feather.
+FEATHER_PX = 2.5
+TEMPORAL_NOW = 0.78
+SHADOW_OFFSET_Y = 12
+SHADOW_SIGMA = 11.0
+SHADOW_OPACITY = 0.46
+EDGE_RECIPE = "guided-r6-feather2.5-shadow12"
 
 
 def _run(args):
@@ -331,9 +344,95 @@ def inspect_matte(path, samples=8):
     return errors
 
 
+def guided_filter(guide, src, radius, eps):
+    """He et al. guided filter. `guide` and `src` are float32 images in 0..1."""
+    size = 2 * int(radius) + 1
+
+    def box(image):
+        return ndimage.uniform_filter(image, size=size, mode="nearest")
+
+    mean_g = box(guide)
+    mean_s = box(src)
+    var_g = np.maximum(box(guide * guide) - mean_g * mean_g, 0)
+    cov = box(guide * src) - mean_g * mean_s
+    a = cov / (var_g + eps)
+    b = mean_s - a * mean_g
+    return np.clip(box(a) * guide + box(b), 0, 1).astype(np.float32)
+
+
+def _distance_feather(binary, radius):
+    """Alpha that goes from 0 to 1 across `radius` pixels on each side of the edge."""
+    inside = ndimage.distance_transform_edt(binary)
+    outside = ndimage.distance_transform_edt(~binary)
+    signed = inside - outside
+    return np.clip(0.5 + signed / (2 * radius), 0, 1).astype(np.float32)
+
+
+def _foreground_color(rgb, person):
+    """Person color in the feather, so the soft edge is not a fringe of the room."""
+    weight = ndimage.gaussian_filter(person, 2.0) + 1e-3
+    rgb_f = rgb.astype(np.float32)
+    out = rgb_f.copy()
+    fringe = person < 0.98
+    if not fringe.any():
+        return out
+    pulled = np.empty_like(rgb_f)
+    for channel in range(3):
+        pulled[:, :, channel] = ndimage.gaussian_filter(rgb_f[:, :, channel] * person, 2.0) / weight
+    out[fringe] = pulled[fringe]
+    return out
+
+
+def cast_shadow(person, offset_y=SHADOW_OFFSET_Y, sigma=SHADOW_SIGMA, opacity=SHADOW_OPACITY):
+    """Soft alpha of a drop shadow sitting just under the silhouette."""
+    blurred = ndimage.gaussian_filter(person.astype(np.float32), sigma)
+    shifted = np.zeros_like(blurred)
+    offset = int(offset_y)
+    if offset > 0:
+        shifted[offset:] = blurred[:-offset]
+    elif offset < 0:
+        shifted[:offset] = blurred[-offset:]
+    else:
+        shifted = blurred
+    return np.clip(shifted * opacity, 0, 1).astype(np.float32)
+
+
+def refine_frame(rgb, coarse, previous=None):
+    """Snap a coarse matte to the full-res frame and composite a contact shadow.
+
+    Returns person alpha, straight RGB, straight alpha (person over the shadow),
+    and the guided field to carry into the next frame.
+    """
+    rgb = np.asarray(rgb)
+    coarse = np.asarray(coarse, dtype=np.float32)
+    if coarse.shape != rgb.shape[:2]:
+        import cv2
+        coarse = cv2.resize(coarse, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
+    guide = ndimage.gaussian_filter(rgb.astype(np.float32).mean(axis=2) * (1 / 255), 0.6)
+    prior = (coarse >= 0.5).astype(np.float32)
+    field = guided_filter(guide, prior, GUIDE_RADIUS, GUIDE_EPS)
+    if previous is not None and getattr(previous, "shape", None) == field.shape:
+        field = (TEMPORAL_NOW * field + (1 - TEMPORAL_NOW) * previous).astype(np.float32)
+    binary = field >= 0.5
+    binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
+    binary = ndimage.binary_fill_holes(binary)
+    person = _distance_feather(binary, FEATHER_PX)
+    # The chest stays solid. A clip through it must not show the panel.
+    core = ndimage.binary_erosion(binary, iterations=2)
+    person = np.where(core, 1.0, person).astype(np.float32)
+    fg = _foreground_color(rgb, person)
+    shadow = cast_shadow(person) * (1 - person)
+    out_a = np.clip(person + shadow, 0, 1)
+    straight = np.zeros_like(fg)
+    visible = out_a > 1e-3
+    straight[visible] = fg[visible] * (person[visible] / out_a[visible])[:, None]
+    straight = np.clip(straight, 0, 255).astype(np.uint8)
+    return person, straight, out_a.astype(np.float32), field
+
+
 def _segment_gray(source, output):
     facts = _video_facts(source)
-    sample_w, sample_h = _analysis_size(facts["width"], facts["height"], 288)
+    sample_w, sample_h = _analysis_size(facts["width"], facts["height"], ANALYSIS_LONG_EDGE)
     os.environ.setdefault("GLOG_minloglevel", "2")
     import mediapipe as mp
     segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=0)
@@ -373,8 +472,13 @@ def _segment_gray(source, output):
                 median = np.median(np.stack(history, axis=0), axis=0)
                 blended = median if previous is None else 0.7 * median + 0.3 * previous
                 previous = blended
-                closed = ndimage.binary_closing(blended >= 0.55, iterations=1)
-                raw.write(np.where(closed, 255, 0).astype(np.uint8).tobytes())
+                # Fill pinholes in the prior, but keep a soft edge for the guided pass.
+                closed = ndimage.binary_closing(blended >= 0.5, iterations=1)
+                filled = ndimage.binary_fill_holes(closed)
+                soft = np.array(blended, copy=True)
+                lift = filled & (soft < 0.9)
+                soft[lift] = 0.9
+                raw.write(np.clip(soft * 255.0, 0, 255).astype(np.uint8).tobytes())
                 written += 1
                 if written % 200 == 0:
                     print(f"segmented {written} frames", flush=True)
@@ -389,7 +493,7 @@ def _segment_gray(source, output):
         "ffmpeg", "-y", "-v", "error",
         "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{sample_w}x{sample_h}",
         "-r", f"{facts['fps']:.6f}", "-i", str(raw_path),
-        "-vf", f"scale={facts['width']}:{facts['height']}:flags=bilinear,gblur=sigma=0.8",
+        "-vf", f"scale={facts['width']}:{facts['height']}:flags=lanczos",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p",
         "-an", str(output),
     ])
@@ -444,6 +548,99 @@ def pack_alpha(picture, matte, output):
         "-shortest", "-c:v", "qtrle", "-pix_fmt", "argb", "-an", str(output),
     ])
     return output
+
+
+def _raw_reader(path, width, height, pix_fmt):
+    cmd = [
+        "ffmpeg", "-v", "error", "-i", str(path),
+        "-vf", f"scale={width}:{height}:flags=lanczos",
+        "-f", "rawvideo", "-pix_fmt", pix_fmt, "pipe:1",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    channels = 3 if pix_fmt == "rgb24" else 1
+    return proc, width * height * channels
+
+
+def _read_exact(proc, size):
+    chunks = []
+    got = 0
+    while got < size:
+        blob = proc.stdout.read(size - got)
+        if not blob:
+            return b""
+        chunks.append(blob)
+        got += len(blob)
+    return b"".join(chunks)
+
+
+def _raw_writer(path, width, height, fps, pix_fmt, codec_args):
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "rawvideo", "-pix_fmt", pix_fmt, "-s", f"{width}x{height}",
+        "-r", f"{fps:.6f}", "-i", "pipe:0",
+        *codec_args, "-an", str(path),
+    ]
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+
+def refine_and_pack(picture, coarse, mask_out, alpha_out):
+    """Guided upsample, feather, and contact shadow on the picture's frames."""
+    picture, coarse = Path(picture), Path(coarse)
+    mask_out, alpha_out = Path(mask_out), Path(alpha_out)
+    if alpha_out.suffix.lower() != ".mov":
+        alpha_out = alpha_out.with_suffix(".mov")
+    facts = _video_facts(picture)
+    width, height, fps = facts["width"], facts["height"], facts["fps"]
+    mask_out.parent.mkdir(parents=True, exist_ok=True)
+    partial_mask = mask_out.with_name(mask_out.stem + ".partial.mp4")
+    partial_alpha = alpha_out.with_name(alpha_out.stem + ".partial.mov")
+    rgb_proc, rgb_size = _raw_reader(picture, width, height, "rgb24")
+    mask_proc, mask_size = _raw_reader(coarse, width, height, "gray")
+    gray_proc = _raw_writer(
+        partial_mask, width, height, fps, "gray",
+        ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"])
+    alpha_proc = _raw_writer(
+        partial_alpha, width, height, fps, "argb",
+        ["-c:v", "qtrle", "-pix_fmt", "argb"])
+    previous = None
+    written = 0
+    try:
+        while True:
+            rgb_bytes = _read_exact(rgb_proc, rgb_size)
+            mask_bytes = _read_exact(mask_proc, mask_size)
+            if len(rgb_bytes) < rgb_size or len(mask_bytes) < mask_size:
+                break
+            rgb = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, width, 3)
+            coarse_frame = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(height, width)
+            person, straight, out_a, previous = refine_frame(
+                rgb, coarse_frame.astype(np.float32) * (1 / 255), previous)
+            gray = np.clip(person * 255.0, 0, 255).astype(np.uint8)
+            argb = np.empty((height, width, 4), dtype=np.uint8)
+            argb[:, :, 0] = np.clip(out_a * 255.0, 0, 255).astype(np.uint8)
+            argb[:, :, 1:] = straight
+            gray_proc.stdin.write(np.ascontiguousarray(gray).tobytes())
+            alpha_proc.stdin.write(np.ascontiguousarray(argb).tobytes())
+            written += 1
+            if written % 100 == 0:
+                print(f"refined {written} frames", flush=True)
+    finally:
+        for proc in (rgb_proc, mask_proc):
+            if proc.stdout:
+                proc.stdout.close()
+            proc.wait()
+        for proc in (gray_proc, alpha_proc):
+            if proc.stdin:
+                proc.stdin.close()
+        gray_code = gray_proc.wait()
+        alpha_code = alpha_proc.wait()
+    if written < 2 or gray_code or alpha_code:
+        partial_mask.unlink(missing_ok=True)
+        partial_alpha.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"pop-out edge refine failed (frames={written}, mask={gray_code}, alpha={alpha_code})")
+    partial_mask.replace(mask_out)
+    partial_alpha.replace(alpha_out)
+    return alpha_out
 
 
 def _shot_scale(shot, layout):
@@ -526,19 +723,24 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     print("segmenting the speaker (cached after the first run)", flush=True)
     full = ensure_source_matte(raw_source)
     picture = Path(picture)
+    coarse = picture.with_name("person-mask-coarse.mp4")
     mask = picture.with_name("person-mask.mp4")
     alpha = picture.with_name("person-pop.mov")
-    cut_matte(full, ranges, mask)
+    recipe = alpha.with_suffix(".recipe")
+    cut_matte(full, ranges, coarse)
     picture_facts = _video_facts(picture)
-    mask_facts = _video_facts(mask)
-    if abs(picture_facts["duration"] - mask_facts["duration"]) > 0.08:
+    coarse_facts = _video_facts(coarse)
+    if abs(picture_facts["duration"] - coarse_facts["duration"]) > 0.08:
         # The trim grid did not land on the same frames. Segment the picture itself.
-        _segment_gray(picture, mask)
-        mask_facts = _video_facts(mask)
+        _segment_gray(picture, coarse)
+        coarse_facts = _video_facts(coarse)
     alpha_duration = _video_facts(alpha)["duration"] if alpha.is_file() else 0
-    if not alpha.is_file() or abs(alpha_duration - mask_facts["duration"]) > 0.08:
-        print("packing the pop-out alpha", flush=True)
-        alpha = pack_alpha(picture, mask, alpha)
+    recipe_ok = recipe.is_file() and recipe.read_text().strip() == EDGE_RECIPE
+    if (not alpha.is_file() or not mask.is_file() or not recipe_ok
+            or abs(alpha_duration - coarse_facts["duration"]) > 0.08):
+        print("refining the pop-out edge", flush=True)
+        alpha = refine_and_pack(picture, coarse, mask, alpha)
+        recipe.write_text(EDGE_RECIPE + "\n")
     head = measure_head(mask)
     timeline["source"]["matte"] = str(alpha.resolve())
     timeline["source"]["matte_mask"] = str(mask.resolve())
