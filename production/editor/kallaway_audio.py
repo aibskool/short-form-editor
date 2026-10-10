@@ -1526,25 +1526,28 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
     source, output = Path(source), Path(output)
     ratio = max(1.15, min(float(ratio), 4.0))
     duration = _probe_duration(source)
-    # Tight speech with the pauses cut sits near LRA 1.6. A small hook-and-close
-    # lift, after the compressor, is what still measures at 2 or more once the
-    # second loudnorm pass applies a constant gain. A take that is still under
-    # 2 gets one wider lift. A take already in range is left alone.
-    chain = _voice_chain(duration, ratio, presence_hz, presence_db, spread=1.0)
-    measured = _loudnorm_measure(source, target_lufs, true_peak, chain)
-    if float(measured.get("input_lra") or 0) < 2.05:
-        chain = _voice_chain(duration, ratio, presence_hz, presence_db, spread=1.45)
-        measured = _loudnorm_measure(source, target_lufs, true_peak, chain)
-    effect = (f"{chain},loudnorm=I={target_lufs}:TP={true_peak}:LRA=11:"
-              f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
-              f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
-              f"offset={measured['target_offset']}:linear=true")
+    # The analysis LRA is taken before loudnorm. The written file comes out
+    # lower, so a 2.6 analysis can land at 1.7. Measure the file and widen
+    # once when it is still under 2. A take already in range is not touched.
     output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
-         "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-af", effect,
-         "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", str(output)],
-        check=True)
+    spread = 1.0
+    measured = None
+    for _pass in range(2):
+        chain = _voice_chain(duration, ratio, presence_hz, presence_db, spread=spread)
+        measured = _loudnorm_measure(source, target_lufs, true_peak, chain)
+        effect = (f"{chain},loudnorm=I={target_lufs}:TP={true_peak}:LRA=11:"
+                  f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
+                  f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
+                  f"offset={measured['target_offset']}:linear=true")
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+             "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-af", effect,
+             "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", str(output)],
+            check=True)
+        written = float(_loudnorm_measure(output, target_lufs, true_peak, "anull").get("input_lra") or 0)
+        if written >= 2.05 or spread >= 1.45:
+            break
+        spread = 1.45
     return {"output": str(output), "measurement": measured, "target_lufs": target_lufs}
 
 
