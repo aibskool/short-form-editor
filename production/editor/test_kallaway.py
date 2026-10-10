@@ -136,6 +136,13 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(refined[0]["start"], 0.24)
         self.assertGreater(refined[0]["end"], 0.85)
 
+    def test_phone_chip_defaults_to_the_bottom_of_the_mock(self):
+        from kallaway_beats import _stage_from
+        stage = _stage_from({"chip": {"text": "LIVE BUILD", "tone": "green"}}, "phone_frame")
+        self.assertEqual(stage["chip"]["place"], "bottom")
+        kept = _stage_from({"chip": {"text": "LIVE BUILD", "place": "bottom"}}, "phone_frame")
+        self.assertEqual(kept["chip"]["place"], "bottom")
+
     def test_a_stop_attack_150ms_ahead_stays_with_the_word(self):
         rate = 16000
         t = np.arange(int(rate * 1.2)) / rate

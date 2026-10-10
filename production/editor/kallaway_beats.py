@@ -263,6 +263,14 @@ def _stage_from(beat, motif):
     for key in STAGE_KEYS:
         if beat.get(key) is not None:
             stage[key] = _clean(beat[key])
+    # A phone chip with no place used to sit on the mock header. The bottom
+    # edge is the only place that clears the screen and the title.
+    if motif == "phone_frame":
+        chip = stage.get("chip")
+        if isinstance(chip, str):
+            stage["chip"] = {"text": chip, "place": "bottom"}
+        elif isinstance(chip, dict) and not chip.get("place"):
+            chip["place"] = "bottom"
     return stage
 
 
