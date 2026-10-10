@@ -929,7 +929,7 @@ class KallawayTests(unittest.TestCase):
         burst = (t >= 0.40) & (t < 0.43)
         nxt = (t >= 0.80) & (t < 1.00)
         samples = _voiced(t, 180, 0.25, vowel | nxt) + _voiced(t, 400, 0.2, burst)
-        words = [{"word": "it.", "start": 0.10, "end": 0.32}, {"word": "The", "start": 0.80, "end": 1.00}]
+        words = [{"word": "it.", "start": 0.10, "end": 0.38}, {"word": "The", "start": 0.80, "end": 1.00}]
         ranges = [(0.10, 0.415), (0.80, 1.05)]
         settled = settle_join_tails(samples, rate, ranges, words)
         self.assertGreater(settled[0][1], 0.43)

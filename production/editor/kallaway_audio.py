@@ -1004,40 +1004,52 @@ def _tail_released(samples, rate, end, times, frames):
     return drop >= 12.0 or _db(rms) <= -27.0
 
 
-def settle_join_tails(samples, rate, ranges, words):
-    """Move a join off a loud 20 ms window without eating the next word.
+def _pause_budget(word):
+    """Mid-phrase air stays at 40 ms. A sentence can hold the stop burst a little longer."""
+    text = str(word.get("word") or word.get("text") or "").rstrip()
+    if text.endswith((".", "!", "?")):
+        return 0.12
+    return 0.04
 
-    A stop burst can sit a few milliseconds after the planned end. Step
-    forward into the decay first. Step back only when the forward side is
-    already the next word, and never earlier than the word itself.
+
+def settle_join_tails(samples, rate, ranges, words):
+    """Move a join off a loud 20 ms window without opening a mid-phrase pause.
+
+    The release is the latest quiet 20 ms that still leaves the next word
+    inside the pause budget. A stop burst just after the marked end can
+    finish. The search does not cross into the next word.
     """
     samples = np.asarray(samples, dtype=np.float64)
     times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    ordered = sorted(words or [], key=lambda item: float(item["start"]))
     updated = []
     for index, (begin, end) in enumerate(ranges):
         begin, end = float(begin), float(end)
-        if index == len(ranges) - 1 or _tail_released(samples, rate, end, times, frames):
+        if index == len(ranges) - 1:
             updated.append((begin, end))
             continue
         nxt = float(ranges[index + 1][0])
-        word = min(words, key=lambda item: abs(float(item["end"]) - end))
+        word = min(ordered, key=lambda item: abs(float(item["end"]) - end))
         word_end = float(word["end"])
-        ceiling = min(end + 0.18, nxt - 0.02)
+        later = [item for item in ordered if float(item["start"]) >= word_end - 0.01 and item is not word]
+        next_word = later[0] if later else None
+        lead = 0.0
+        if next_word is not None:
+            lead = max(0.0, float(next_word["start"]) - nxt)
+        latest = min(nxt - 0.02, word_end + _pause_budget(word) - lead)
+        floor_end = max(begin + 0.05, word_end - 0.004)
+        if latest < floor_end:
+            latest = floor_end
+        if _tail_released(samples, rate, end, times, frames) and floor_end - 1e-9 <= end <= latest + 0.005:
+            updated.append((begin, end))
+            continue
         found = None
-        moment = end
-        while moment + 0.005 <= ceiling + 1e-9:
-            moment = round(moment + 0.005, 4)
+        moment = latest
+        while moment >= floor_end - 1e-9:
             if _tail_released(samples, rate, moment, times, frames):
-                found = moment
+                found = round(moment, 4)
                 break
-        if found is None:
-            moment = end
-            floor_end = max(begin + 0.05, word_end - 0.005)
-            while moment - 0.005 >= floor_end - 1e-9:
-                moment = round(moment - 0.005, 4)
-                if _tail_released(samples, rate, moment, times, frames):
-                    found = moment
-                    break
+            moment = round(moment - 0.005, 4)
         updated.append((begin, found if found is not None else end))
     return updated
 
