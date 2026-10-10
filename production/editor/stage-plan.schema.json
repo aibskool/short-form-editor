@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibskool.com/schemas/kallaway-stage-plan-v1.json",
+  "title": "Kallaway stage plan",
+  "description": "Per-reel graphic choices for a Kallaway talking-head edit. Use stages to art-direct the automatic split slots. The closing split of that cut stays the lead-magnet document fan and is not listed there. Use beats when the reel needs its own layout, including a mid-roll Comment header and no end card. Without a plan, the editor rotates motifs from a seed of the video path and does not repeat a motif on back-to-back split shots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema"],
+  "properties": {
+    "schema": {"const": "kallaway-stage-plan/v1"},
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One object per split shot you want to art-direct, in spoken order. Omit a shot and the seeded rotation fills it. A list of motif names is also accepted by the planner and means the same thing as stages with only a motif, applied in slot order. Do not combine stages with beats.",
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "beats": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Authored camera and graphic beats. The first beat is a split. Each later beat starts at its spoken phrase. A beat longer than 5.4s is cut on a word, and the overflow becomes a full-screen or punch-in so a motif is not repeated. The last beat ends on the last word. There is no automatic end card.",
+      "items": {"$ref": "#/$defs/beat"}
+    },
+    "music_drops": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["spoken", "until"],
+        "properties": {
+          "spoken": {"type": "string", "description": "Word where the bed cuts to silence."},
+          "until": {"type": "string", "description": "Word where the bed returns."},
+          "hit": {"type": "boolean", "description": "Play a bass hit when the bed returns. Defaults to true."}
+        }
+      }
+    },
+    "chips": {
+      "type": "array",
+      "description": "Persistent corner labels. from is a spoken phrase where the chip appears. after is a beat phrase, and the chip starts when that beat ends.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "from": {"type": "string"},
+          "after": {"type": "string"},
+          "text": {"type": "string"},
+          "place": {"type": "string", "enum": ["stage-corner"]}
+        }
+      }
+    },
+    "captions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keep_case": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Tokens that keep this spelling on screen, such as PAID, AI, and ADA. Other captions stay lowercase."
+        }
+      }
+    },
+    "emphasis": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "enum": ["normal", "marker", "green", "amber"]},
+      "description": "Caption color by word. An explicit color wins over the automatic amber list (no, not, never)."
+    },
+    "bed_bpm": {"type": "number", "minimum": 70, "maximum": 130, "description": "Lo-fi bed tempo for this reel. The default bed stays 82 when this is omitted."},
+    "punch_scale": {"type": "number", "description": "Scale for punch-in shots in this plan. The theme default stays 1.16."},
+    "object_position": {"type": "string", "description": "CSS object-position for the face, such as 50% 28%."},
+    "omit_cta": {"type": "boolean", "description": "Reach reel. No Comment header and no keyword chip. The style check skips the comment requirement."}
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motif"],
+      "properties": {
+        "motif": {
+          "enum": [
+            "thumbnail_grid", "phone_frame", "broll_card", "numbered_list",
+            "line_chart", "bar_chart", "counter", "highlight_box", "hand_circle",
+            "typing_ui", "mind_map", "logo_row", "quote_card", "offer_pair",
+            "flow_line", "pill", "doc_fan", "cursor_mock", "vacuum_merge", "state_swap"
+          ]
+        },
+        "spoken": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A short phrase copied from stage_slots.spoken for the split shot this graphic illustrates. When any stage sets spoken or word_range, every stage must set one of them."
+        },
+        "word_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {"type": "integer", "minimum": 0},
+          "description": "[start, end) indexes into the word list this timeline was planned against. The start word must fall inside a split shot."
+        },
+        "why": {
+          "type": "string",
+          "description": "Author note for the next editor. Not drawn on screen."
+        },
+        "note": {"type": "string"},
+        "media": {
+          "type": "string",
+          "description": "Local image or video for phone_frame, broll_card, or highlight_box. Absolute path, or a path relative to the plan file's directory when the runner loads it next to the timeline."
+        },
+        "items": {"type": "array", "items": {"type": "string"}},
+        "count": {"type": "integer", "minimum": 1},
+        "value": {"type": "integer"},
+        "label": {"type": "string"},
+        "text": {"type": "string", "description": "Sentence typed on screen for typing_ui."},
+        "heights": {
+          "type": "array",
+          "items": {"type": "number"},
+          "description": "Bar heights as percentages for bar_chart."
+        },
+        "negative": {"type": "boolean", "description": "Amber first bar on bar_chart."},
+        "hold": {"type": "boolean", "description": "Keep the numbered-list box on active instead of stepping through every row."},
+        "active": {"type": "integer", "minimum": 0, "description": "Zero-based row the numbered-list box holds."},
+        "prefix": {"type": "string", "description": "Counter prefix, such as $."},
+        "suffix": {"type": "string", "description": "Counter suffix, such as % or +."},
+        "labels": {"type": "array", "items": {"type": "string"}, "description": "Bar-chart captions."},
+        "reveal": {"type": "string", "enum": ["slice"], "description": "Bar-chart entrance. slice rises the bars together."},
+        "scroll": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": {"type": "number"},
+            "to": {"type": "number"},
+            "duration": {"type": "number", "description": "Seconds the pan takes. It holds after that so a later circle can land on the framed detail."}
+          },
+          "description": "Pan a phone screenshot. 0 is the top of the image and 1 is the bottom."
+        },
+        "desaturate": {"type": "number", "minimum": 0, "maximum": 1},
+        "progress": {"type": "boolean", "description": "Draw a filling bar on a phone or b-roll clip. Off unless set."},
+        "callout": {"type": "object", "description": "Circle on a phone screenshot. spoken is the word it belongs to. target_text is a phrase in the screenshot; Tesseract finds that box in the image. group surface grows the box to the card around the words (a form). Without target_text, x, y, w, h are fractions of the settled frame. The pan ends with a measured target centered in the phone. The stroke waits until the entrance and the pan have settled."},
+        "highlight": {"type": "object", "description": "Popped line on a phone screenshot. spoken is the word it belongs to. target_text locates it in the image the same way as a callout. It waits out the entrance and the pan, and it moves with the screenshot."},
+        "chip": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "text": {"type": "string"},
+            "tone": {"type": "string", "enum": ["green", "amber"]},
+            "place": {"type": "string", "enum": ["top", "bottom"], "description": "bottom is the article-credit chip."}
+          }
+        },
+        "strike": {"type": "boolean"},
+        "kicker": {"type": "string"},
+        "disclaimer": {"type": "string"},
+        "pages": {
+          "type": "array",
+          "description": "doc_fan pages as [kicker, title] pairs. Automatic cuts fill these from the theme. An authored beat can set them on a mid-reel fan.",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "mark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spoken": {"type": "string", "description": "Word the circle or highlight lands on."},
+        "target_text": {"type": "string", "description": "Phrase to find in the screenshot. The box is that text in the image's own pixels."},
+        "group": {"type": "string", "enum": ["text", "surface"], "description": "text boxes the words. surface grows out to the card that holds them."},
+        "at": {"type": "number"},
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "w": {"type": "number"},
+        "h": {"type": "number"},
+        "label": {"type": "string"},
+        "shape": {"type": "string"}
+      }
+    },
+    "beat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spoken", "layout"],
+      "properties": {
+        "spoken": {"type": "string", "minLength": 1},
+        "layout": {"type": "string", "enum": ["split", "full", "punch_in"]},
+        "crop": {"type": "string", "enum": ["wide", "tight"]},
+        "motif": {
+          "enum": [
+            "thumbnail_grid", "phone_frame", "broll_card", "numbered_list",
+            "line_chart", "bar_chart", "counter", "highlight_box", "hand_circle",
+            "typing_ui", "mind_map", "logo_row", "quote_card", "offer_pair",
+            "flow_line", "pill", "doc_fan", "cursor_mock", "vacuum_merge", "state_swap"
+          ]
+        },
+        "header": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {"type": "string"},
+            "lines": {"type": "array", "items": {"type": "string"}},
+            "green_lines": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+            "emphasis": {"type": "array", "items": {"type": "string"}},
+            "variant": {"type": "string", "enum": ["headline", "label"]},
+            "sub": {"type": "string"},
+            "size": {"type": "number"}
+          }
+        },
+        "overlays": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "callout": {"type": "object"},
+        "highlight": {"type": "object"},
+        "strike": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"spoken": {"type": "string"}}
+        },
+        "scale": {"type": "number"},
+        "object_position": {"type": "string"},
+        "disclaimer": {"type": "string", "description": "Small notice held for the whole beat, including full-screen pieces."},
+        "media": {"type": "string"},
+        "items": {"type": "array", "items": {"type": "string"}},
+        "count": {"type": "integer"},
+        "value": {"type": "integer"},
+        "label": {"type": "string"},
+        "text": {"type": "string"},
+        "heights": {"type": "array", "items": {"type": "number"}},
+        "labels": {"type": "array", "items": {"type": "string"}},
+        "negative": {"type": "boolean"},
+        "reveal": {"type": "string"},
+        "pages": {"type": "array"},
+        "hold": {"type": "boolean"},
+        "active": {"type": "integer"},
+        "prefix": {"type": "string"},
+        "suffix": {"type": "string"},
+        "scroll": {"type": "object"},
+        "desaturate": {"type": "number"},
+        "progress": {"type": "boolean"},
+        "chip": {"type": "object"},
+        "kicker": {"type": "string"},
+        "media_start": {"type": "number"},
+        "playback_rate": {"type": "number"},
+        "poster_time": {"type": "number"},
+        "target_time": {"type": "number"},
+        "target_still": {"type": "string"},
+        "typing": {"type": "boolean"},
+        "variant": {"type": "string", "description": "Motif composition. quote_card uses receipt or browser."},
+        "uncropped": {"type": "boolean", "description": "Kept so older plans still validate. Phones are large either way: the screen fills about 80-90% of the panel, the bezel runs off the top and bottom, and the camera pushes toward the target before the circle."}
+      }
+    }
+  }
+}

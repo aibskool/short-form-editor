@@ -309,6 +309,11 @@ def stage_settings(spec, shot, index):
 def build(spec_path, project):
     spec_path, project = Path(spec_path).resolve(), Path(project).resolve()
     raw_spec = json.loads(spec_path.read_text())
+    # "kallaway" is a preset name, not a house-style override object. House timelines
+    # keep a style object (or omit it) and stay on the presenter builder below.
+    if raw_spec.get("style") == "kallaway":
+        from kallaway_style import build_kallaway
+        return build_kallaway(raw_spec, spec_path, project)
     project.mkdir(parents=True, exist_ok=True)
     assets = project / "assets"
     assets.mkdir(exist_ok=True)

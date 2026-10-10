@@ -20,6 +20,8 @@ The skills direct an agent; the helper commands execute specific local operation
 | `render` | Local deterministic HTML/media rendering | Requires Node/HyperFrames, browser dependencies and FFmpeg |
 | `finalize` | Audio mastering and encoded measurements | Signal metrics do not replace listening |
 | `check` | Editorial schema, time coverage, joins and render-hash checks | Cannot certify source truth or visual quality |
+| `talking-head` | Kallaway-style edit of one raw talking-head: pause cut, -14 LUFS voice, SFX, stage plan or seeded motif rotation, style check, HyperFrames render, finalize. The lo-fi bed is off unless `--music` is passed | Recommended default for a new talking-head. Does not replace the house-style planner. Refuses to overwrite `--output` |
+| `check-style` | Kallaway contract: hard cuts, caption length, shot bounds, SFX coverage, ending on the last word, brand colors and fonts | Measures the Kallaway preset only. House-style reviews stay on `review` |
 | `review-player` | Local video comparison/review page | User or agent still makes the perceptual judgments |
 | `production/compare_style.py` | Frame-by-frame review of a 20-second Brandon calibration and manually selected reference intervals | Requires original footage and lawfully available reference files; it does not score or approve resemblance |
 | `manychat-prepare` | Validated local handoff packet | No flow authoring, subscriber mutation or sending implementation |

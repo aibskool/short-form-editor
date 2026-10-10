@@ -27,6 +27,8 @@ The current visual target is based on Brandon's [Astra workflow](https://www.ins
 
 The earlier September 28 stage reference is still available as an option ([breakdown](skill/references/stage-reference-breakdown.md)); the [motion system](skill/references/motion-system.md) documents every component: hero type in six variants, callout tags, full-frame 2.5D screen shots, the 2.5D payoff reveal, particles, flows, counters, charts, compares, typed prompts, CTAs, presenter framings, camera moves and transitions.
 
+**Talking-head default: the [Kallaway grammar](docs/kallaway-style.md), in AI Builder School colors.** A new raw talking-head (split stage, hard cuts, one-to-two-word captions, `Comment VAULT`) uses `"style": "kallaway"`, not the house-style override object. The house style above stays the path for presenter-first kinetic edits with no music. Run `python production/editor/talking_head.py --source RAW.mp4 --words words.json --output reel.mp4 --cta-keyword VAULT`. Write a [stage plan](production/editor/stage-plan.schema.json) when the graphics should follow the transcript. Without one, motifs rotate from a seed of the video path.
+
 See the [migration inventory and acceptance checklist](docs/brandon-migration.md) for the exact legacy mappings, build gates and verification status.
 
 For local reference video files and a finished 20-second Brandon cut, use `python production/compare_style.py --candidate BRANDON.mp4 --reference Astra ASTRA.mp4 START END proof --reference Photographer PHOTOGRAPHER.mp4 START END website --reference GovDeals GOVDEALS.mp4 START END mechanism --out /absolute/review-directory`. Select intervals by the same visual job, then inspect the frame slider and listen to the originals. The tool records a pending review; it does not grade resemblance.
@@ -137,6 +139,8 @@ python plugins/brandon-reel-engine/scripts/reel.py run plan -- --help
 python production/editor/edit.py build --help
 python plugins/brandon-reel-engine/scripts/reel.py run review -- --help
 python plugins/brandon-reel-engine/scripts/reel.py run check -- --help
+python plugins/brandon-reel-engine/scripts/reel.py run talking-head -- --help
+python plugins/brandon-reel-engine/scripts/reel.py run check-style -- --help
 ```
 
 Research collection, pipeline validation, script measurement, intake, take assembly and transcription, timing remaps, page capture, beat planning, composition building, acceptance review, face tracking, rendering, mastering, editorial checks, a review player and ManyChat packet preparation are included. [Browse the commands and their boundaries](docs/capabilities.md).

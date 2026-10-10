@@ -1,0 +1,306 @@
+{
+  "pop": {
+    "primary": "27 Pops, Zaps & Switches/Pop 3.mp3",
+    "alternates": [
+      "27 Pops, Zaps & Switches/Pop 5.mp3",
+      "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "00 Viral Reels Essentials/Cartoon Pop.mp3"
+    ],
+    "notes": "Combo #19 Word Pop: Pop 3, alternate with Pop 5"
+  },
+  "pop_roll_grid_fill": {
+    "primary": "27 Pops, Zaps & Switches/Multi Pop 6.mp3",
+    "alternates": [
+      "27 Pops, Zaps & Switches/Pop 3.mp3",
+      "27 Pops, Zaps & Switches/Pop 5.mp3",
+      "27 Pops, Zaps & Switches/Pop 4.mp3"
+    ],
+    "notes": "No dedicated pop-roll; Multi Pop 6 is the only multi-hit pop. For grids, sequence Pop 3/5/4 per cell (guide: never repeat the same file back-to-back)"
+  },
+  "whoosh_slide_transition": {
+    "primary": "03 Whooshes/Fast Whip.wav",
+    "alternates": [
+      "03 Whooshes/Quick Swing B.wav",
+      "03 Whooshes/Cool Whoosh.wav",
+      "00 Viral Reels Essentials/Whoosh Transition.mp3"
+    ],
+    "notes": "Combo #8 default cut: Fast Whip 4 frames before the cut; #11 Quick Swing; #14 Cool Whoosh for soft cuts"
+  },
+  "swoosh_up_riser": {
+    "primary": "11 Risers/Riser 12.wav",
+    "alternates": [
+      "11 Risers/Riser 14.wav",
+      "00 Viral Reels Essentials/Whoosh Riser Build Up.mp3",
+      "00 Viral Reels Essentials/Cinematic Riser.mp3"
+    ],
+    "notes": "Combo #1 Hard Open uses Riser 12; #36 Full Reveal uses Riser 14"
+  },
+  "sub_bass_boom_impact_hook": {
+    "primary": "07 Booms/Boom 14.mp3",
+    "alternates": [
+      "08 Sub Drops & Bass/Sub Drop 12.wav",
+      "06 Hits & Punches/Deep Hit.wav",
+      "00 Viral Reels Essentials/Impact Cinematic Boom.mp3"
+    ],
+    "notes": "Combo #2 Cold Slam = Boom 14 on frame 1; #1 names Hard Impact 3 (not in Drive). Lowest-centroid options: Deep Hit (~100 Hz), Impact Cinematic Boom (~180 Hz)"
+  },
+  "mouse_click": {
+    "primary": "25 Mouse Clicks/Mouse Click 10.mp3",
+    "alternates": [
+      "00 Viral Reels Essentials/Single Mouse Click Ui.mp3",
+      "25 Mouse Clicks/Mouse Click 8.mp3",
+      "25 Mouse Clicks/Mouse Click 2.mp3"
+    ],
+    "notes": "No guide entry; shortest clean mouse clicks chosen"
+  },
+  "keyboard_typing": {
+    "primary": "26 Typing & Keyboard/Typing 3.mp3",
+    "alternates": [
+      "26 Typing & Keyboard/Typing 4.mp3",
+      "26 Typing & Keyboard/Typing Sound 3.mp3",
+      "00 Viral Reels Essentials/Keyboard Typing Click.mp3"
+    ],
+    "notes": "Combo #21 Typewriter Line: Typing 3 trimmed to the text animation, fade last 3 frames"
+  },
+  "paste_clack": {
+    "primary": "27 Pops, Zaps & Switches/Switch 1.mp3",
+    "alternates": [
+      "25 Mouse Clicks/Click 15.wav",
+      "24 UI Sounds/Ui Button Click.mp3",
+      "06 Hits & Punches/Hit Dull.mp3"
+    ],
+    "notes": "APPROXIMATE - no paste/clack file in pack. Switch 1 is a short mechanical clack (combo #17)"
+  },
+  "counter_ticking": {
+    "primary": "24 UI Sounds/Ui 30.wav",
+    "alternates": [
+      "35 Money & Cash/Bank Note Counter.mp3",
+      "35 Money & Cash/Cash Counting Machine.mp3"
+    ],
+    "notes": "Combo #25 Number Counter: Ui 30 looped under the count + Bell 5 on final number. Clock Tension 7 (40 Mystery) is in the index but NOT in Drive"
+  },
+  "ding_success": {
+    "primary": "30 Notifications & Alerts/Alert Positive Correct.mp3",
+    "alternates": [
+      "28 Dings, Bells & Chimes/Bell 5.wav",
+      "24 UI Sounds/Success.mp3",
+      "28 Dings, Bells & Chimes/Ding Single 1.mp3"
+    ],
+    "notes": "Combo #23 Checkmark; #25 Bell 5 on final number; #50 Success close"
+  },
+  "cash_register_money": {
+    "primary": "35 Money & Cash/Cash Register Ka Ching.mp3",
+    "alternates": [
+      "35 Money & Cash/Cash Register Ka Ching 02.mp3",
+      "35 Money & Cash/Cash Register 1.wav",
+      "35 Money & Cash/Lots Of Coins.mp3"
+    ],
+    "notes": "Combo #42 Money Shot - only when an actual number appears"
+  },
+  "marker_scribble_pen": {
+    "primary": null,
+    "alternates": [],
+    "notes": "GAP - no pen/marker/scribble/writing sound anywhere in the 1,000-file index"
+  },
+  "error_wrong_buzz": {
+    "primary": "18 Fails & Buzzers/Buzzer 2.mp3",
+    "alternates": [
+      "31 Error Sounds/Error 02.mp3",
+      "18 Fails & Buzzers/Buzzer 1.mp3",
+      "31 Error Sounds/Windows Error Sound.mp3"
+    ],
+    "notes": "Combo #24 Wrong Answer: Buzzer 2 (pair with Alert Positive Correct)"
+  },
+  "vacuum_suck_merge": {
+    "primary": "04 Swishes & Swooshes/Backwards Swoosh.wav",
+    "alternates": [
+      "02 Reverse FX/Cinematic Reverse 2.wav",
+      "00 Viral Reels Essentials/Riser Whoosh.mp3",
+      "28 Dings, Bells & Chimes/Ding Suction.mp3"
+    ],
+    "notes": "APPROXIMATE - no vacuum/suck file. Reversed sounds read as suck-in (guide: reverse sounds must END on the hit). NOTE Backwards Swoosh is a float WAV peaking +13.4 dBFS - set clip gain down in the editor"
+  },
+  "paper_slide": {
+    "primary": null,
+    "alternates": [
+      "04 Swishes & Swooshes/Swoosh Fast 1.mp3",
+      "03 Whooshes/Simple Whoosh 1.wav"
+    ],
+    "notes": "GAP - no paper/page sound in pack; quiet short swooshes listed as stand-ins only"
+  },
+  "camera_shutter": {
+    "primary": "34 Camera & Shutter/Analog Shutter.wav",
+    "alternates": [
+      "34 Camera & Shutter/Camera 1.mp3",
+      "34 Camera & Shutter/Camera 5.mp3",
+      "34 Camera & Shutter/Camera 8.mp3"
+    ],
+    "notes": "Combo #3 Camera Snap Open: Analog Shutter on the freeze (file is 9 s - trim on timeline) + Short Noise 12 two frames later"
+  },
+  "glitch": {
+    "primary": "37 Glitches/Digital Glitch 5.mp3",
+    "alternates": [
+      "37 Glitches/Glitch 5.mp3",
+      "37 Glitches/Digital Glitch 7.mp3",
+      "37 Glitches/Glitch Rewinding.wav"
+    ],
+    "notes": "Combo #12 Glitch Cut: Digital Glitch 5 + Hard Noise 2 on the cut; #5 Glitch Rewinding"
+  },
+  "notification": {
+    "primary": "30 Notifications & Alerts/Alert Sharp Twinkle.mp3",
+    "alternates": [
+      "30 Notifications & Alerts/Alert Chime.mp3",
+      "30 Notifications & Alerts/New Notification 08.mp3",
+      "30 Notifications & Alerts/Notification Two Tone.mp3"
+    ],
+    "notes": "Combo #6 Notification Hook (once per reel); #48 Alert Chime for follow prompt"
+  },
+  "swipe": {
+    "primary": "03 Whooshes/Movement Swipe Whoosh 2.mp3",
+    "alternates": [
+      "04 Swishes & Swooshes/Swish 2.mp3",
+      "04 Swishes & Swooshes/Swoosh 17.mp3",
+      "00 Viral Reels Essentials/Swoosh 02.wav"
+    ],
+    "notes": "Short swipes for sliding UI/text"
+  },
+  "swish_chain_text_slide": {
+    "primary": "04 Swishes & Swooshes/Epic Swishes 03.wav",
+    "alternates": [
+      "04 Swishes & Swooshes/Epic Swishes 05.wav",
+      "04 Swishes & Swooshes/Epic Swishes 08.wav"
+    ],
+    "notes": "Combo #10 Swish Chain - different swish on each of three quick cuts"
+  },
+  "heavy_whoosh": {
+    "primary": "05 Deep & Power Whooshes/Deep Whoosh 2.wav",
+    "alternates": [
+      "05 Deep & Power Whooshes/Power Wooshes 02.wav",
+      "05 Deep & Power Whooshes/Deep Whoosh 1.wav",
+      "05 Deep & Power Whooshes/Whoosh Powerful.mp3"
+    ],
+    "notes": "Combo #9 Heavy Cut (+Sub Drop 12 on the cut); #40 Product Drop"
+  },
+  "reverse_lead_in": {
+    "primary": "02 Reverse FX/Cinematic Reverse 14.wav",
+    "alternates": [
+      "02 Reverse FX/Cinematic Reverse 2.wav"
+    ],
+    "notes": "Combo #13 - must END exactly on the cut"
+  },
+  "punchline_boom": {
+    "primary": "00 Viral Reels Essentials/Bass Drop.mp3",
+    "alternates": [
+      "10 Dark Hits/Dramatic Bass Hit 4.wav",
+      "07 Booms/Boom 2.mp3",
+      "10 Dark Hits/Dramatic Bass Hit 1.wav"
+    ],
+    "notes": "Combo #26 Vine Boom: 2-4 frames AFTER the punchline; #35 Emotional Damage"
+  },
+  "caption_slam_hit": {
+    "primary": "06 Hits & Punches/Hit Dull.mp3",
+    "alternates": [
+      "06 Hits & Punches/Punch 01.mp3",
+      "00 Viral Reels Essentials/Punch.mp3"
+    ],
+    "notes": "Combo #20 Caption Slam: Pop 1 + Hit Dull at 40%"
+  },
+  "hard_stop_outro": {
+    "primary": "06 Hits & Punches/Hit Fade Out.mp3",
+    "alternates": [
+      "03 Whooshes/Cool Whoosh.wav"
+    ],
+    "notes": "#49 Hard Stop; #47 Loop Close uses Cool Whoosh on last frame"
+  },
+  "reveal_explosion": {
+    "primary": "09 Explosions & Crashes/Explosion 3.mp3",
+    "alternates": [
+      "39 Cinematic Hits/Cinematic Braam.mp3",
+      "12 Buildups & Drumrolls/Dramatic Buildup Reveal.mp3"
+    ],
+    "notes": "#36 Full Reveal (riser > 4 frames silence > Explosion 3); #40; #37"
+  },
+  "logo_sting": {
+    "primary": "13 Stingers & Dark Risers/Logo Reveal 2.mp3",
+    "alternates": [],
+    "notes": "#38"
+  },
+  "record_scratch": {
+    "primary": "17 Record Scratches & Vinyl/Record Scratch 5.wav",
+    "alternates": [],
+    "notes": "#28 - music must actually stop"
+  },
+  "airhorn": {
+    "primary": "21 Horns & Whistles/Air Horn Short Burst.mp3",
+    "alternates": [
+      "00 Viral Reels Essentials/Airhorn Sound.mp3"
+    ],
+    "notes": "#29 - once per reel"
+  },
+  "countdown": {
+    "primary": "29 Countdown Numbers/3.wav",
+    "alternates": [
+      "29 Countdown Numbers/2.wav",
+      "29 Countdown Numbers/1.wav",
+      "07 Booms/Boom 2.mp3"
+    ],
+    "notes": "#4 Countdown In: 3,2,1 on beats + Boom 2 on zero"
+  },
+  "bell_transition": {
+    "primary": "00 Viral Reels Essentials/Bell Transition.mp3",
+    "alternates": [],
+    "notes": "#18"
+  },
+  "cartoon_boing": {
+    "primary": "00 Viral Reels Essentials/Cartoon Boing 2.mp3",
+    "alternates": [],
+    "notes": "#27, #32"
+  },
+  "gasp_reaction": {
+    "primary": "19 Screams & Gasps/Gasp Female 2.mp3",
+    "alternates": [
+      "19 Screams & Gasps/Gasp Male 1.mp3"
+    ],
+    "notes": "#30 layer 3 frames apart"
+  },
+  "magic_appear": {
+    "primary": "41 Magic & Sparkle/Magic Ascend.mp3",
+    "alternates": [
+      "41 Magic & Sparkle/Magic 01.mp3"
+    ],
+    "notes": "#41"
+  },
+  "tension_timer": {
+    "primary": "40 Mystery & Suspense/Explosive Timer.wav",
+    "alternates": [
+      "00 Viral Reels Essentials/Heartbeat.mp3"
+    ],
+    "notes": "#46, #44"
+  },
+  "noise_burst": {
+    "primary": "38 Static & Noise/Hard Noise 2.wav",
+    "alternates": [
+      "38 Static & Noise/Short Noise 12.wav"
+    ],
+    "notes": "#12, #3"
+  },
+  "power_up_game_start": {
+    "primary": "24 UI Sounds/Game Start.mp3",
+    "alternates": [
+      "32 Power Up/Power Up 10.wav"
+    ],
+    "notes": "#7 (Power Up 12 / Power Up 1 not in Drive; Power Up 10 is the only Power Up file synced)"
+  },
+  "slow_motion": {
+    "primary": "22 Slow Motion/Slow Motion 4.wav",
+    "alternates": [],
+    "notes": "#16 - let it play fully"
+  },
+  "fail_groan": {
+    "primary": "18 Fails & Buzzers/Disappointed Groan.mp3",
+    "alternates": [
+      "00 Viral Reels Essentials/Cartoon Laugh.mp3"
+    ],
+    "notes": "#31"
+  }
+}

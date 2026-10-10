@@ -1,6 +1,8 @@
 # Brandon house style
 
-Every edit starts from one spec: `production/editor/style_spec.json` (`<project>/production/editor/style_spec.json`). The builder (`edit.py`), design tokens, components, the sound kit, the beat planner (`plan_reel.py`) and the acceptance review (`review_reel.py`) all read it. Change a number there and every future edit changes with it. A timeline can override a value under a top-level `"style"` key (for example `{"style": {"zones": {"caption": {"y": 70}}}}`); unknown keys fail the build.
+Every presenter-first edit starts from one spec: `production/editor/style_spec.json` (`<project>/production/editor/style_spec.json`). The builder (`edit.py`), design tokens, components, the sound kit, the beat planner (`plan_reel.py`) and the acceptance review (`review_reel.py`) all read it. Change a number there and every future house-style edit changes with it. A timeline can override a value under a top-level `"style"` object (for example `{"style": {"zones": {"caption": {"y": 70}}}}`); unknown keys fail the build.
+
+A new raw talking-head does not use that object. It sets `"style": "kallaway"` and follows `<project>/docs/kallaway-style.md`: hard cuts, a split stage, a quiet bed, and a comment keyword. The string selects a different builder before this spec is loaded.
 
 This page says what the spec encodes and how a new edit uses it. It supersedes the stage-first direction and karaoke captions of the earlier September 28 notes.
 
