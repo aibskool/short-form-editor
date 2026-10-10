@@ -244,9 +244,12 @@ def stage_events(motif, start, end, stage=None):
                     {"at": _clamp(start + rise, start, end), "kind": "ding"}]
         heights = list(stage.get("heights") or [])
         count = int(stage.get("count") or len(heights) or 4)
-        events = [{"at": t, "kind": "pop"} for t in _times(start, end, max(1, count), 0.8)]
-        if heights and float(heights[min(len(heights), len(events)) - 1]) <= 12 and events:
-            events.append({"at": _clamp(float(events[-1]["at"]) + 0.32, start, end), "kind": "error"})
+        last = float(heights[min(len(heights), count) - 1]) if heights else 100.0
+        # Pack the pops when the last bar has to rise and then fall before the cut.
+        window = 0.36 if last <= 12 else 0.8
+        events = [{"at": t, "kind": "pop"} for t in _times(start, end, max(1, count), window)]
+        if last <= 12 and events:
+            events.append({"at": _clamp(float(events[-1]["at"]) + 0.26, start, end), "kind": "error"})
         return events
     if motif == "counter":
         ticks = _times(start, min(end, start + 0.9), 6, 0.8)
@@ -409,8 +412,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'{{y:0,opacity:1,rotation:-1.4,duration:0.42,ease:"back.out(1.5)",'
                 f'transformOrigin:"50% 80%",immediateRender:false}},{events[0]["at"]});')
             animations.append(
-                f'tl.to("#{ident}-phone",{{scale:1.07,rotation:0,duration:0.55,ease:"power2.out",'
-                f'transformOrigin:"50% 42%"}},{events[0]["at"] + 0.36:.3f});')
+                f'tl.to("#{ident}-phone",{{scale:1.07,rotation:0,duration:0.5,ease:"power2.out",'
+                f'transformOrigin:"50% 42%"}},{events[0]["at"] + 0.42:.3f});')
         else:
             animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         if stage.get("progress"):
@@ -517,13 +520,16 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'style="height:{visual}%;background:{color}"></div>'
                 f'<span class="mono">{caption}</span></div>')
             at = events[0]["at"] if sliced else pop_events[min(index, len(pop_events) - 1)]["at"]
+            grow = 0.22 if short and not sliced else 0.36
             animations.append(
-                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:0.36,ease:"back.out(1.5)",'
+                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:{grow:.2f},ease:"back.out(1.5)",'
                 f'transformOrigin:"50% 100%",immediateRender:false}},{at});')
             if short and not sliced:
+                # Start the fall after the rise, and finish it before the shot ends.
+                drop_at = min(at + grow + 0.04, max(at + grow + 0.02, end - 0.32))
                 animations.append(
-                    f'tl.to("#{ident}-b{index}",{{scaleY:0.02,duration:0.28,ease:"power2.in"}},'
-                    f'{at + 0.34:.3f});')
+                    f'tl.to("#{ident}-b{index}",{{scaleY:0.02,duration:0.26,ease:"power2.in"}},'
+                    f'{drop_at:.3f});')
         drop = next((event for event in events if event["kind"] == "error"), None)
         if drop:
             animations.append(
