@@ -14,6 +14,7 @@ same frames as the picture.
 import hashlib
 import os
 import subprocess
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -38,11 +39,22 @@ CROWN_POP_TARGET_PX = 70
 CROWN_POP_MIN_PX = 50
 CROWN_POP_MAX_PX = 100
 # Kallaway's face on the card is about this tall. Brandon films close, so the
-# speaker is scaled down to land here and the empty sides are a foliage plate.
+# speaker is scaled down and a blurred cover of the same frame fills the card.
 FACE_TARGET_PX = 215
 FACE_MIN_PX = 200
 FACE_MAX_PX = 230
-PLATE_RECIPE = "foliage-quilt-v2"
+# Sigma is in card pixels. 25-40 reads as shallow depth of field, not a smear.
+PLATE_SIGMA = 32.0
+PLATE_DARKEN = 0.12
+# Edge darkening on the plate, so a shoulder fade reads as depth.
+PLATE_VIGNETTE = 0.12
+PLATE_RECIPE = "blur-cover-v1"
+# Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
+BOUNDARY_RAMP_CARD_PX = 64.0
+# Geometric frame-edge ramp only. A silhouette detector is not part of this token.
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v3"
+# The face box may lose this fraction of its raw matte. More than that fails the render.
+HEAD_MATTE_DROP_LIMIT = 0.10
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -869,7 +881,7 @@ def placed_local_y(source_y, head_top, pop_px, scale):
 def placed_pop_geometry(card, video_w, video_h, head_top, pop_px, scale):
     """Full-frame alpha placement. The crown sits `pop_px` above the card.
 
-    The video is smaller than the card, so the sides are the foliage plate.
+    The video is smaller than the card, so the sides are the blurred plate.
     The layer is not clipped at the card top: the same matte draws the crown
     and the chest, and the canvas clips the rest.
     """
@@ -1028,7 +1040,7 @@ def frame_popout(timeline, head, theme):
     """Scale the split speaker so the face is about 215 px and the crown pops ~70 px.
 
     Head, neck, and shoulders sit in the card. The sides that scaling opens are
-    filled later by the foliage plate. Full and punch stay on the theme crop
+    filled later by the blurred plate. Full and punch stay on the theme crop
     with the pop hidden. A per-take full-face baseline places that caption.
     """
     layout = theme["layout"]
@@ -1129,127 +1141,258 @@ def _frame_mask(path, when, width, height):
     return np.frombuffer(raw[:frame], dtype=np.uint8).reshape(height, width)
 
 
-def _quilt(width, height, atlas, seed=7):
-    """Fill a card with the foliage atlas. Sampling is 1:1, then a soft warp.
-
-    The atlas is already at the speaker's scale, so a leaf is the same size
-    as the leaves that sat beside him. Nothing is stretched.
-    """
-    atlas = np.asarray(atlas, dtype=np.float32)
-    if atlas.ndim != 3 or atlas.shape[0] < 8 or atlas.shape[1] < 8:
-        tone = atlas.reshape(-1, 3).mean(axis=0) if atlas.size else np.array([70, 80, 55], np.float32)
-        return np.broadcast_to(tone, (height, width, 3)).copy()
-    tile = np.concatenate([atlas, atlas[:, ::-1]], axis=1)
-    tile = np.concatenate([tile, tile[::-1]], axis=0)
-    yy, xx = np.mgrid[0:height, 0:width]
-    phase = (int(seed) % 17) * 0.37
-    warp_x = 16.0 * np.sin(yy / 41.0 + phase) + 9.0 * np.sin(xx / 57.0)
-    warp_y = 12.0 * np.sin(xx / 47.0 + phase) + 7.0 * np.cos(yy / 33.0)
-    # Float mod can land on the divisor itself. The neighbor sample would then
-    # read one pixel past the mirrored tile.
-    span_x = tile.shape[1] - 1
-    span_y = tile.shape[0] - 1
-    sx = np.clip(np.mod(xx + warp_x, span_x), 0, span_x - 1e-3).astype(np.float32)
-    sy = np.clip(np.mod(yy + warp_y, span_y), 0, span_y - 1e-3).astype(np.float32)
-    x0 = np.floor(sx).astype(np.int32)
-    y0 = np.floor(sy).astype(np.int32)
-    x1 = x0 + 1
-    y1 = y0 + 1
-    fx = (sx - x0)[..., None]
-    fy = (sy - y0)[..., None]
-    return (
-        tile[y0, x0] * (1 - fx) * (1 - fy)
-        + tile[y0, x1] * fx * (1 - fy)
-        + tile[y1, x0] * (1 - fx) * fy
-        + tile[y1, x1] * fx * fy
-    )
-
-
-def _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px):
-    """Card-sized plate. Real background where the frame has it, quilted leaves elsewhere."""
+def _background_grain(rgb, mask):
+    """High-frequency level of real background, so the blur can keep a little grain."""
     import cv2
 
-    card_w, card_h = int(round(card_w)), int(round(card_h))
+    bg = np.asarray(mask) < 48
+    if int(bg.sum()) < 400:
+        return 1.4
+    smooth = cv2.GaussianBlur(np.asarray(rgb, dtype=np.float32), (0, 0), 1.1)
+    resid = (np.asarray(rgb, dtype=np.float32) - smooth)[bg]
+    return float(np.clip(np.std(resid), 0.4, 6.0))
+
+
+def _smoothstep(values):
+    t = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def boundary_gain(height, width, ramp_px, shoulder_y):
+    """Fixed eased ramp at the source frame's left, right, and bottom edges.
+
+    The ramp is geometry, not a silhouette. It is 1 above ``shoulder_y`` and,
+    from that row down, eases across ``ramp_px`` at the frame columns and up
+    from the bottom edge. The same mask applies to every frame.
+    """
+    height, width = int(height), int(width)
+    ramp = max(1.0, float(ramp_px))
+    xs = np.arange(width, dtype=np.float32)
+    ys = np.arange(height, dtype=np.float32)
+    horizontal = _smoothstep(xs / ramp) * _smoothstep((width - 1.0 - xs) / ramp)
+    vertical = _smoothstep((height - 1.0 - ys) / ramp)
+    gain = np.ones((height, width), dtype=np.float32)
+    shoulder = int(np.clip(np.floor(float(shoulder_y)), 0, height))
+    if shoulder < height:
+        gain[shoulder:, :] *= horizontal
+        gain[shoulder:, :] *= vertical[shoulder:, None]
+    return gain
+
+
+def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None):
+    """Ease alpha on the source-frame boundary below the shoulder line.
+
+    Left and right are the columns where the scaled source frame meets the
+    card. The bottom edge is the hand cut. Rows above ``shoulder_y`` keep the
+    matte's own feather. An inset contour, including the face, is not a ramp.
+    ``ramp_px`` is in the same pixels as ``alpha``. Pass ``gain`` to reuse one
+    mask for every frame.
+    """
+    alpha = np.asarray(alpha)
+    if alpha.ndim != 2:
+        raise ValueError("boundary feather expects one alpha plane")
+    height, width = alpha.shape
+    if gain is None:
+        gain = boundary_gain(height, width, ramp_px, shoulder_y)
+    elif gain.shape != alpha.shape:
+        raise ValueError("boundary gain must match the alpha plane")
+    faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)
+    return np.ascontiguousarray(faded.astype(np.uint8))
+
+
+def head_box_holds(raw, faded, top, height, left=0, right=None, limit=HEAD_MATTE_DROP_LIMIT):
+    """Raise when the face/head box keeps less than ``1 - limit`` of its raw matte."""
+    raw = np.asarray(raw)
+    faded = np.asarray(faded)
+    y0 = max(0, int(np.floor(float(top))))
+    y1 = min(raw.shape[0], int(np.ceil(float(top) + float(height))))
+    x0 = max(0, int(np.floor(float(left))))
+    x1 = raw.shape[1] if right is None else min(raw.shape[1], int(np.ceil(float(right))))
+    if y1 <= y0 or x1 <= x0:
+        return True
+    raw_sum = float(raw[y0:y1, x0:x1].astype(np.float64).sum())
+    if raw_sum <= 0:
+        return True
+    kept = float(faded[y0:y1, x0:x1].astype(np.float64).sum()) / raw_sum
+    if kept < 1.0 - float(limit) - 1e-9:
+        raise ValueError(
+            f"face matte dropped to {kept:.1%} of the raw matte inside the head box; "
+            f"the limit is {1.0 - float(limit):.0%}")
+    return True
+
+
+def _radial_vignette(image, strength):
+    """Darken the plate toward the corners. The center stays put."""
+    image = np.asarray(image, dtype=np.float32)
+    height, width = image.shape[:2]
+    yy, xx = np.ogrid[0:height, 0:width]
+    nx = (xx - (width - 1) / 2.0) / max(width / 2.0, 1.0)
+    ny = (yy - (height - 1) / 2.0) / max(height / 2.0, 1.0)
+    radius = np.sqrt(nx * nx + ny * ny)
+    t = _smoothstep((radius - 0.55) / 0.75)
+    factor = (1.0 - float(strength) * t)[..., None]
+    return np.clip(image * factor, 0, 255)
+
+
+def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PLATE_DARKEN,
+                     vignette=PLATE_VIGNETTE):
+    """One card-sized plate: the source covers the card, then a strong blur.
+
+    The speaker is removed before the blur, so he does not leave a ghost.
+    Cover crops; it does not tile, mirror, or stretch. ``sigma`` is in card pixels.
+    """
+    import cv2
+
+    frames = [np.asarray(frame, dtype=np.uint8) for frame in frames]
+    masks = [np.asarray(mask, dtype=np.uint8) for mask in masks]
+    if not frames:
+        raise ValueError("blur plate needs at least one frame")
+    height, width = frames[0].shape[:2]
+    card_w, card_h = int(card_w), int(card_h)
+    stack = np.stack([frame.astype(np.float32) for frame in frames], axis=0)
+    bg = np.stack([mask < 48 for mask in masks], axis=0)
+    known_count = bg.sum(axis=0)
+    stack = np.where(bg[..., None], stack, np.nan)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        clean = np.nanmedian(stack, axis=0)
+    known = known_count > 0
+    clean = np.nan_to_num(clean, nan=0.0)
+    hole = np.where(known, np.uint8(0), np.uint8(255))
+    if hole.any():
+        # A tiny inpaint fills a close-up silhouette from the real leaves.
+        # The card-scale blur that follows removes the upsample.
+        tiny_w = max(24, width // 8)
+        tiny_h = max(24, height // 8)
+        tiny = cv2.resize(np.clip(clean, 0, 255).astype(np.uint8), (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        hole_tiny = cv2.resize(hole, (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        painted = cv2.inpaint(tiny, hole_tiny, 6, cv2.INPAINT_TELEA)
+        filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+        clean = np.where(known[..., None], clean, filled)
+    cover = max(card_w / float(width), card_h / float(height))
+    src_sigma = max(1.0, float(sigma) / cover)
+    blurred = cv2.GaussianBlur(clean, (0, 0), src_sigma)
+    new_w = max(card_w, int(round(width * cover)))
+    new_h = max(card_h, int(round(height * cover)))
+    interp = cv2.INTER_AREA if cover < 1.0 else cv2.INTER_LINEAR
+    covered = cv2.resize(blurred, (new_w, new_h), interpolation=interp)
+    x0 = max(0, (new_w - card_w) // 2)
+    y0 = max(0, (new_h - card_h) // 2)
+    crop = covered[y0:y0 + card_h, x0:x0 + card_w]
+    if crop.shape[0] != card_h or crop.shape[1] != card_w:
+        crop = cv2.resize(covered, (card_w, card_h), interpolation=cv2.INTER_AREA)
+    darkened = np.clip(crop * (1.0 - float(darken)), 0, 255)
+    if vignette:
+        darkened = _radial_vignette(darkened, vignette)
+    grain = _background_grain(frames[0], masks[0])
+    rng = np.random.default_rng(7)
+    noise = rng.normal(0.0, grain * 0.45, darkened.shape).astype(np.float32)
+    noise = cv2.GaussianBlur(noise, (0, 0), 0.55)
+    return np.clip(darkened + noise, 0, 255).astype(np.uint8)
+
+
+def _build_blur_plate(source, matte, card_w, card_h):
+    """Sample the take, drop the speaker, and blur a cover of that clean frame."""
     facts = _video_facts(source)
     video_w, video_h = int(facts["width"]), int(facts["height"])
     duration = min(float(facts["duration"]), float(_video_facts(matte)["duration"]))
-    times = np.linspace(0.4, max(0.5, duration - 0.4), 6)
-    head_top = float(head["head_top"])
-    scale = float(scale)
-    # Uniform downscale. INTER_AREA averages; it does not stretch one axis.
-    atlas_parts = []
-    real = np.zeros((card_h, card_w, 3), dtype=np.float32)
-    weight = np.zeros((card_h, card_w), dtype=np.float32)
-    placed_w = video_w * scale
-    placed_h = video_h * scale
-    origin_x = (card_w - placed_w) / 2.0
-    # Source row at the card's top edge.
-    row0 = head_top + float(pop_px) / scale
+    times = np.linspace(0.4, max(0.5, duration - 0.4), 8)
+    frames, masks = [], []
     for when in times:
-        rgb = _frame_rgb(source, when, video_w, video_h)
-        mask = _frame_mask(matte, when, video_w, video_h)
-        bg = mask < 96
-        # Only the clean leaves above the hair. A row that includes the head
-        # would tile as a dark band.
-        clean = 0
-        limit = max(8, int(head_top) - 8)
-        for row in range(limit):
-            if float(bg[row].mean()) < 0.92:
-                break
-            clean = row + 1
-        if clean > 24:
-            strip = rgb[:clean].astype(np.float32)
-            small_w = max(8, int(round(strip.shape[1] * scale)))
-            small_h = max(8, int(round(strip.shape[0] * scale)))
-            atlas_parts.append(cv2.resize(strip, (small_w, small_h), interpolation=cv2.INTER_AREA))
-        # Real background that lands inside the card, accumulated over the take.
-        ys = np.arange(card_h, dtype=np.float32)
-        xs = np.arange(card_w, dtype=np.float32)
-        src_y = row0 + ys / scale
-        src_x = (xs - origin_x) / scale
-        valid_y = (src_y >= 0) & (src_y < video_h - 1)
-        valid_x = (src_x >= 0) & (src_x < video_w - 1)
-        if not valid_y.any() or not valid_x.any():
-            continue
-        y_i = np.clip(src_y.astype(np.int32), 0, video_h - 1)
-        x_i = np.clip(src_x.astype(np.int32), 0, video_w - 1)
-        yy, xx = np.meshgrid(y_i, x_i, indexing="ij")
-        sample = rgb[yy, xx]
-        known = bg[yy, xx] & valid_y[:, None] & valid_x[None, :]
-        real[known] += sample[known]
-        weight[known] += 1.0
-    if atlas_parts:
-        atlas = np.concatenate(atlas_parts, axis=0)
-    else:
-        atlas = np.full((32, 32, 3), (72, 84, 58), np.float32)
-    plate = _quilt(card_w, card_h, atlas, seed=int(head_top))
-    plate = cv2.GaussianBlur(plate, (0, 0), 0.9)
-    known = weight > 0
-    if known.any():
-        real[known] /= weight[known, None]
-        leaf = real[known].mean(axis=0)
-        quilt_mean = plate.mean(axis=(0, 1))
-        plate = np.clip(plate + (leaf - quilt_mean) * 0.45, 0, 255)
-        alpha = ndimage.gaussian_filter(known.astype(np.float32), 16.0)
-        plate = plate * (1.0 - alpha[..., None]) + real * alpha[..., None]
-    return np.clip(plate, 0, 255).astype(np.uint8)
+        frames.append(_frame_rgb(source, when, video_w, video_h))
+        masks.append(_frame_mask(matte, when, video_w, video_h))
+    return blur_cover_plate(frames, masks, card_w, card_h)
 
 
 def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, dest):
-    """One static foliage plate per source. A re-render reuses it."""
+    """One static blurred plate per source. A re-render reuses it."""
     import cv2
 
+    del head, scale, pop_px
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
-    token = f"{PLATE_RECIPE}|{float(scale):.4f}|{float(pop_px):.2f}|{int(card_w)}x{int(card_h)}"
+    token = (
+        f"{PLATE_RECIPE}|sigma={PLATE_SIGMA:.1f}|darken={PLATE_DARKEN:.2f}"
+        f"|vignette={PLATE_VIGNETTE:.2f}|{int(card_w)}x{int(card_h)}")
     if dest.is_file() and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
-    print("extending the foliage plate", flush=True)
-    plate = _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px)
+    print("building the blurred background plate", flush=True)
+    plate = _build_blur_plate(source, matte, card_w, card_h)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 97])
     if not ok:
-        raise RuntimeError(f"could not write the foliage plate to {dest}")
+        raise RuntimeError(f"could not write the background plate to {dest}")
+    recipe.write_text(token + "\n")
+    return dest
+
+
+def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_height,
+                           ramp_card=BOUNDARY_RAMP_CARD_PX):
+    """Bake one eased ramp into alpha at the source frame's left, right, and bottom.
+
+    The ramp starts at ``shoulder_y`` and is identical on every frame. The
+    source matte stays cached. This file is the one the card composites, so a
+    change of ramp does not re-run Robust Video Matting. ``ramp_card`` is
+    pixels on the placed card; the source ramp is that divided by scale.
+    """
+    dest = Path(dest)
+    recipe = dest.with_suffix(".recipe")
+    token = (
+        f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|scale={float(scale):.4f}"
+        f"|shoulder={float(shoulder_y):.2f}")
+    if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
+        return dest
+    facts = _video_facts(alpha_path)
+    width, height = int(facts["width"]), int(facts["height"])
+    fps = float(facts["fps"])
+    ramp_src = float(ramp_card) / max(float(scale), 1e-3)
+    gain = boundary_gain(height, width, ramp_src, shoulder_y)
+    print(f"feathering frame-cut edges over {float(ramp_card):.0f}px at card scale", flush=True)
+    frame_bytes = width * height * 4
+    reader = subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-i", str(alpha_path),
+         "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    partial = dest.with_name(dest.stem + ".partial.mov")
+    writer = subprocess.Popen(
+        ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
+         "-s", f"{width}x{height}", "-r", f"{fps:.6f}", "-i", "pipe:0",
+         "-c:v", "qtrle", "-pix_fmt", "argb", "-an", str(partial)],
+        stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    frames = 0
+    try:
+        while True:
+            blob = _read_exact(reader, frame_bytes)
+            if not blob:
+                break
+            plane = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 4).copy()
+            raw_alpha = plane[:, :, 3].copy()
+            plane[:, :, 3] = feather_boundary_alpha(raw_alpha, ramp_src, shoulder_y, gain)
+            head_box_holds(raw_alpha, plane[:, :, 3], head_top, head_height)
+            writer.stdin.write(plane.tobytes())
+            frames += 1
+        writer.stdin.close()
+        writer.stdin = None
+        write_code = writer.wait(timeout=900)
+        read_code = reader.wait(timeout=120)
+        if write_code or read_code or frames < 1:
+            err = b""
+            if writer.stderr:
+                err += writer.stderr.read() or b""
+            if reader.stderr:
+                err += reader.stderr.read() or b""
+            raise RuntimeError(
+                f"boundary feather failed ({read_code}/{write_code}, {frames} frames): {err[-500:]!r}")
+    finally:
+        if writer.stdin:
+            writer.stdin.close()
+        if writer.poll() is None:
+            writer.kill()
+        if reader.poll() is None:
+            reader.kill()
+        if reader.stdout:
+            reader.stdout.close()
+    partial.replace(dest)
     recipe.write_text(token + "\n")
     return dest
 
@@ -1290,6 +1433,18 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
         popped["card_width"], popped["card_height"],
         popped["scale"], popped["pop_px"], plate)
     popped["plate"] = str(plate.resolve())
+    import cv2
+    bgr = cv2.imread(str(plate), cv2.IMREAD_COLOR)
+    if bgr is not None:
+        mean = bgr.mean(axis=(0, 1))
+        popped["plate_tint"] = [int(round(float(mean[2]))), int(round(float(mean[1]))), int(round(float(mean[0])))]
+    feathered = picture.with_name("person-pop-edge.mov")
+    # The measured head ends at the chin. The frame ramp starts there, under the face.
+    shoulder_y = float(popped["head_top"]) + float(popped["head_height"])
+    apply_boundary_feather(
+        alpha, feathered, popped["scale"], shoulder_y,
+        popped["head_top"], popped["head_height"])
+    timeline["source"]["matte"] = str(feathered.resolve())
     print(
         f"pop-out face {popped['face_px']}px  crown {popped['median_above_px']}px"
         f"  scale {popped['scale']}  captions at {popped['caption_y']}%",

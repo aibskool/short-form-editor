@@ -448,7 +448,7 @@ def check(timeline_path, words_path=None, project=None):
             continue
         errors.append(
             f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
-            "full bleed stays at scale 1, and a split shrink needs the foliage plate")
+            "full bleed stays at scale 1, and a split shrink needs the blurred plate")
     if placed:
         face_px = float(popout["face_px"])
         pop_px = float(popout.get("pop_px") or popout.get("median_above_px") or 0)
@@ -460,7 +460,7 @@ def check(timeline_path, words_path=None, project=None):
     stage_w = float(layout["stage_width"]) * frame_w
     stage_h = float(layout["stage_height"]) * frame_h
     phone = hero_phone_box(stage_w, stage_h)
-    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h - 40:
+    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h + 1:
         errors.append(
             f"phone: the handset is cropped (top {phone['top']}, height {phone['height']}, stage {stage_h:.0f})")
     if phone["width"] > stage_w + 1:

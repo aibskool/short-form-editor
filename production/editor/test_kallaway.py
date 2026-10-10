@@ -278,7 +278,7 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(layout["caption_full_px"], 67, delta=0.1)
         self.assertAlmostEqual(layout["caption_split_px"], 54, delta=0.1)
         self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
-        # Graphics end at y 1072. The split line sits just above the crown, near y 1264.
+        # Theme fallback ends at y 1072. A measured caption drops the stage below that.
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 1072, delta=2)
         self.assertGreater(layout["caption_split_y"] * 1920, stage_bottom)
@@ -857,12 +857,51 @@ class KallawayTests(unittest.TestCase):
         self.assertIn(f'width:{geo["width"]}px', section)
         self.assertIn("object-fit:contain", section)
         self.assertGreaterEqual(geo["top"], 0)
-        self.assertLessEqual(geo["top"] + geo["height"], box["height"] - 40)
+        self.assertLessEqual(geo["top"] + geo["height"], box["height"] + 1)
+        self.assertGreaterEqual(geo["top"] + geo["height"], box["height"] - 12)
         self.assertGreater(geo["width"], 80)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
         self.assertIn("scale:1,", script)
         self.assertLess(stage["motion"]["push_end"], stage["callout"]["at"] + 0.001)
+
+    def test_a_taller_stage_refits_the_phone_so_the_screen_stays_full(self):
+        from PIL import Image, ImageDraw, ImageFont
+        from kallaway_motifs import hero_phone_box
+        from kallaway_targets import frame_geometry
+        font = ImageFont.truetype(str(Path(__file__).resolve().parent / "fonts" / "Inter-Black.ttf"), 48)
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B",
+                  "on_accent": "#111", "negative": "#E0533D"}
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Image.new("RGB", (1080, 1920), (24, 28, 32))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((80, 1100, 1000, 1500), fill=(255, 248, 241))
+            draw.text((140, 1220), "Upgrade now", fill=(20, 20, 20), font=font)
+            path = Path(tmp) / "page.png"
+            image.save(path)
+            stage = {
+                "motif": "phone_frame",
+                "media": str(path),
+                "target_still": str(path),
+                "scroll": {"from": 0},
+                "callout": {"at": 1.2, "target_text": "Upgrade now", "group": "surface"},
+            }
+            # The plan measures against the shorter theme screen.
+            theme = hero_phone_box(972, 802)["screen"]
+            resolve_annotations(stage, 0.0, 3.0, theme)
+            short = dict(stage["frame"])
+            tall_box = {"left": 54, "top": 270, "width": 972, "height": 971}
+            section, _animations, _events = motif_markup(
+                "phone_frame", stage, 0.0, 3.0, tall_box, colors, "stage-0", str(path))
+            drawn = hero_phone_box(tall_box["width"], tall_box["height"])["screen"]
+            expected = frame_geometry((1080, 1920), drawn)
+            self.assertAlmostEqual(stage["frame"]["img_h"], expected["img_h"], delta=0.05)
+            self.assertNotAlmostEqual(short["img_h"], stage["frame"]["img_h"], delta=1.0)
+            self.assertIn(f'height:{stage["frame"]["img_h"]:.2f}%', section)
+            # The pan is the screenshot fit to the screen width, so the glass has no empty band.
+            pan_h = drawn[1] * stage["frame"]["img_h"] / 100.0
+            self.assertAlmostEqual(pan_h, drawn[0] * (1920 / 1080), delta=1.0)
 
     def test_state_swap_exit_is_hard_killed_on_a_clip_boundary(self):
         from edit import boundary_hard_kills
@@ -1111,8 +1150,12 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(-crown, pop["pop_px"], delta=0.6)
         self.assertGreater(chin, 40)
         self.assertAlmostEqual(chin_row(base), 331 + 420 + CHIN_PAD_PX)
-        stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
-        self.assertAlmostEqual(stage_bottom, 1072, delta=2)
+        from kallaway_style import STAGE_GAP_ABOVE_CAPTION_PX
+        caption_top_shot = timeline["shots"][0]["caption_y"] / 100 * 1920
+        stage_bottom = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], timeline["shots"][0]["caption_y"])
+        self.assertAlmostEqual(caption_top_shot - stage_bottom, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        self.assertGreater(stage_bottom, 1072)
         crown_canvas = layout["card_top"] * 1920 + high
         caption_top = timeline["shots"][0]["caption_y"] / 100 * 1920
         cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
@@ -1175,8 +1218,16 @@ class KallawayTests(unittest.TestCase):
             top = shot["caption_y"] / 100 * 1920
             cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
             self.assertAlmostEqual(top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
-        stage = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
-        self.assertLessEqual(stage, high_shot["caption_y"] / 100 * 1920)
+        from kallaway_style import STAGE_GAP_ABOVE_CAPTION_PX
+        stage = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], high_shot["caption_y"])
+        self.assertAlmostEqual(
+            high_shot["caption_y"] / 100 * 1920 - stage, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        low_stage = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], low_shot["caption_y"])
+        self.assertAlmostEqual(
+            low_shot["caption_y"] / 100 * 1920 - low_stage, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        self.assertGreater(low_stage, stage)
 
     def test_green_spill_leaves_the_edge_and_not_the_skin(self):
         from kallaway_matte import despill_green
@@ -1328,8 +1379,75 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(below, above + 0.04)
         self.assertLess(below, 0.75)
 
+    def test_boundary_feather_softens_frame_cuts_and_keeps_the_head(self):
+        from kallaway_matte import feather_boundary_alpha, head_box_holds
+        alpha = np.zeros((80, 100), np.uint8)
+        alpha[8:24, 40:60] = 255
+        alpha[30:38, 20:80] = 255
+        alpha[40:, :] = 255
+        out = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40)
+        self.assertTrue(np.array_equal(out[:40], alpha[:40]))
+        self.assertEqual(int(out[50, 0]), 0)
+        self.assertEqual(int(out[50, 99]), 0)
+        self.assertEqual(int(out[50, 50]), 255)
+        self.assertGreater(int(out[50, 4]), int(out[50, 0]))
+        self.assertGreater(int(out[50, 12]), int(out[50, 4]))
+        self.assertEqual(int(out[79, 50]), 0)
+        self.assertAlmostEqual(int(out[71, 50]), 127, delta=2)
+        self.assertEqual(int(out[40, 50]), 255)
+        # The head box keeps the raw matte. A fade that eats it fails.
+        head_box_holds(alpha, out, top=8, height=16, left=40, right=60)
+        eaten = alpha.copy()
+        eaten[8:24, 40:60] = (eaten[8:24, 40:60].astype(np.float32) * 0.8).astype(np.uint8)
+        with self.assertRaises(ValueError):
+            head_box_holds(alpha, eaten, top=8, height=16, left=40, right=60)
+        # A face that reaches the frame, with the ramp pulled up over it, fails too.
+        face = np.zeros((80, 100), np.uint8)
+        face[8:24, 0:40] = 255
+        over_face = feather_boundary_alpha(face, ramp_px=16, shoulder_y=0)
+        with self.assertRaises(ValueError):
+            head_box_holds(face, over_face, top=8, height=16, left=0, right=40)
+        # An inset vertical wall is not a frame edge. It stays opaque.
+        wall = np.zeros((220, 180), np.uint8)
+        for y in range(8, 48):
+            left = 130 - (y - 8) * 2
+            wall[y, left:left + 20] = 255
+        wall[70:190, 30:110] = 255
+        faded = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60)
+        self.assertTrue(np.array_equal(faded[16, 114:134], wall[16, 114:134]))
+        self.assertEqual(int(faded[120, 30]), 255)
+        self.assertEqual(int(faded[120, 70]), 255)
+        head_box_holds(wall, faded, top=8, height=40, left=90, right=160)
+        # The gain does not move from frame to frame.
+        from kallaway_matte import boundary_gain
+        gain = boundary_gain(220, 180, 16, 60)
+        again = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60, gain=gain)
+        self.assertTrue(np.array_equal(again, faded))
 
-    def test_graphic_entrances_survive_the_density_budget(self):
+    def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
+        from kallaway_matte import blur_cover_plate
+        height, width = 240, 120
+        foliage = np.zeros((height, width, 3), np.uint8)
+        foliage[:, :] = (70, 110, 55)
+        foliage[:70] = (80, 130, 60)
+        # A hard light/dark split in the real leaves. The blur has to erase it.
+        foliage[:, :40] = (40, 70, 30)
+        person = np.zeros((height, width), np.uint8)
+        person[60:, 15:105] = 255
+        frame = foliage.copy()
+        frame[person > 0] = (190, 40, 40)
+        frames = [frame, frame]
+        masks = [person, person]
+        plate = blur_cover_plate(frames, masks, 120, 64, sigma=20, darken=0.12)
+        self.assertEqual(plate.shape, (64, 120, 3))
+        # The red shirt must not survive as a ghost behind the card.
+        self.assertLess(float(plate[:, :, 0].mean()), float(plate[:, :, 1].mean()))
+        # Neighboring columns stay close. A tile seam would jump.
+        columns = plate.mean(axis=(0, 2))
+        self.assertLess(float(np.max(np.abs(np.diff(columns)))), 8.0)
+        self.assertLess(float(plate.mean()), float(foliage[:70].mean()) * 0.95)
+        # A light radial vignette. Corners sit under the center.
+        self.assertLess(float(plate[0, 0].mean()), float(plate[32, 60].mean()) * 0.97)
         from kallaway_pack import _limit_density
         cues = []
 
@@ -1631,15 +1749,6 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(whip["sound_at"], 5.467 - 3 / 30)
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
         self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
-
-    def test_foliage_quilt_samples_inside_the_tile(self):
-        from kallaway_matte import _quilt
-        atlas = np.zeros((30, 384, 3), np.float32)
-        atlas[:, :, 1] = 90
-        for seed in range(20):
-            plate = _quilt(1080, 512, atlas, seed=seed)
-            self.assertEqual(plate.shape, (512, 1080, 3))
-            self.assertGreater(float(plate[:, :, 1].mean()), 40)
 
     def test_full_face_caption_sits_between_the_beard_and_the_pin(self):
         from kallaway_style import assign_full_captions, full_caption_top
