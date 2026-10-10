@@ -638,19 +638,18 @@ def ensure_source_matte(source, cache_dir=None):
 
 
 def cut_matte(matte, ranges, output):
-    """Apply the same picture trims the tightener used, so the mask stays in sync."""
+    """Apply the same picture trims the tightener used, so the mask stays in sync.
+
+    One select pass. A trim-and-concat graph decodes every range at once and
+    runs out of memory on a full-frame matte.
+    """
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    filters = []
-    for index, (begin, end) in enumerate(ranges):
-        filters.append(f"[0:v]trim=start={begin:.6f}:end={end:.6f},setpts=PTS-STARTPTS[v{index}]")
-    labels = "".join(f"[v{index}]" for index in range(len(ranges)))
-    filters.append(f"{labels}concat=n={len(ranges)}:v=1:a=0[vout]")
-    script = output.with_suffix(".txt")
-    script.write_text(";\n".join(filters))
+    clauses = "+".join(
+        f"between(t\\,{float(begin):.6f}\\,{float(end) - 0.0005:.6f})" for begin, end in ranges)
     _run([
         "ffmpeg", "-y", "-v", "error", "-i", str(matte),
-        "-filter_complex_script", str(script), "-map", "[vout]",
+        "-vf", f"select='{clauses}',setpts=N/FRAME_RATE/TB",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "6", "-pix_fmt", "yuv444p",
         "-an", str(output),
     ])
