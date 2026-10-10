@@ -637,6 +637,29 @@ def build_kallaway(spec, spec_path, project):
     .fan.stack .page-rot{{width:74%;height:90%;top:4%}}
     .fan.stack .page-title{{font-size:{56*scale:.0f}px}}
     .fan-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none;border-radius:12px}}
+    .page-copy{{margin-top:12px;font-family:'{caption}',sans-serif;font-weight:700;font-size:{22*scale:.0f}px;line-height:1.28;color:{colors['text']}}}
+    .page-copy span{{display:block;margin-top:8px}}
+    .page-sweep{{position:absolute;left:0;right:0;bottom:0.05em;height:0.42em;background:{_rgba(colors['accent'], 0.45)};transform:scaleX(0);transform-origin:0% 50%;z-index:-1}}
+    .hero-board{{height:100%;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:2% 4%;border-radius:28px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid {colors['border']};box-shadow:{colors['card_shadow']}}}
+    .hero-kicker{{color:{colors['accent']};letter-spacing:0.14em}}
+    .hero-num{{font-family:'{display}',cursive;font-size:{168*scale:.0f}px;line-height:0.85;color:{colors['warning_text']}}}
+    .hero-label{{color:{colors['muted']};letter-spacing:0.08em}}
+    .hero-beam{{height:4px;width:100%;background:{colors['accent']};transform:scaleX(0);transform-origin:0% 50%;box-shadow:0 0 12px {colors['accent']}}}
+    .hero-row{{display:flex;gap:{10*scale:.0f}px}}
+    .hero-cell{{flex:1;position:relative;min-height:{140*scale:.0f}px;border-radius:16px;background:{colors['contrast']};border:1px solid {colors['border']};padding:8px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{16*scale:.0f}px}}
+    .hero-cell .face{{top:8px;height:58px}}
+    .hero-cell b{{position:absolute;left:8px;right:8px;bottom:22px}}
+    .hero-cell em{{position:absolute;left:8px;right:8px;bottom:6px;font-style:normal;color:{colors['muted']};font-size:{12*scale:.0f}px}}
+    .face{{position:absolute;left:8%;right:8%;top:16%;height:46%;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}}
+    .face.photo{{background:{colors['contrast']};border:1px solid {colors['border']};flex-direction:column;gap:4px;color:{colors['muted']};font-size:{14*scale:.0f}px}}
+    .face.contrast{{gap:6px}}
+    .face.contrast i{{position:static;width:42%;height:70%;border-radius:6px;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800}}
+    .face.button b{{padding:8px 18px;border-radius:999px;color:{colors['on_accent']};font-size:{18*scale:.0f}px}}
+    .face.lines{{flex-direction:column;gap:6px;align-items:stretch;padding:8px}}
+    .face.lines i{{position:static;height:8px;border-radius:4px;background:{colors['border']}}}
+    .face.lines i:first-child{{width:80%;background:{colors['text']}}}
+    .face.form i{{position:static;height:28%;width:80%;border-radius:6px;border:2px solid {colors['border']}}}
+    .face.focus{{border:3px solid {colors['accent']};box-shadow:0 0 0 4px {colors['accent']}33}}
     .window{{height:86%;border-radius:{18*scale:.0f}px;overflow:hidden;border:1px solid {colors['border']};background:{colors['contrast']};box-shadow:{colors['card_shadow']}}}
     .window.terminal{{height:100%;box-shadow:0 28px 64px rgba(0,0,0,0.5), 0 0 42px {colors['accent']}55, inset 0 1px 0 rgba(255,255,255,0.12)}}
     .window.terminal .win-body{{font-size:{36*scale:.0f}px;line-height:1.28}}
