@@ -213,27 +213,27 @@ def _head_from_mask(mask):
         return None
     top = int(rows[0])
     widths = fg.sum(axis=1).astype(np.float64)
-    probe = min(height - 1, top + max(3, int(height * 0.025)))
-    head_width = float(np.median(widths[top:probe + 1])) if probe > top else float(widths[top])
-    head_width = max(head_width, 4.0)
-    shoulder = None
-    limit = min(height - 1, top + int(height * 0.38))
-    for y in range(probe, limit + 1):
-        if widths[y] > head_width * 1.45 and widths[y] > head_width + width * 0.05:
-            shoulder = y
-            break
-    if shoulder is None:
-        head_height = head_width * 1.3
-    else:
-        head_height = max(head_width * 0.8, shoulder - top)
-    # A raised hand sits off the crown column but up in the head band.
+    upper_end = min(height, top + int(height * 0.42))
+    upper = widths[top:upper_end]
+    peak = float(np.percentile(upper, 90)) if upper.size else float(widths[top])
+    # The cap tip is thin. The face is the wide plateau just under it. A close
+    # selfie has almost no width jump at the shoulders, so height comes from
+    # that face width (a head is a bit taller than it is wide, and the cap adds more).
+    face_rows = upper[upper >= max(4.0, peak * 0.72)]
+    face_width = float(np.median(face_rows)) if face_rows.size else max(peak, 4.0)
+    head_height = max(face_width * 1.35, 8.0)
+    full = int(np.argmax(upper >= peak * 0.72)) if np.any(upper >= peak * 0.72) else 0
+    face_row = top + full
+    # A raised hand reaches above the ears and sits outside the head, not in
+    # the shoulder line. The crown column used above is too narrow for this.
     hand = None
+    reach = max(8, int(face_width * 0.62))
+    hx0, hx1 = max(0, int(center - reach)), min(width, int(center + reach))
     side = fg.copy()
-    side[:, x0:x1] = False
-    if side.any():
-        side_top = int(np.where(side.any(axis=1))[0][0])
-        if side_top < top + head_height * 0.75:
-            hand = side_top
+    side[:, hx0:hx1] = False
+    band = side[:max(top + 1, face_row + 2), :]
+    if band.any():
+        hand = int(np.where(band.any(axis=1))[0][0])
     return {"top": top, "height": float(head_height), "hand": hand}
 
 
@@ -534,7 +534,9 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     if abs(picture_facts["duration"] - mask_facts["duration"]) > 0.08:
         # The trim grid did not land on the same frames. Segment the picture itself.
         _segment_gray(picture, mask)
-    if not alpha.is_file() or alpha.stat().st_mtime < mask.stat().st_mtime:
+        mask_facts = _video_facts(mask)
+    alpha_duration = _video_facts(alpha)["duration"] if alpha.is_file() else 0
+    if not alpha.is_file() or abs(alpha_duration - mask_facts["duration"]) > 0.08:
         print("packing the pop-out alpha", flush=True)
         alpha = pack_alpha(picture, mask, alpha)
     head = measure_head(mask)
