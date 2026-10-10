@@ -220,6 +220,39 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(refined[0]["end"], 0.75)
         self.assertGreater(refined[1]["start"], 1.00)
 
+    def test_a_loud_coda_parked_on_the_next_span_stays_with_the_word(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.4)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.36))
+        coda = _voiced(t, 200, 0.28, (t >= 0.46) & (t < 0.56))
+        nxt = _voiced(t, 180, 0.35, (t >= 0.78) & (t < 1.00))
+        refined = refine_word_bounds(vowel + coda + nxt, rate, [
+            {"word": "monthly", "start": 0.18, "end": 0.46},
+            {"word": "plan", "start": 0.46, "end": 1.05},
+        ])
+        self.assertGreater(refined[0]["end"], 0.56)
+        self.assertLess(refined[0]["end"], 0.70)
+        self.assertGreater(refined[1]["start"], 0.70)
+
+    def test_an_internal_fricative_is_not_left_as_a_gap(self):
+        from kallaway_audio import _map_tight_words, excise_internal_silence
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = _voiced(t, 180, 0.4, (t >= 0.20) & (t < 0.42))
+        hiss = ((t >= 0.55) & (t < 0.70)).astype(np.float64) * 0.05 * np.sin(2 * np.pi * 6500 * t)
+        nxt = _voiced(t, 180, 0.35, (t >= 1.15) & (t < 1.35))
+        audio = vowel + hiss + nxt
+        refined = refine_word_bounds(audio, rate, [
+            {"word": "websites", "start": 0.18, "end": 0.50},
+            {"word": "and", "start": 1.10, "end": 1.36},
+        ])
+        self.assertGreater(refined[0]["end"], 0.68)
+        ranges = keep_ranges(refined, 1.6, gap=0.04, sentence_gap=0.1)
+        cut = excise_internal_silence(audio, rate, ranges, max_keep=0.04)
+        self.assertTrue(any(a <= 0.62 <= b for a, b in cut))
+        mapped = _map_tight_words(refined, cut)
+        self.assertLessEqual(mapped[1]["start"] - mapped[0]["end"], 0.045)
+
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
         theme, colors, _, _ = load_theme("dark")
         layout = theme["layout"]

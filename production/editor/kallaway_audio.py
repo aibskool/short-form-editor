@@ -420,8 +420,16 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
             # A few tens of milliseconds of smear stays with the word that owns
             # the run. A run that truly crosses the boundary is split there.
             if ov_here > 0.04 and ov_next > 0.04 and run[0] < next_start - 0.012:
-                lo = max(run[0], claimed)
-                hi = min(run[1], next_start)
+                # A vowel that merely crosses the whisper mark stays with this word.
+                # Split only when the far side is a new, louder syllable.
+                tail = (next_start, min(run[1], next_start + 0.2))
+                head = (max(run[0], next_start - 0.2), next_start)
+                if run[1] - next_start <= 0.14 and peak(tail) <= max(peak(head), 1e-6) * (10 ** (1.5 / 20.0)):
+                    lo = max(run[0], claimed)
+                    hi = run[1]
+                else:
+                    lo = max(run[0], claimed)
+                    hi = min(run[1], next_start)
                 if hi - lo > 0.012:
                     body.append((lo, hi))
                 continue
@@ -463,7 +471,8 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 gap = other[0] - cluster[1]
             else:
                 continue
-            if gap > 0.105:
+            # "upgrade" holds its last syllable about 115 ms after the stressed one.
+            if gap > 0.14:
                 continue
             if peak(other) < main_peak * (10 ** (-12.0 / 20.0)):
                 continue
@@ -505,9 +514,9 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         # One stop release after the vowel (the /d/ of "build", the /k/ of "make").
         # The burst can be only a couple of frames and 25 dB under the vowel.
         stop_final = _ending_consonant(word) in {"d", "t", "k", "p", "b", "g"}
-        release_window = 0.11 if stop_final else 0.12
+        release_window = 0.16 if stop_final else 0.12
         release_floor = -28.0 if stop_final else -12.0
-        min_burst = 0.012 if stop_final else 0.04
+        min_burst = 0.008 if stop_final else 0.04
         if next_onset is None or next_onset > speech_end + release_window + 0.02:
             for run in runs:
                 if run[0] <= speech_end + 0.008:
@@ -521,7 +530,8 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 if nxt and _overlap(run, next_start, next_end) > 0.02:
                     break
                 burst = peak(run)
-                if burst < max(main_peak * (10 ** (release_floor / 20.0)), 10 ** (-40.0 / 20.0)):
+                burst_floor = -46.0 if stop_final else -40.0
+                if burst < max(main_peak * (10 ** (release_floor / 20.0)), 10 ** (burst_floor / 20.0)):
                     continue
                 speech_end = run[1]
                 break
@@ -586,6 +596,8 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
         refined.append(chosen)
     _finish_decays(refined, times, frames, duration)
+    _claim_orphan_codas(refined, runs, peak, pad_out)
+    _carry_release(refined, times, frames)
     for index in range(len(refined) - 1):
         nxt = float(refined[index + 1]["start"])
         if float(refined[index]["end"]) > nxt - 0.004:
@@ -593,6 +605,100 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
             if refined[index]["end"] > nxt - 0.004:
                 refined[index]["end"] = round(nxt - 0.004, 4)
     return refined
+
+
+def _claim_orphan_codas(refined, runs, peak, pad_out):
+    """Keep a loud coda that Whisper parked on the next word.
+
+    The span boundary can fall at the start of the final syllable. That syllable
+    then sits in the gap: the next word's vowel is later, and the safety tail of
+    this word cuts into it. A short quiet burst stays with the next word.
+    """
+    for index, word in enumerate(refined[:-1]):
+        end = float(word["end"])
+        nxt_start = float(refined[index + 1]["start"])
+        if nxt_start - end <= 0.02:
+            continue
+        main = peak((float(word["start"]), end))
+        if main <= 0:
+            continue
+        floor = max(main * (10 ** (-10.0 / 20.0)), 10 ** (-32.0 / 20.0))
+        claimed = end
+        for run in runs:
+            if run[1] - run[0] < 0.04:
+                continue
+            if run[0] < end - 0.01 or run[0] > end + 0.14:
+                continue
+            # A pause after this syllable means it is not the next word's attack.
+            if run[1] > nxt_start - 0.04:
+                continue
+            if peak(run) < floor:
+                continue
+            claimed = max(claimed, run[1])
+        if claimed > end + 0.01:
+            word["end"] = round(min(claimed + pad_out, nxt_start - 0.02), 4)
+
+
+def _carry_release(refined, times, frames):
+    """Finish a stop burst the speech band missed, and don't cut a voiced gap.
+
+    A /k/ can be loud in the full band and invisible to the speech band, so the
+    safety tail lands on the burst. A low /m/ can sit in the gap the same way.
+    A gap with no quiet stretch is still the phrase, so the next word starts
+    at the end of this one instead of opening a cut.
+    """
+    if not len(frames):
+        return
+    grid = times[:len(frames)]
+    levels = frames[:len(grid)]
+
+    def db_at(moment):
+        mask = (grid >= moment - 0.008) & (grid <= moment + 0.012)
+        if not np.any(mask):
+            return -80.0
+        return _db(float(np.max(levels[mask])))
+
+    for index in range(len(refined) - 1):
+        end = float(refined[index]["end"])
+        nxt = float(refined[index + 1]["start"])
+        if nxt - end <= 0.02:
+            continue
+        if nxt - end < 0.30:
+            quiet = 0.0
+            hop = 0.005
+            moment = end
+            longest = 0.0
+            while moment < nxt:
+                if db_at(moment) <= -34.0:
+                    quiet += hop
+                    longest = max(longest, quiet)
+                else:
+                    quiet = 0.0
+                moment += hop
+            if longest < 0.04:
+                refined[index + 1]["start"] = round(end + 0.012, 4)
+                continue
+        if _ending_consonant(refined[index]) not in {"d", "t", "k", "p", "b", "g"}:
+            continue
+        if nxt - end < 0.10:
+            continue
+        # Walk out through one burst, then stop at the first quiet stretch.
+        cursor = end
+        quiet_run = 0.0
+        limit = min(nxt - 0.02, end + 0.12)
+        moment = end
+        while moment < limit:
+            moment += 0.005
+            level = db_at(moment)
+            if level <= -36.0:
+                quiet_run += 0.005
+                if quiet_run >= 0.025:
+                    break
+            else:
+                quiet_run = 0.0
+                cursor = moment
+        if cursor > end + 0.012:
+            refined[index]["end"] = round(min(cursor + 0.012, nxt - 0.02), 4)
 
 
 def _finish_decays(refined, times, frames, duration):
@@ -805,12 +911,24 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
     if len(samples) < 8 or not ranges:
         return list(ranges)
     speech = _speech_band(samples, rate)
+    fricative = _fricative_band(samples, rate)
     times, frames = _frame_rms(speech, rate, win_s=0.01, hop_s=0.005)
-    if len(frames) == 0:
+    _high_times, high_frames = _frame_rms(fricative, rate, win_s=0.01, hop_s=0.005)
+    _full_times, full_frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    count = min(len(times), len(frames), len(high_frames), len(full_frames))
+    if count == 0:
         return list(ranges)
+    times = times[:count]
+    frames = frames[:count]
+    high_frames = high_frames[:count]
+    full_frames = full_frames[:count]
     floor = max(float(np.percentile(frames, 20)), 1e-6)
     thresh = max(floor * (10 ** (_TAIL_MARGIN_DB / 20.0)), 10 ** (-42.0 / 20.0))
-    quiet = frames < thresh
+    # An /s/ lives above the speech band, and an /m/ lives below it. Either one
+    # is still the word. Cutting it leaves a gap, or the join lands on the consonant.
+    high_thresh = 10 ** (-46.0 / 20.0)
+    full_thresh = 10 ** (-32.0 / 20.0)
+    quiet = (frames < thresh) & (high_frames < high_thresh) & (full_frames < full_thresh)
     rebuilt = []
     for begin, end in ranges:
         cursor = float(begin)
@@ -859,6 +977,34 @@ def trim_final_nonspeech(samples, rate, ranges, max_tail=0.12):
         ranges = list(ranges)
         ranges[-1] = (float(begin), cap)
     return ranges
+
+
+def _map_tight_words(words, ranges):
+    """Place each word on the tightened clock, even when a cut falls inside it.
+
+    The midpoint mapper drops the half of a word that sits past an excised pause,
+    and that leftover audio shows up as a gap before the next word.
+    """
+    def at(moment):
+        cursor = 0.0
+        for begin, end in ranges:
+            if moment <= begin:
+                return cursor
+            if moment <= end:
+                return cursor + (moment - begin)
+            cursor += end - begin
+        return cursor
+
+    mapped = []
+    for word in words:
+        start = at(float(word["start"]))
+        end = at(float(word["end"]))
+        if end < start + 0.02:
+            end = start + 0.02
+        text = str(word.get("word", word.get("text", ""))).strip()
+        if text:
+            mapped.append({**word, "word": text, "start": round(start, 4), "end": round(end, 4)})
+    return mapped
 
 
 def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None):
@@ -919,9 +1065,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
          "-g", "15", "-keyint_min", "15",
          "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
         check=True)
-    from edit import map_words
-    segments = [{"start": begin, "end": end} for begin, end in video]
-    mapped = map_words(refined, segments)
+    mapped = _map_tight_words(refined, video)
     joins = measure_joins(samples, RATE, ranges, refined)
     return {"output": str(output), "words": mapped, "ranges": video, "joins": joins,
             "expected_duration": expected, "duration": _probe_duration(output),
