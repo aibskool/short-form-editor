@@ -460,7 +460,7 @@ def check(timeline_path, words_path=None, project=None):
     stage_w = float(layout["stage_width"]) * frame_w
     stage_h = float(layout["stage_height"]) * frame_h
     phone = hero_phone_box(stage_w, stage_h)
-    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h - 40:
+    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h + 1:
         errors.append(
             f"phone: the handset is cropped (top {phone['top']}, height {phone['height']}, stage {stage_h:.0f})")
     if phone["width"] > stage_w + 1:

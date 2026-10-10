@@ -84,21 +84,21 @@ def _cue_time(block):
 
 
 def hero_phone_box(stage_w, stage_h):
-    """A centered handset at least 65% of the stage width, top bezel inside.
+    """A centered handset at least 65% of the stage width, filling that stage.
 
-    A 9:19.5 phone at that width is taller than the stage. The frame then uses
-    the full stage height so nothing is cropped at the top, and the recording
-    is letterboxed inside the screen instead of being cut on the side.
+    A 9:19.5 phone at that width is taller than the stage. The frame uses the
+    stage height so the bezel ends with the graphic, about 50 px above the
+    caption, and the recording is letterboxed inside the screen. A bottom
+    chip overlays the bezel.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
-    chip_band = 58.0
     margin = 8.0
-    usable_h = max(160.0, stage_h - chip_band - margin)
+    usable_h = max(160.0, stage_h - margin)
     max_w = max(120.0, stage_w - 2.0 * margin)
     phone_w = min(max_w, max(120.0, stage_w * 0.65))
     natural_h = phone_w * (19.5 / 9.0)
     phone_h = natural_h if natural_h <= usable_h else usable_h
-    top = max(0.0, (stage_h - chip_band) - phone_h)
+    top = max(0.0, stage_h - phone_h)
     pad = max(6, round(phone_w * 0.045))
     return {
         "screen": (float(phone_w - 2 * pad), float(phone_h - 2 * pad)),
