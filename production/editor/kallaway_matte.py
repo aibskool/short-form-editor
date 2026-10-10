@@ -51,7 +51,7 @@ PLATE_VIGNETTE = 0.12
 PLATE_RECIPE = "blur-cover-v1"
 # Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
 BOUNDARY_RAMP_CARD_PX = 64.0
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v1"
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v2"
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -1156,13 +1156,44 @@ def _smoothstep(values):
     return t * t * (3.0 - 2.0 * t)
 
 
-def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
-    """Ease alpha to 0 where the matte is cut by the source frame.
+def _edge_columns(opaque):
+    """Leftmost and rightmost opaque x per row. -1 when the row is empty."""
+    height, width = opaque.shape
+    has = opaque.any(axis=1)
+    left = np.argmax(opaque, axis=1)
+    right = width - 1 - np.argmax(opaque[:, ::-1], axis=1)
+    left = np.where(has, left, -1)
+    right = np.where(has, right, -1)
+    return left.astype(np.int32), right.astype(np.int32)
 
-    A row fades only when opaque pixels meet the left or right edge, and a
-    column fades only when they meet the bottom. The crown and any organic
-    edge inside the frame keep the matte's own feather. ``ramp_px`` is in
-    the same pixels as ``alpha``.
+
+def _straight_edge(edge, window=70, slack=48):
+    """Rows whose silhouette x stays nearly still. A curving head does not."""
+    edge = np.asarray(edge)
+    count = len(edge)
+    straight = np.zeros(count, dtype=bool)
+    half = int(window)
+    need = max(8, half // 2)
+    for index in range(count):
+        if edge[index] < 0:
+            continue
+        sample = edge[max(0, index - half):min(count, index + half + 1)]
+        sample = sample[sample >= 0]
+        if sample.size < need:
+            continue
+        if float(sample.max() - sample.min()) <= slack:
+            straight[index] = True
+    return straight
+
+
+def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
+    """Ease alpha where the matte is cut off in a straight line.
+
+    A row that meets the left or right edge of the frame fades in from that
+    edge. A long vertical run of the silhouette, the shoulder wall, fades in
+    from the silhouette itself. A column that meets the bottom fades upward.
+    The crown and a curving contour keep the matte's own feather. ``ramp_px``
+    is in the same pixels as ``alpha``.
     """
     alpha = np.asarray(alpha)
     if alpha.ndim != 2:
@@ -1174,7 +1205,12 @@ def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
     touch_left = opaque[:, :edge].any(axis=1)
     touch_right = opaque[:, -edge:].any(axis=1)
     touch_bottom = opaque[-edge:, :].any(axis=0)
-    if not (touch_left.any() or touch_right.any() or touch_bottom.any()):
+    left_x, right_x = _edge_columns(opaque)
+    # A frame cut is already ramped from x = 0. Do not ramp it again.
+    straight_left = _straight_edge(np.where(touch_left, -1, left_x))
+    straight_right = _straight_edge(np.where(touch_right, -1, right_x))
+    if not (touch_left.any() or touch_right.any() or touch_bottom.any()
+            or straight_left.any() or straight_right.any()):
         return np.ascontiguousarray(alpha)
     gain = np.ones((height, width), dtype=np.float32)
     xs = np.arange(width, dtype=np.float32)
@@ -1183,6 +1219,12 @@ def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
         gain[touch_left] *= _smoothstep(xs / ramp)
     if touch_right.any():
         gain[touch_right] *= _smoothstep((width - 1 - xs) / ramp)
+    if straight_left.any():
+        origin = np.where(straight_left, left_x, -1.0e6).astype(np.float32)
+        gain *= _smoothstep((xs[None, :] - origin[:, None]) / ramp)
+    if straight_right.any():
+        origin = np.where(straight_right, right_x, 1.0e6).astype(np.float32)
+        gain *= _smoothstep((origin[:, None] - xs[None, :]) / ramp)
     if touch_bottom.any():
         gain[:, touch_bottom] *= _smoothstep((height - 1 - ys) / ramp)[:, None]
     faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)

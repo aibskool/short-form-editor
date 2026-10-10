@@ -1216,6 +1216,18 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(int(out[79, 50]), 0)
         self.assertAlmostEqual(int(out[71, 50]), 127, delta=2)
         self.assertEqual(int(out[40, 50]), 255)
+        # A straight shoulder wall inset from the frame fades. A curving head does not.
+        wall = np.zeros((220, 180), np.uint8)
+        for y in range(8, 48):
+            left = 130 - (y - 8) * 2
+            wall[y, left:left + 20] = 255
+        wall[70:190, 30:110] = 255
+        faded = feather_boundary_alpha(wall, ramp_px=16)
+        self.assertTrue(np.array_equal(faded[16, 114:134], wall[16, 114:134]))
+        self.assertEqual(int(faded[120, 30]), 0)
+        self.assertGreater(int(faded[120, 38]), 40)
+        self.assertLess(int(faded[120, 38]), 230)
+        self.assertEqual(int(faded[120, 70]), 255)
 
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate
