@@ -73,6 +73,8 @@ def _caption_text(word, omit_punct=True, keep_case=()):
     kept = {item.lower(): item for item in keep_case}
     if bare in kept:
         return kept[bare]
+    if bare == "i":
+        return "I"
     if omit_punct:
         text = text.strip(".,!?:;\"'")
     return text.lower()
@@ -199,7 +201,12 @@ def build_kallaway(spec, spec_path, project):
                 animations.append(
                     f'tl.set("#speaker-pop",{json.dumps({"autoAlpha": 0, "clipPath": "inset(100% 0px 0px 0px)"})},{start});')
         caption_y = layout_spec["caption_split_y"] if layout == "split" else layout_spec["caption_full_y"]
-        animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%"}},{start});')
+        split_px = float(layout_spec.get("caption_split_px", layout_spec["caption_font_px"]))
+        full_px = float(layout_spec.get("caption_full_px", split_px))
+        caption_px_shot = (split_px if layout == "split" else full_px) * scale
+        animations.append(
+            f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%",'
+            f'fontSize:"{caption_px_shot:.1f}px"}},{start});')
         if layout == "split" and shot.get("stage"):
             stage = dict(shot["stage"])
             media_url = media(stage["media"]) if stage.get("media") else None
@@ -247,7 +254,7 @@ def build_kallaway(spec, spec_path, project):
             f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.04, end-start):.4f}" '
             f'data-track-index="5"><div id="capbox-{index}" class="caption-text">{" ".join(spans)}</div></div>')
         animations.append(
-            f'tl.fromTo("#capbox-{index}",{{scale:0.9}},{{scale:1,duration:0.12,ease:"power2.out"}},{start:.4f});')
+            f'tl.fromTo("#capbox-{index}",{{scale:0.9}},{{scale:1,duration:{3.0 / float(fps):.3f},ease:"power2.out"}},{start:.4f});')
     parts.append("</div>")
 
     for index, header in enumerate(spec.get("headers") or []):
@@ -379,9 +386,9 @@ def build_kallaway(spec, spec_path, project):
     #pop-camera{{position:absolute}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
-    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none}}
+    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none;font-size:{caption_px:.1f}px}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
-    .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:{caption_px:.1f}px;line-height:1.02;letter-spacing:-0.03em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
+    .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:1em;line-height:1.02;letter-spacing:-0.04em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .cap.marker{{font-family:'{display}',cursive;font-weight:400;font-size:1.12em;letter-spacing:0}}
     .cap.green{{color:{colors['accent']}}}
     .cap.amber{{color:{colors['warning_text']}}}

@@ -258,7 +258,31 @@ class KallawayTests(unittest.TestCase):
         phrases = caption_phrases(words, timeline["captions"]["word_styles"])
         covered = [index for phrase in phrases for index in range(*phrase["word_range"])]
         self.assertEqual(covered, list(range(len(words))))
-        self.assertTrue(all(phrase["word_range"][1] - phrase["word_range"][0] <= 2 for phrase in phrases))
+        self.assertTrue(all(phrase["word_range"][1] - phrase["word_range"][0] == 1 for phrase in phrases))
+        self.assertEqual(timeline["captions"]["max_words"], 1)
+        self.assertEqual(_caption_text({"word": "I"}), "I")
+        self.assertEqual(_caption_text({"word": "Never,"}), "never")
+        self.assertFalse(any(item.get("combo") == "15" for item in timeline["sfx"]))
+        self.assertFalse(any(item.get("label") == "Standard Cut" for item in timeline["sfx"]))
+        for shot in timeline["shots"]:
+            if shot["layout"] not in {"full", "punch_in"}:
+                continue
+            leaked = [
+                item for item in timeline["sfx"]
+                if not item.get("mute") and item.get("combo") in {"8", "15"}
+                and abs(float(item["at"]) - float(shot["start"])) < 0.08
+            ]
+            self.assertFalse(leaked, leaked)
+        audible = [item for item in timeline["sfx"] if not item.get("mute")]
+        per_minute = len(audible) / (timeline["shots"][-1]["end"] / 60.0)
+        self.assertGreaterEqual(per_minute, 8.0, audible)
+        self.assertLessEqual(per_minute, 20.0, audible)
+        heard_whoosh = [
+            (item.get("file") or "").split("/")[-1]
+            for item in sorted(audible, key=lambda item: float(item.get("sound_at", item["at"])))
+            if item.get("kind") == "whoosh"
+        ]
+        self.assertTrue(all(left != right for left, right in zip(heard_whoosh, heard_whoosh[1:])))
         self.assertIn("comment", timeline["headers"][-1]["text"].lower())
         self.assertTrue(timeline["sfx"])
         self.assertNotIn("\u2014", json.dumps(timeline))
@@ -847,8 +871,11 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Ui 30", ding["bed"]["file"])
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
-        self.assertTrue(pages[0].get("file"))
+        self.assertIn("Swoosh Fast", pages[0].get("file", ""))
         self.assertTrue(all(event.get("mute") for event in pages[1:]))
+        self.assertTrue(all(
+            any(extra.get("kind") == "pop" for extra in (event.get("also") or []))
+            for event in pages))
         money = stage_events("quote_card", 1.0, 2.4, {"variant": "receipt", "text": "$2,000", "items": ["JAN"]})
         self.assertEqual(money[0]["combo"], "42")
         self.assertIn("Ka Ching", money[0]["file"])

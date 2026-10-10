@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--receipt", required=True)
-    parser.add_argument("--target-lufs", type=float, default=-14.2)
+    parser.add_argument("--target-lufs", type=float, default=-14.0)
     parser.add_argument("--true-peak", type=float, default=-1.0)
     parser.add_argument("--codec-headroom-db", type=float, default=0.8,
                         help="Extra limiter headroom before AAC encoding; verify the decoded final peak")

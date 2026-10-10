@@ -108,12 +108,10 @@ def check(timeline_path, words_path=None, project=None):
     if phrases:
         for phrase in phrases:
             count = phrase["word_range"][1] - phrase["word_range"][0]
-            if count > 4:
+            if count > 3:
                 errors.append(f"captions: a group has {count} words")
-            elif count > 2:
-                warnings.append(f"captions: a group has {count} words; the style is 1-2")
-    elif int(captions.get("max_words", 2)) > 2:
-        warnings.append("captions: max_words is above 2 and no explicit phrases were checked")
+    elif int(captions.get("max_words", 1)) > 3:
+        warnings.append("captions: max_words is above 3 and no explicit phrases were checked")
     if captions.get("uppercase") is True:
         errors.append("captions: Kallaway captions stay lowercase")
 

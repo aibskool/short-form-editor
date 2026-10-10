@@ -562,12 +562,12 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
 
 
 # Momentary SFX loudness sits this far under the voice's short-term loudness.
-# Midpoints of the Viral Reels cheat sheet, with no music in the reel:
-# whooshes -8 to -12, impacts -4 to -8, text pops -14 to -18.
+# Playbook S5, no music: pops and ticks -10 to -16, whooshes -8 to -12,
+# dings and the cash register -8 to -12, impacts -4 to -8.
 UNDER_DB = {
-    "pop": 16.0, "click": 16.0, "typing": 16.0, "ticking": 16.0,
-    "marker": 14.0, "paper": 14.0, "error": 6.0,
-    "whoosh": 10.0, "riser": 10.0, "ding": 12.0, "bass": 6.0,
+    "pop": 13.0, "click": 13.0, "typing": 13.0, "ticking": 13.0,
+    "marker": 18.0, "paper": 10.0, "error": 6.0,
+    "whoosh": 10.0, "riser": 10.0, "ding": 10.0, "bass": 6.0,
 }
 _MOMENTARY_S = 0.400
 _SHORTTERM_S = 3.0

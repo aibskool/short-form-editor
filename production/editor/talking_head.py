@@ -181,12 +181,16 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     finalize = [sys.executable, str(HERE.parent / "finalize_render.py"),
                 "--input", str(rendered), "--output", str(final),
                 "--receipt", str(project / "final-receipt.json")]
-    if target_lufs is not None:
-        finalize.extend(["--target-lufs", str(target_lufs)])
-    if true_peak is not None:
-        finalize.extend(["--true-peak", str(true_peak)])
-    if codec_headroom_db is not None:
-        finalize.extend(["--codec-headroom-db", str(codec_headroom_db)])
+    # Playbook S9: -14 LUFS and a true peak at or below -1 dBTP. The headroom
+    # keeps the AAC encode from poking back through that ceiling.
+    if target_lufs is None:
+        target_lufs = -14.0
+    if true_peak is None:
+        true_peak = -1.0
+    if codec_headroom_db is None:
+        codec_headroom_db = 0.8
+    finalize.extend(["--target-lufs", str(target_lufs), "--true-peak", str(true_peak),
+                     "--codec-headroom-db", str(codec_headroom_db)])
     subprocess.run(finalize, check=True, env=env)
     report["output"] = str(final)
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")

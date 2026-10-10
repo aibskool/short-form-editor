@@ -1,6 +1,6 @@
 # Kallaway-style talking-head edits
 
-Use this path for a new raw talking-head. It is the default for that job: hard cuts only, a split graphic stage with a floating speaker card, full-screen and punch-in camera states, one-to-two-word captions, and a comment CTA. Colors and fonts come from the AI Builder School preset, not from Kallaway's red-and-black look.
+Use this path for a new raw talking-head. It is the default for that job: hard cuts only, a split graphic stage with a floating speaker card, full-screen and punch-in camera states, one-word lowercase captions, and a comment CTA. Colors and fonts come from the AI Builder School preset, not from Kallaway's red-and-black look.
 
 The presenter-first house style stays on its own path. A timeline whose `style` value is an object (or is omitted) is a house-style edit: full-size presenter, kinetic type, no music. A timeline with `"style": "kallaway"` is this preset. The string is the flag. It is not a house-style override, and the house-style builder never sees it.
 
@@ -51,7 +51,7 @@ What the runner does:
 
 1. Keeps each word through its energy decay. Broadband RMS and a 3–10 kHz band are each tracked to their own noise floor + 3 dB, searched 350 ms past the whisper end, then a 40 ms safety tail is added. The crossfade starts after that tail. A following word that starts while the fricative is still up stays in the same piece. Silence between phrases is cut down to about 20 ms. Each join gets a 12 ms equal-power crossfade. The voice stays at 1x. The style check fails a join whose last 20 ms is still more than 3 dB above the noise floor and has not fallen at least 18 dB from the vowel.
 2. High-passes, boosts presence around 4 kHz, compresses about 4:1, and loudnorm-targets the voice at -14 LUFS.
-3. Plays recorded SFX on graphic entrances only. Punch-ins, layout cuts, and exits stay silent. Whooshes lead the picture by about 70 ms and are low-passed around 8 kHz. A hook can layer one sub boom with a whoosh, and a reel keeps at most three booms. Each cue is gained so its momentary loudness sits under the voice's short-term loudness at that moment (`sfx_under_db`): pops, clicks, ticks, typing, and markers 11 dB under, whooshes 13 dB under, dings 11 dB under, bass hits 7 dB under. The mix is baked into the voice file. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
+3. Plays recorded SFX from the local Viral Reels pack on graphic entrances only. Split, full-face, and punch-in cuts stay silent, and exits stay silent. Whooshes lead panel slides, chapter-header swaps, and big graphic transitions by 4 frames. Files are unprocessed except for a trim, a 5 ms head fade, a 3-frame tail fade, and clip gain above 0 dBFS. A reel keeps at most three booms. Levels sit under the voice (`sfx_under_db`): pops, clicks, and ticks about 13 dB under, whooshes about 10, dings and the cash register about 10, impacts about 6. The mix is baked into the voice file. The lo-fi bed stays off unless you pass `--music`, in which case it sits about 25 dB under the voice.
 4. Plans hook splits, a full-screen cut near 3s, body alternation, and a final split with the document fan.
 5. Runs the style check, builds the HyperFrames composition, checks the HTML for brand colors and fonts, renders, and finalizes the mix.
 
@@ -179,9 +179,9 @@ python3 plugins/brandon-reel-engine/scripts/reel.py run check-style -- \
   --project /absolute/composition
 ```
 
-Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 4 words, uppercase captions, an ending more than 0.12s off the last word, a music fade longer than 0.2s when a bed is present, a callout or highlight that starts while its frame is still entering or its screenshot is still scrolling, a callout whose box is outside the phone after the pan, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. A missing music bed is not an error and not a warning. Kallaway's red, neon green, and near-black hexes are rejected.
+Errors include a non-Kallaway style, em or en dashes, any transition that is not a hard cut, unknown layouts, shots longer than 5.5s or shorter than 0.4s, gaps or overlaps, a split with no stage, a missing full-screen cut between 2.2s and 4.0s on reels of 6s or more, caption groups over 3 words, uppercase captions, an ending more than 0.12s off the last word, a music fade longer than 0.2s when a bed is present, a callout or highlight that starts while its frame is still entering or its screenshot is still scrolling, a callout whose box is outside the phone after the pan, a stage event with no SFX within 0.12s, a missing Comment header, and HTML colors or fonts outside the preset. A missing music bed is not an error and not a warning. Kallaway's red, neon green, and near-black hexes are rejected.
 
-Warnings cover body shots outside about 1.15-5.05s, caption groups of 3-4 words, and a timeline that was checked before HTML existed.
+Warnings cover body shots outside about 1.15-5.05s, and a timeline that was checked before HTML existed.
 
 `production/check_editorial.py` and `review_reel.py` belong to the house style. Do not use them as the Kallaway style gate. Watch the rendered MP4 after the style check passes.
 

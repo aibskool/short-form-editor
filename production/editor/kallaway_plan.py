@@ -51,18 +51,9 @@ def _snap(target, starts, low, high):
 
 
 def caption_phrases(words, styles):
-    phrases, index = [], 0
-    while index < len(words):
-        take = 1
-        if styles.get(_token(words[index]), "normal") == "normal" and index + 1 < len(words):
-            if styles.get(_token(words[index + 1]), "normal") == "normal":
-                gap = float(words[index + 1]["start"]) - float(words[index]["end"])
-                if gap < 0.22 and not str(words[index]["word"]).endswith((".", "?", "!", ":")):
-                    if len(_token(words[index])) + len(_token(words[index + 1])) <= 16:
-                        take = 2
-        phrases.append({"word_range": [index, index + take]})
-        index += take
-    return phrases
+    """One lowercase word per chunk. Emphasis still lives on the word style."""
+    del styles
+    return [{"word_range": [index, index + 1]} for index in range(len(words))]
 
 
 def _title_case(text):
@@ -247,17 +238,16 @@ def _match_entry(entry, slots, ordered, claimed):
     return hits[0]
 
 
-def _cover_sfx(shots, words, styles, unders=None, fps=30):
-    """One sound carries the move, one lands the arrival. Full-screen holds stay quiet.
+def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
+    """Graphic entrances get the mapped pack sound. Face cuts stay silent.
 
-    Frame counts follow the pack guide at ``fps`` (the guide is written at 30).
-    ``at`` stays on the picture so the style check still sees the motif. The
-    sample itself starts at ``sound_at``.
+    Whooshes lead panel slides, chapter-header swaps, and big graphic
+    transitions by 4 frames. ``at`` stays on the picture so the style check
+    still sees the motif. The sample itself starts at ``sound_at``.
     """
     from kallaway_audio import UNDER_DB
-    from kallaway_pack import (
-        BACKWARDS, BOOM_14, COOL_WHOOSH, DEEP_HIT, finish_sfx,
-    )
+    from kallaway_pack import BOOM_14, COOL_WHOOSH, finish_sfx
+    del words, styles
     unders = unders or {}
     fps = float(fps or 30)
     events = []
@@ -273,33 +263,22 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30):
             "label": "Cold Slam", "under_db": float(unders.get("bass", UNDER_DB["bass"])),
             "fixed_file": True, "fixed_lead": True, "band": "low",
         })
-    for index, shot in enumerate(shots):
-        start = float(shot["start"])
-        layout = shot.get("layout")
-        if layout == "punch_in":
-            events.append({
-                "at": round(start, 3), "kind": "whoosh", "file": BACKWARDS, "combo": "15",
-                "label": "Zoom Punch", "align": "end", "sound_at": round(start, 3),
-                "trim_frames": 8, "fade_in_frames": 3, "fixed_lead": True,
-                "rotate": "punch", "band": "mid",
-                "under_db": float(unders.get("whoosh", UNDER_DB["whoosh"])),
-            })
-            events.append({
-                "at": round(start, 3), "kind": "ding", "file": DEEP_HIT, "combo": "15",
-                "label": "Zoom Punch hit", "fixed_lead": True,
-                "rotate": "hit", "trim_frames": 12, "fade_frames": 3, "band": "low",
-                "under_db": float(unders.get("bass", UNDER_DB["bass"])),
-            })
-        elif layout == "split" and index > 0:
+    previous = None
+    for header in headers or []:
+        text = str(header.get("text") or "")
+        at = float(header.get("start") or 0.0)
+        if previous and text and text != previous:
             covered = any(
-                item.get("kind") in {"whoosh", "riser"} and abs(float(item["at"]) - start) < 0.2
+                item.get("kind") in {"whoosh", "riser"} and abs(float(item.get("at", 0)) - at) < 0.2
                 for item in events
             )
             if not covered:
                 events.append({
-                    "at": round(start, 3), "kind": "whoosh", "combo": "8",
-                    "label": "Standard Cut", "rotate": "whoosh", "band": "mid",
+                    "at": round(at, 3), "kind": "whoosh", "combo": "8",
+                    "label": "Chapter header", "rotate": "whoosh", "band": "mid",
                 })
+        if text:
+            previous = text
     if shots:
         duration = max(float(shot["end"]) for shot in shots)
         events.append({
@@ -530,10 +509,10 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
         "shots": shots,
         "stage_slots": stage_slots,
         "captions": {
-            "max_words": 2, "uppercase": False, "word_styles": styles,
+            "max_words": 1, "uppercase": False, "word_styles": styles,
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },
-        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}, fps),
+        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}, fps, headers),
     }
 
 
