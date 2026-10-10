@@ -2,7 +2,7 @@
   "id": "ai-builder-school",
   "name": "AI Builder School",
   "default_mode": "dark",
-  "measurement_note": "Split card is the full 1080x512 frame from y 1408 to 1920, flush to the bottom and to both side edges, top corners only at 31 px. Scale stays 1.0 so the 1080-wide source fills that card with no side bars and shows 512 source rows: neck, shoulders, and chest to about mid-chest. The matte places the chin on the card top, so the whole head pops out above it at the same scale. The graphic stage starts at y 270 and ends at y 672, leaving headroom above the hair. A taller measured crown pulls that bottom up. Split and full-face captions share one baseline at y 1120, below the crown and about 70 px above the lav pin.",
+  "measurement_note": "Split card is the full 1080x512 frame from y 1408 to 1920, flush to the bottom and to both side edges, top corners only at 31 px. Scale stays 1.0 so the 1080-wide source fills that card with no side bars and shows 512 source rows: neck, shoulders, and chest to about mid-chest. The matte places the chin on the card top, so the whole head pops out above it at the same scale. The graphic stage starts at y 270 and ends at y 672, and a taller measured crown pulls that bottom up so the caption band stays empty. In split, the one-line caption sits just above that shot's highest crown, in the gap between the graphics and the head. caption_split_y is only the fallback before the matte measures the crown. Full-face captions stay at y 1120, clear of the face and the lav pin.",
   "modes": {
     "dark": {
       "background": "#1A1A1A",
@@ -72,7 +72,7 @@
     "card_bottom": 1.0,
     "card_radius": 31,
     "caption_baseline_px": 1120,
-    "caption_split_y": 0.5833333333,
+    "caption_split_y": 0.3541666667,
     "caption_full_y": 0.5833333333,
     "title_top": 0.0520833333,
     "stage_left": 0.05,

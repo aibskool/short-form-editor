@@ -275,12 +275,15 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(height, 0.25)
         self.assertLessEqual(height, 0.29)
         self.assertAlmostEqual(layout["card_margin_x"] * 1080, 0, delta=0.5)
-        self.assertAlmostEqual(layout["caption_split_y"], layout["caption_full_y"], places=4)
-        self.assertAlmostEqual(layout["caption_split_y"] * 1920, 1120, delta=2)
-        self.assertLess(layout["caption_split_y"], layout["card_top"])
+        self.assertAlmostEqual(layout["caption_full_y"] * 1920, 1120, delta=2)
+        self.assertAlmostEqual(layout["caption_baseline_px"], 1120, delta=2)
+        # Split captions sit in the gap above the crown. Full-face stays at y 1120.
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 672, delta=2)
-        self.assertAlmostEqual(layout["caption_baseline_px"], 1120, delta=2)
+        self.assertGreater(layout["caption_split_y"] * 1920, stage_bottom)
+        self.assertLess(layout["caption_split_y"] * 1920, 760)
+        self.assertLess(layout["caption_split_y"], layout["caption_full_y"])
+        self.assertLess(layout["caption_split_y"], layout["card_top"])
         card = card_state("split", "wide", 1080, 1920, layout, colors)
         self.assertEqual(card["top"], 1408)
         self.assertEqual(card["height"], 512)
@@ -959,6 +962,16 @@ class KallawayTests(unittest.TestCase):
         # The popped crown sits above the graphic stage.
         stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
         self.assertLessEqual(stage_bottom, layout["card_top"] * 1920 + crown - 90)
+        # One line, just above the highest crown, and not on the full-face baseline.
+        from kallaway_matte import CAPTION_EMPHASIS, CAPTION_GAP_ABOVE_CROWN_PX, CAPTION_LINE_FACTOR
+        high = source_y_on_card(base["head_high"], 1080, 1920, card_w, card_h, pos_y, scale=1)
+        crown_canvas = layout["card_top"] * 1920 + high
+        caption_top = timeline["shots"][0]["caption_y"] / 100 * 1920
+        line = layout["caption_split_px"] * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
+        self.assertLessEqual(caption_top + line, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX + 1)
+        self.assertGreaterEqual(caption_top, stage_bottom)
+        self.assertNotIn("caption_y", timeline["shots"][1])
+        self.assertNotIn("caption_y", timeline["shots"][2])
 
         # A raised hand does not drag the chin back into the card.
         raised = dict(base, hands=[{"at": 1.0, "top": 160.0}])
@@ -968,6 +981,69 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(timeline2["source"]["popout"]["hand_above_px"], -crown2)
         hand_stage = graphic_stage_bottom(layout, 1920, timeline2["source"]["popout"])
         self.assertLessEqual(hand_stage, layout["card_top"] * 1920 - timeline2["source"]["popout"]["hand_above_px"] - 90)
+
+    def test_split_caption_tracks_the_highest_crown_in_the_shot(self):
+        from kallaway_matte import (
+            CAPTION_EMPHASIS, CAPTION_GAP_ABOVE_CROWN_PX, CAPTION_LINE_FACTOR, frame_popout, highest_crown_source_y,
+            parse_position, source_y_on_card,
+        )
+        from kallaway_style import graphic_stage_bottom
+        theme, _, _, _ = load_theme("dark")
+        layout = theme["layout"]
+        card_w = (1 - 2 * layout["card_margin_x"]) * 1080
+        card_h = (layout["card_bottom"] - layout["card_top"]) * 1920
+        head = {
+            "width": 1080, "height": 1920,
+            "head_top": 340.0, "head_height": 400.0,
+            "head_low": 400.0, "head_high": 300.0,
+            "pop_fraction": 0.32, "samples": 4, "hands": [],
+            "crown_samples": [
+                {"at": 0.2, "top": 400.0},
+                {"at": 1.0, "top": 360.0},
+                {"at": 1.4, "top": 210.0},
+                {"at": 2.4, "top": 280.0},
+                {"at": 2.8, "top": 275.0},
+                {"at": 3.2, "top": 290.0},
+            ],
+        }
+        timeline = {
+            "output": {"width": 1080, "height": 1920},
+            "source": {},
+            "shots": [
+                {"layout": "split", "start": 0.0, "end": 2.0, "scale": 1.0},
+                {"layout": "split", "start": 2.0, "end": 4.0, "scale": 1.0},
+                {"layout": "full", "start": 4.0, "end": 5.0},
+            ],
+        }
+        frame_popout(timeline, head, theme)
+        low_shot, high_shot = timeline["shots"][0], timeline["shots"][1]
+        self.assertLess(high_shot["caption_y"], low_shot["caption_y"])
+        self.assertNotIn("caption_y", timeline["shots"][2])
+        # The one-frame spike at 1.4s does not become the line for the first shot.
+        self.assertGreater(highest_crown_source_y(head, 0.0, 2.0), 300)
+        _x, pos_y = parse_position(high_shot["object_position"])
+        for shot, begin, finish in ((low_shot, 0.0, 2.0), (high_shot, 2.0, 4.0)):
+            source_y = highest_crown_source_y(head, begin, finish)
+            local = source_y_on_card(source_y, 1080, 1920, card_w, card_h, pos_y, scale=1)
+            crown_canvas = layout["card_top"] * 1920 + local
+            top = shot["caption_y"] / 100 * 1920
+            line = layout["caption_split_px"] * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
+            self.assertLessEqual(top + line, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX + 1.5)
+            self.assertGreater(top + line, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX - 8)
+        stage = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
+        self.assertLessEqual(stage, high_shot["caption_y"] / 100 * 1920)
+
+    def test_green_spill_leaves_the_edge_and_not_the_skin(self):
+        from kallaway_matte import despill_green
+        rgb = np.zeros((8, 8, 3), dtype=np.float32)
+        rgb[:, :] = (180, 140, 120)
+        rgb[0, :] = (40, 180, 30)
+        person = np.zeros((8, 8), dtype=np.float32)
+        person[1:, :] = 1
+        person[0, :] = 0.2
+        out = despill_green(rgb, person)
+        self.assertLess(out[0, 0, 1], 80)
+        self.assertAlmostEqual(out[4, 4, 1], 140, delta=1)
 
     def test_pop_crop_puts_the_crown_above_the_card(self):
         from kallaway_matte import cover_fit, solve_position_y, source_y_on_card
@@ -1072,46 +1148,36 @@ class KallawayTests(unittest.TestCase):
             failed = check(project / "timeline.json", project / "mapped-words.json", project)
             self.assertTrue(any(error.startswith("matte:") for error in failed["errors"]), failed)
 
-    def test_guided_feather_smooths_a_blocky_crown_and_casts_a_shadow(self):
+    def test_edge_is_a_thin_antialiased_ramp_with_a_shadow(self):
         from kallaway_matte import refine_frame
         height = width = 180
         yy, xx = np.ogrid[:height, :width]
         center, radius = 90, 58
         disk = (yy - center) ** 2 + (xx - center) ** 2 <= radius ** 2
         rgb = np.zeros((height, width, 3), np.uint8)
-        rgb[:] = (18, 18, 20)
+        rgb[:] = (20, 140, 30)
         rgb[disk] = (232, 186, 170)
-        block = 6
-        small = disk[::block, ::block]
-        coarse = np.repeat(np.repeat(small, block, axis=0), block, axis=1)[:height, :width].astype(np.float32)
-        person, _straight, out_a, _field = refine_frame(rgb, coarse)
-
-        def steps(alpha, level):
-            tops = []
-            for column in range(40, 140):
-                hit = np.where(alpha[:, column] > level)[0]
-                if hit.size:
-                    tops.append(hit[0])
-            return np.abs(np.diff(np.asarray(tops, dtype=np.float64)))
-
-        coarse_steps = steps(coarse, 0.5)
-        smooth_steps = steps(person, 0.5)
-        self.assertGreater(coarse_steps.max(), 2)
-        self.assertLessEqual(smooth_steps.max(), 2)
+        # Foliage green painted onto the rim, the way a loose mask used to leak.
+        rim = disk & ~((yy - center) ** 2 + (xx - center) ** 2 <= (radius - 3) ** 2)
+        rgb[rim] = (30, 170, 40)
+        person, straight, out_a, _state = refine_frame(rgb, disk.astype(np.float32))
         self.assertGreater(person[center, center], 0.98)
-        # The 0.2 to 0.8 band is a few pixels, not a hard stair and not a wide halo.
+        # The 0.2 to 0.8 band is about 1-2px, not a hard stair and not a wide halo.
         widths = []
         for column in range(50, 130, 3):
             column_alpha = person[:, column]
             high = np.where(column_alpha > 0.8)[0]
             low = np.where(column_alpha < 0.2)[0]
             if high.size and low.size:
-                below = low[low < high[0]]
-                if below.size:
-                    widths.append(high[0] - below[-1])
+                above_px = low[low < high[0]]
+                if above_px.size:
+                    widths.append(high[0] - above_px[-1])
         self.assertTrue(widths)
-        self.assertGreaterEqual(np.median(widths), 2)
-        self.assertLessEqual(np.median(widths), 5)
+        self.assertGreaterEqual(np.median(widths), 1)
+        self.assertLessEqual(np.median(widths), 3)
+        edge = (person > 0.15) & (person < 0.7)
+        self.assertTrue(edge.any())
+        self.assertLess(straight[:, :, 1][edge].mean(), 100)
         below = out_a[center + radius + 3:center + radius + 16, center - 8:center + 8].mean()
         above = out_a[center - radius - 16:center - radius - 3, center - 8:center + 8].mean()
         self.assertGreater(below, above + 0.04)
