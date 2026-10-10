@@ -275,13 +275,23 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(height, 0.25)
         self.assertLessEqual(height, 0.29)
         self.assertAlmostEqual(layout["card_margin_x"] * 1080, 0, delta=0.5)
-        self.assertAlmostEqual(layout["caption_split_y"] * 1920, 1250, delta=2)
+        self.assertAlmostEqual(layout["caption_full_px"], 67, delta=0.1)
+        self.assertAlmostEqual(layout["caption_split_px"], 54, delta=0.1)
+        self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
+        # Graphics end at y 1072. The split line sits just above the crown, near y 1264.
+        stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
+        self.assertAlmostEqual(stage_bottom, 1072, delta=2)
+        self.assertGreater(layout["caption_split_y"] * 1920, stage_bottom)
+        self.assertLess(layout["caption_split_y"] * 1920, layout["card_top"] * 1920)
+        self.assertGreater(layout["caption_split_y"], layout["caption_full_y"])
         self.assertLess(layout["caption_split_y"], layout["card_top"])
         self.assertAlmostEqual(layout["caption_split_px"], 54)
         self.assertAlmostEqual(layout["caption_full_px"], 67)
-        # Full-face sits between the beard and the pin, not below the pin.
-        self.assertGreater(layout["caption_full_y"] * 1920, 930)
-        self.assertLess(layout["caption_full_y"] * 1920, 1060)
+        # Fallback sits on the chest. A take sets caption_full_baseline_px
+        # so the letters clear the beard and stay above the lav pin.
+        full_y = layout["caption_full_y"] * 1920
+        self.assertGreater(full_y, stage_bottom)
+        self.assertLess(full_y, layout["card_top"] * 1920 - 200)
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 1072, delta=2)
         self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
@@ -437,7 +447,10 @@ class KallawayTests(unittest.TestCase):
                 and abs(float(item["at"]) - float(shot["start"])) < 0.08
             ]
             self.assertFalse(leaked, leaked)
-        audible = [item for item in timeline["sfx"] if not item.get("mute")]
+        audible = [
+            item for item in timeline["sfx"]
+            if not item.get("mute") and not item.get("budget_free")
+        ]
         per_minute = len(audible) / (timeline["shots"][-1]["end"] / 60.0)
         self.assertGreaterEqual(per_minute, 8.0, audible)
         self.assertLessEqual(per_minute, 20.0, audible)
@@ -839,11 +852,13 @@ class KallawayTests(unittest.TestCase):
         geo = hero_phone_box(box["width"], box["height"])
         self.assertLessEqual(geo["left"] + geo["width"], box["width"] + 1)
         self.assertGreaterEqual(geo["left"], 0)
-        self.assertAlmostEqual(geo["height"] / geo["width"], 19.5 / 9, delta=0.08)
+        self.assertGreaterEqual(geo["width"], box["width"] * 0.65 - 1)
+        self.assertAlmostEqual(geo["left"] + geo["width"] / 2, box["width"] / 2, delta=1.5)
         self.assertIn(f'width:{geo["width"]}px', section)
-        self.assertIn("object-fit:cover", section)
+        self.assertIn("object-fit:contain", section)
         self.assertGreaterEqual(geo["top"], 0)
         self.assertLessEqual(geo["top"] + geo["height"], box["height"] - 40)
+        self.assertGreater(geo["width"], 80)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
         self.assertIn("scale:1,", script)
@@ -1045,17 +1060,17 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("yoyo:true", script)
         self.assertNotIn("opacity:0", script)
 
-    def test_split_crop_keeps_the_face_in_the_card(self):
-        from kallaway_matte import frame_popout, parse_position
-        from kallaway_style import full_caption_top, graphic_stage_bottom, split_caption_top
+    def test_pop_crop_sets_the_chin_on_the_card_and_leaves_the_head_out(self):
+        from kallaway_matte import CHIN_PAD_PX, chin_row, frame_popout
+        from kallaway_style import graphic_stage_bottom
         theme, _, _, _ = load_theme("dark")
         layout = theme["layout"]
         card_w = (1 - 2 * layout["card_margin_x"]) * 1080
         self.assertEqual(card_w, 1080)
         base = {
             "width": 1080, "height": 1920,
-            "head_top": 280.0, "head_height": 640.0, "face_height": 570.0,
-            "head_low": 340.0, "head_high": 240.0, "chin": 920.0,
+            "head_top": 331.0, "head_height": 420.0,
+            "head_low": 400.0, "head_high": 280.0,
             "pop_fraction": 0.32, "samples": 4, "hands": [],
         }
 
@@ -1064,52 +1079,50 @@ class KallawayTests(unittest.TestCase):
                 "output": {"width": 1080, "height": 1920},
                 "source": {"object_position": "50% 50%"},
                 "shots": [
-                    {"id": "shot-00", "layout": "split", "crop": "wide"},
-                    {"id": "shot-01", "layout": "full"},
-                    {"id": "shot-02", "layout": "punch_in"},
+                    {"layout": "split", "crop": "wide", "scale": 1.0},
+                    {"layout": "full"},
+                    {"layout": "punch_in"},
                 ],
             }
             frame_popout(timeline, head, theme)
-            _x, pos_y = parse_position(timeline["shots"][0]["object_position"])
+            pop = timeline["source"]["popout"]
+            from kallaway_matte import placed_local_y
+            crown = placed_local_y(head["head_top"], head["head_top"], pop["pop_px"], pop["scale"])
+            chin = placed_local_y(chin_row(head), head["head_top"], pop["pop_px"], pop["scale"])
             self.assertNotIn("object_position", timeline["shots"][1])
             self.assertNotIn("object_position", timeline["shots"][2])
-            self.assertNotIn("scale", timeline["shots"][1])
-            self.assertEqual(timeline["source"]["object_position"], timeline["shots"][0]["object_position"])
-            return pos_y, timeline
+            self.assertGreaterEqual(pop["face_px"], 200)
+            self.assertLessEqual(pop["face_px"], 230)
+            return crown, chin, pop["scale"], timeline
 
-        pos_y, timeline = place(base)
+        crown, chin, pos_y, timeline = place(base)
         pop = timeline["source"]["popout"]
-        self.assertGreaterEqual(pop["median_above_px"], 50)
-        self.assertLessEqual(pop["median_above_px"], 100)
-        self.assertGreaterEqual(pop["face_px"], 200)
-        self.assertLessEqual(pop["face_px"], 230)
-        self.assertGreater(pop["chin_above_bottom_px"], 80)
-        from kallaway_matte import CAPTION_EMPHASIS
-        crown_canvas = layout["card_top"] * 1920 - pop["high_above_px"]
-        top = split_caption_top(
-            crown_canvas, layout["caption_split_px"] * CAPTION_EMPHASIS, layout["caption_crown_gap_px"])
-        self.assertAlmostEqual(timeline["shots"][0]["caption_y"], top / 1920 * 100, delta=0.2)
-        self.assertLess(timeline["shots"][0]["scale"], 1.0)
+        from kallaway_matte import CAPTION_GAP_ABOVE_CROWN_PX, SPLIT_CAP_FACTOR, placed_local_y
+        high = placed_local_y(base["head_high"], base["head_top"], pop["pop_px"], pop["scale"])
+        self.assertGreaterEqual(-high, 50)
+        self.assertLessEqual(-high, 100.5)
+        self.assertAlmostEqual(-crown, pop["pop_px"], delta=0.6)
+        self.assertGreater(chin, 40)
+        self.assertAlmostEqual(chin_row(base), 331 + 420 + CHIN_PAD_PX)
+        stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
+        self.assertAlmostEqual(stage_bottom, 1072, delta=2)
+        crown_canvas = layout["card_top"] * 1920 + high
+        caption_top = timeline["shots"][0]["caption_y"] / 100 * 1920
+        cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
+        self.assertAlmostEqual(caption_top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
+        self.assertGreaterEqual(caption_top, stage_bottom)
         self.assertNotIn("caption_y", timeline["shots"][1])
         self.assertNotIn("caption_y", timeline["shots"][2])
-        # Full-face line clears the beard and stays above the pin.
-        beard, pin = 940.0, 1100.0
-        full_top = full_caption_top(beard, pin, layout["caption_full_px"])
-        self.assertGreaterEqual(full_top, beard + 25 - 0.1)
-        self.assertLessEqual(full_top + layout["caption_full_px"] * 1.02, pin - 30 + 0.1)
-        stage_bottom = graphic_stage_bottom(layout, 1920, pop)
-        self.assertLessEqual(stage_bottom, 1072.5)
-        self.assertLessEqual(stage_bottom, timeline["shots"][0]["caption_y"] / 100 * 1920)
 
         raised = dict(base, hands=[{"at": 1.0, "top": 160.0}])
-        pos2, timeline2 = place(raised)
+        crown2, chin2, pos2, timeline2 = place(raised)
         self.assertAlmostEqual(pos2, pos_y, delta=0.002)
-        self.assertAlmostEqual(timeline2["shots"][0]["scale"], timeline["shots"][0]["scale"], places=3)
-        self.assertGreater(timeline2["source"]["popout"]["hand_above_px"], pop["median_above_px"])
+        self.assertAlmostEqual(chin2, chin, delta=1.5)
+        self.assertGreater(timeline2["source"]["popout"]["hand_above_px"], -crown2)
 
     def test_split_caption_tracks_the_highest_crown_in_the_shot(self):
         from kallaway_matte import (
-            CAPTION_EMPHASIS, CAPTION_GAP_ABOVE_CROWN_PX, CAPTION_LINE_FACTOR, frame_popout, highest_crown_source_y,
+            CAPTION_GAP_ABOVE_CROWN_PX, SPLIT_CAP_FACTOR, frame_popout, highest_crown_source_y,
             parse_position, source_y_on_card,
         )
         from kallaway_style import graphic_stage_bottom
@@ -1146,16 +1159,15 @@ class KallawayTests(unittest.TestCase):
         self.assertNotIn("caption_y", timeline["shots"][2])
         # The one-frame spike at 1.4s does not become the line for the first shot.
         self.assertGreater(highest_crown_source_y(head, 0.0, 2.0), 300)
-        _x, pos_y = parse_position(high_shot["object_position"])
+        pop = timeline["source"]["popout"]
+        from kallaway_matte import placed_local_y
         for shot, begin, finish in ((low_shot, 0.0, 2.0), (high_shot, 2.0, 4.0)):
             source_y = highest_crown_source_y(head, begin, finish)
-            local = source_y_on_card(
-                source_y, 1080, 1920, card_w, card_h, pos_y, scale=float(shot["scale"]))
+            local = placed_local_y(source_y, head["head_top"], pop["pop_px"], pop["scale"])
             crown_canvas = layout["card_top"] * 1920 + local
             top = shot["caption_y"] / 100 * 1920
-            line = layout["caption_split_px"] * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
-            self.assertLessEqual(top + line, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX + 1.5)
-            self.assertGreater(top + line, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX - 8)
+            cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
+            self.assertAlmostEqual(top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
         stage = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
         self.assertLessEqual(stage, high_shot["caption_y"] / 100 * 1920)
 
@@ -1299,8 +1311,8 @@ class KallawayTests(unittest.TestCase):
                 if above_px.size:
                     widths.append(high[0] - above_px[-1])
         self.assertTrue(widths)
-        self.assertGreaterEqual(np.median(widths), 1)
-        self.assertLessEqual(np.median(widths), 3)
+        self.assertGreaterEqual(np.median(widths), 2)
+        self.assertLessEqual(np.median(widths), 4)
         edge = (person > 0.15) & (person < 0.7)
         self.assertTrue(edge.any())
         self.assertLess(straight[:, :, 1][edge].mean(), 100)
@@ -1338,6 +1350,69 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Chapter header", heard)
         self.assertTrue(cues[-1].get("mute"))
 
+    def test_a_second_phone_keeps_its_whoosh_near_20_per_minute(self):
+        from kallaway_pack import _limit_density
+        cues = []
+
+        def add(at, combo, label, kind, **extra):
+            cues.append({
+                "at": at, "sound_at": at, "combo": combo, "label": label,
+                "kind": kind, "under_db": 10, **extra,
+            })
+
+        # 23.5s reel. The hard cap is 7. The second phone is 2.1s after the
+        # first, so the whoosh thinner drops it, and the count-up already
+        # holds the last slot. It still comes back: 8 cues is about 20 a minute.
+        add(0.0, "2", "Cold Slam", "bass")
+        add(5.6, "42", "Money Shot", "pop")
+        add(6.9, "25", "Number Counter", "ding")
+        add(6.9, "25", "Number Counter", "ticking", under_db=13, budget_free=True)
+        add(10.4, "8", "Graphic entrance", "whoosh")
+        add(12.5, "8", "Graphic entrance", "whoosh")
+        add(16.4, "20", "Chart entrance", "pop")
+        add(18.0, "8", "Graphic entrance", "whoosh")
+        add(20.9, "8", "Graphic entrance", "whoosh")
+        add(23.5, "47", "Loop Close", "whoosh")
+        _limit_density(cues)
+        heard = [cue for cue in cues if not cue.get("mute") and not cue.get("budget_free")]
+        self.assertLessEqual(len(heard) * 60.0 / 23.5, 20.6)
+        self.assertIn("Number Counter", [cue["label"] for cue in heard])
+        phones = [
+            cue for cue in cues
+            if cue["label"] == "Graphic entrance" and cue["kind"] == "whoosh" and not cue.get("mute")
+        ]
+        self.assertGreaterEqual(len(phones), 3)
+        self.assertTrue(any(abs(cue["at"] - 12.5) < 0.01 for cue in phones))
+
+    def test_the_typing_line_keeps_its_slot_beside_the_count_up(self):
+        from kallaway_pack import _limit_density
+        cues = []
+
+        def add(at, combo, label, kind):
+            cues.append({
+                "at": at, "sound_at": at, "combo": combo, "label": label,
+                "kind": kind, "under_db": 10,
+            })
+
+        # 24.4s reel, hard cap 8. A later card must not replace the typing line
+        # or the count-up bell.
+        add(0.0, "2", "Cold Slam", "bass")
+        add(5.2, "8", "Graphic entrance", "whoosh")
+        add(7.0, "25", "Number Counter", "ding")
+        add(9.6, "21", "Typewriter Line", "click")
+        add(12.2, "8", "Graphic entrance", "whoosh")
+        add(17.7, "19", "Graphic entrance", "pop")
+        add(18.7, "19", "Graphic entrance", "pop")
+        add(19.8, "19", "Graphic entrance", "pop")
+        add(20.6, "19", "Graphic entrance", "pop")
+        add(21.4, "8", "Graphic entrance", "whoosh")
+        add(24.4, "47", "Loop Close", "whoosh")
+        _limit_density(cues)
+        heard = [cue["label"] for cue in cues if not cue.get("mute")]
+        self.assertIn("Typewriter Line", heard)
+        self.assertIn("Number Counter", heard)
+        self.assertLessEqual(len(heard) * 60.0 / 24.4, 20.6)
+
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
@@ -1348,11 +1423,9 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Bell 5", ding["file"])
         self.assertIn("Ui 30", ding["bed"]["file"])
         self.assertFalse(ding["bed"].get("mute"))
-        self.assertAlmostEqual(ding["bed"]["at"] + ding["bed"]["loop"], ding["at"], places=2)
-        held = stage_events("counter", 1.0, 2.4, {"from": 7, "value": 7})
-        held_ding = next(event for event in held if event["kind"] == "ding")
-        self.assertTrue(held_ding.get("mute"))
-        self.assertTrue(held_ding["bed"].get("mute"))
+        self.assertGreater(float(ding["bed"]["loop"]), 0.4)
+        self.assertTrue(ding["bed"].get("budget_free"))
+        self.assertAlmostEqual(float(ding["bed"]["at"]) + float(ding["bed"]["loop"]), float(ding["at"]), delta=0.02)
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
         self.assertIn("Swoosh Fast", pages[0].get("file", ""))
@@ -1397,12 +1470,20 @@ class KallawayTests(unittest.TestCase):
                 "label": "Word Pop", "under_db": 13, "lands_on": "extra",
             })
         flat = finish_sfx(cues, 30, {}, UNDER_DB)
-        beds = [cue for cue in flat if cue.get("label") == "Number Counter bed" and not cue.get("mute")]
-        bells = [cue for cue in flat if cue.get("label") == "Number Counter" and not cue.get("mute")]
+        beds = [
+            cue for cue in flat
+            if cue.get("label") == "Number Counter" and cue.get("loop") and not cue.get("mute")
+        ]
+        bells = [
+            cue for cue in flat
+            if cue.get("label") == "Number Counter" and cue.get("kind") == "ding"
+            and not cue.get("loop") and not cue.get("mute")
+        ]
         self.assertEqual(len(beds), 3)
         self.assertEqual(len(bells), 3)
         for bed in beds:
             self.assertIn("Ui 30", bed["file"])
+            self.assertTrue(bed.get("budget_free"))
             self.assertGreaterEqual(bed["loop"], 0.12)
             landing = min(bells, key=lambda bell: abs(bell["at"] - (bed["at"] + bed["loop"])))
             self.assertAlmostEqual(bed["at"] + bed["loop"], landing["at"], delta=0.02)
@@ -1489,6 +1570,146 @@ class KallawayTests(unittest.TestCase):
         self.assertIn('"256k"', audio)
         self.assertNotIn('"192k"', final)
         self.assertIn('"256k"', final)
+
+    def test_a_silent_tail_inside_a_word_is_cut_back(self):
+        rate = 16000
+        t = np.arange(int(rate * 2.2)) / rate
+        first = _voiced(t, 180, 0.4, (t >= 0.20) & (t < 0.55))
+        second = _voiced(t, 180, 0.4, (t >= 1.40) & (t < 1.70))
+        refined = refine_word_bounds(first + second, rate, [
+            {"word": "leverage.", "start": 0.18, "end": 1.20},
+            {"word": "One", "start": 1.38, "end": 1.72},
+        ])
+        self.assertLess(refined[0]["end"], 0.75)
+        ranges = keep_ranges(refined, 2.2, gap=0.04, sentence_gap=0.1)
+        pause = refined[1]["start"] - refined[0]["end"]
+        self.assertGreater(pause, 0.2)
+        kept = 0.0
+        for begin, end in ranges:
+            kept += max(0.0, min(end, refined[1]["start"]) - max(begin, refined[0]["end"]))
+        self.assertLessEqual(kept, 0.12)
+
+    def test_whoosh_follows_the_snapped_cut(self):
+        from kallaway_plan import reanchor_led_sfx
+        timeline = {
+            "shots": [{"start": 5.467}, {"start": 18.200}],
+            "sfx": [
+                {"kind": "whoosh", "at": 5.505, "sound_at": 5.372, "file": "Fast Whip.wav",
+                 "lands_on": "phone_frame"},
+                {"kind": "whoosh", "at": 18.229, "sound_at": 18.096, "file": "Quick Swing B.wav",
+                 "lands_on": "quote_card"},
+                {"kind": "pop", "at": 6.1, "sound_at": 6.1, "file": "Pop 3.mp3", "lands_on": "counter"},
+            ],
+        }
+        attacks = {"Fast Whip.wav": 0.12, "Quick Swing B.wav": 0.085}
+        reanchor_led_sfx(timeline, [5.505, 18.229], attack_of=lambda cue: attacks[cue["file"]])
+        whip, swing, pop = timeline["sfx"]
+        self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12, delta=0.002)
+        self.assertLess(whip["sound_at"], 5.467 - 3 / 30)
+        self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
+        self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
+
+    def test_full_face_caption_sits_between_the_beard_and_the_pin(self):
+        from kallaway_style import assign_full_captions, full_caption_top
+        theme, _, _, _ = load_theme("dark")
+        shots = [
+            {"id": "full", "layout": "full"},
+            {"id": "split", "layout": "split"},
+        ]
+        assign_full_captions(shots, {"full": 900.0}, theme["layout"])
+        top = shots[0]["caption_y"] / 100 * 1920
+        self.assertNotIn("caption_y", shots[1])
+        beard = 900.0 + 48
+        pin = 900.0 + 200
+        self.assertGreaterEqual(top, beard + 25 - 1)
+        self.assertGreaterEqual(pin - (top + 67 * 1.02), 30 - 1)
+        self.assertAlmostEqual(top, full_caption_top(beard, pin, 67), delta=1)
+
+    def test_full_face_baseline_is_per_take(self):
+        from kallaway_matte import frame_popout
+        theme, _, _, _ = load_theme("dark")
+        timeline = {
+            "output": {"width": 1080, "height": 1920},
+            "source": {},
+            "captions": {"full_baseline_px": 1190},
+            "shots": [
+                {"layout": "split", "start": 0.0, "end": 2.0, "scale": 1.0},
+                {"layout": "full", "start": 2.0, "end": 4.0},
+            ],
+        }
+        head = {
+            "width": 1080, "height": 1920, "head_top": 400.0, "head_height": 560.0,
+            "head_low": 410.0, "head_high": 390.0, "pop_fraction": 0.32,
+            "samples": 3, "hands": [],
+        }
+        frame_popout(timeline, head, theme)
+        top = timeline["shots"][1]["caption_y"] / 100 * 1920
+        cap = theme["layout"]["caption_full_px"] * (39.0 / 54.0)
+        self.assertAlmostEqual(top + cap, 1190, delta=2)
+
+    def test_output_frame_check_rejects_a_short_shot(self):
+        from check_kallaway_style import insert_spans_from_diffs, short_spans
+        self.assertEqual(short_spans([1.0, 5.0], 8.0), [])
+        found = short_spans([10.667, 10.700], 24.0)
+        self.assertTrue(found)
+        self.assertLess(found[0]["seconds"], 0.5)
+        # A cut that holds is one shot. A second cut one frame later is a stray.
+        hold = [2.0] * 8
+        hold[2] = 40.0
+        self.assertEqual(insert_spans_from_diffs(hold), [])
+        stray = [2.0] * 8
+        stray[2] = 30.0
+        stray[3] = 60.0
+        stray[4] = 3.0
+        spans = insert_spans_from_diffs(stray)
+        self.assertEqual(len(spans), 1)
+        self.assertLess(spans[0][1] - spans[0][0], 0.5)
+
+    def test_a_scene_cut_includes_its_first_frame(self):
+        from kallaway_beats import quantize_cut, snap_shot_edges, lengthen_closing_face
+        # 320/30 is 10.6666... Rounding that to 10.667 lands after the frame.
+        self.assertLessEqual(quantize_cut(320 / 30), 320 / 30)
+        self.assertGreater(quantize_cut(320 / 30), 319 / 30)
+        shots = [
+            {"layout": "full", "start": 9.036, "end": 10.700},
+            {"layout": "split", "start": 10.700, "end": 12.800},
+            {"layout": "punch_in", "start": 22.872, "end": 24.392},
+        ]
+        # The third shot is only here so the 10.700 edge is not the timeline end.
+        snapped = snap_shot_edges(shots, [10.666667, 10.700, 22.933333])
+        self.assertAlmostEqual(snapped[1]["start"], 10.666, places=3)
+        self.assertLessEqual(snapped[1]["start"], 320 / 30)
+        self.assertGreater(snapped[1]["start"], 319 / 30)
+        # A picture cut just after the planned punch moves the punch onto that frame.
+        closing = snap_shot_edges([
+            {"layout": "split", "start": 21.377, "end": 22.872},
+            {"layout": "punch_in", "start": 22.872, "end": 24.392},
+        ], [22.933333])
+        self.assertAlmostEqual(closing[1]["start"], quantize_cut(22.933333), places=3)
+        self.assertLessEqual(closing[1]["start"], 688 / 30)
+        held = lengthen_closing_face(
+            closing, minimum=1.52, scene_times=[22.933333], video_end=24.492)
+        self.assertGreaterEqual(held[1]["start"], quantize_cut(22.933333) - 1e-6)
+        self.assertGreaterEqual(held[1]["end"] - held[1]["start"], 1.50)
+        self.assertLessEqual(held[1]["end"], 24.392 + 0.10 + 1e-6)
+
+    def test_closing_hold_is_a_tenth_when_the_source_has_it(self):
+        from kallaway_audio import extend_closing_hold
+        held = extend_closing_hold([(1.0, 4.0), (4.2, 8.0)], 10.0, hold=0.10)
+        self.assertEqual(held[-1], (4.2, 8.1))
+        capped = extend_closing_hold([(0.0, 9.95)], 10.0, hold=0.10)
+        self.assertEqual(capped[-1], (0.0, 10.0))
+
+    def test_specks_under_200px_leave_the_matte(self):
+        from kallaway_matte import _drop_specks
+        mask = np.zeros((80, 80), dtype=bool)
+        mask[10:60, 20:70] = True
+        mask[2:6, 2:6] = True
+        mask[0:4, 70:78] = True
+        cleaned = _drop_specks(mask, min_area=200)
+        self.assertTrue(cleaned[30, 40])
+        self.assertFalse(cleaned[3, 3])
+        self.assertFalse(cleaned[1, 74])
 
 
 if __name__ == "__main__":

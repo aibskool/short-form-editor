@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 
 from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
-from kallaway_matte import caption_band_px, pop_geometry
+from kallaway_matte import caption_band_px, placed_pop_geometry, pop_geometry
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -54,15 +54,7 @@ def radius_css(value):
     return f"{number}px"
 
 
-CAPTION_LINE = 1.02
-
-
-def split_caption_top(crown_y, font_px, gap=35.0, line=CAPTION_LINE):
-    """Canvas y of a split caption whose bottom is `gap` px above the crown."""
-    return float(crown_y) - float(gap) - float(font_px) * line
-
-
-def full_caption_top(beard_bottom, pin_top, font_px, below_beard=25.0, above_pin=30.0, line=CAPTION_LINE):
+def full_caption_top(beard_bottom, pin_top, font_px, below_beard=25.0, above_pin=30.0, line=1.02):
     """Canvas y of a full-face caption between the beard and the lapel pin.
 
     Letter tops stay `below_beard` px under the beard. Descenders stay
@@ -205,7 +197,11 @@ def build_kallaway(spec, spec_path, project):
         if not 0 <= float(segment["start"]) < float(segment["end"]) <= source_duration + 0.05:
             raise ValueError("source segment lies outside the source video")
     duration = sum(float(segment["end"]) - float(segment["start"]) for segment in segments)
-    position = spec["source"].get("object_position", layout_spec["object_position"])
+    position = layout_spec.get("full_object_position") or spec["source"].get(
+        "object_position", layout_spec["object_position"])
+    popout = spec.get("source", {}).get("popout") or {}
+    placed = bool(popout.get("face_px") and popout.get("plate"))
+    plate_src = media(popout["plate"]) if placed else None
     gsap = HERE / "node_modules/gsap/dist/gsap.min.js"
     if not gsap.is_file():
         raise ValueError("run npm ci in production/editor before building")
@@ -254,17 +250,26 @@ def build_kallaway(spec, spec_path, project):
             if banned in shot:
                 raise ValueError(f"shot {index} uses {banned}; kallaway layouts are hard cuts")
         state = card_state(layout, shot.get("crop", "wide"), width, height, layout_spec, colors)
-        # Full and punch only zoom in. Split may scale down so the face is ~215 px.
-        requested = float(shot["scale"]) if shot.get("scale") else 1.0
-        if layout == "split" or requested > 1.0:
-            state["scale"] = requested
+        # A punch may crop tighter. Split scale is the placed face size, not a
+        # CSS shrink of the cover crop, so the camera transform stays at 1.
+        camera_scale = 1.0
+        if layout != "split" and shot.get("scale") and float(shot["scale"]) > 1.0:
+            camera_scale = float(shot["scale"])
+            state["scale"] = camera_scale
         payload = {key: state[key] for key in ("left", "top", "width", "height", "borderRadius", "boxShadow")}
         animations.append(f'tl.set("#speaker-card",{json.dumps(payload)},{start});')
         animations.append(
-            f'tl.set("#presenter-camera",{{scale:{state["scale"]},transformOrigin:"50% 30%"}},{start});')
-        if shot.get("object_position"):
-            animations.append(
-                f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
+            f'tl.set("#presenter-camera",{{scale:{camera_scale},transformOrigin:"50% 30%"}},{start});')
+        if layout == "split" and placed:
+            animations.append(f'tl.set(".aroll",{{autoAlpha:0}},{start});')
+            animations.append(f'tl.set("#speaker-plate",{{autoAlpha:1}},{start});')
+        else:
+            animations.append(f'tl.set(".aroll",{{autoAlpha:1}},{start});')
+            if plate_src:
+                animations.append(f'tl.set("#speaker-plate",{{autoAlpha:0}},{start});')
+            if shot.get("object_position"):
+                animations.append(
+                    f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
         if matte_src:
             # Same timestamp as #speaker-card. HyperFrames sets each [data-start] video
             # to visibility:visible, and a visible child paints through a hidden parent,
@@ -272,9 +277,14 @@ def build_kallaway(spec, spec_path, project):
             # autoAlpha 0 flattens the subtree (opacity) and the closed clip is the
             # second lock. Full and punch stay off; split matches the card on this frame.
             if layout == "split":
-                geo = pop_geometry(
-                    state, video_w, video_h,
-                    shot.get("object_position") or position, height)
+                if placed:
+                    geo = placed_pop_geometry(
+                        state, video_w, video_h,
+                        popout["head_top"], popout["pop_px"], popout["scale"])
+                else:
+                    geo = pop_geometry(
+                        state, video_w, video_h,
+                        shot.get("object_position") or position, height)
                 animations.append(
                     f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{start});')
                 animations.append(
@@ -321,9 +331,14 @@ def build_kallaway(spec, spec_path, project):
             f'borderRadius:{json.dumps(shown["borderRadius"])},boxShadow:{json.dumps(shown["boxShadow"])}}},'
             f'{reveal:.3f});')
         if matte_src and shots[0].get("layout", "split") == "split":
-            geo = pop_geometry(
-                shown, video_w, video_h,
-                shots[0].get("object_position") or position, height)
+            if placed:
+                geo = placed_pop_geometry(
+                    shown, video_w, video_h,
+                    popout["head_top"], popout["pop_px"], popout["scale"])
+            else:
+                geo = pop_geometry(
+                    shown, video_w, video_h,
+                    shots[0].get("object_position") or position, height)
             animations.append(
                 f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{reveal:.3f});')
             animations.append(
@@ -355,13 +370,8 @@ def build_kallaway(spec, spec_path, project):
     word_index = 0
     for index, group in enumerate(groups):
         start = float(group[0]["start"])
-        if index + 1 == len(groups):
-            end = min(duration, max(float(group[-1]["end"]), start + 0.08))
-        else:
-            # Stop on the next word. A minimum hold must not draw two lines in one frame.
-            end = min(duration, float(groups[index + 1][0]["start"]))
-            if end < start + 0.04:
-                end = start + 0.04 if start + 0.04 <= float(groups[index + 1][0]["start"]) else end
+        end = float(group[-1]["end"]) if index + 1 == len(groups) else float(groups[index + 1][0]["start"])
+        end = min(duration, max(end, start + 0.08))
         spans = []
         for word in group:
             if word_index < len(style_at):
@@ -372,7 +382,7 @@ def build_kallaway(spec, spec_path, project):
             spans.append(
                 f'<span class="cap {style}">{escape(_caption_text(word, captions.get("omit_terminal_punctuation", True), keep_case))}</span>')
         parts.append(
-            f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.0, end - start):.4f}" '
+            f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.04, end-start):.4f}" '
             f'data-track-index="5"><div id="capbox-{index}" class="caption-text">{" ".join(spans)}</div></div>')
         animations.append(
             f'tl.fromTo("#capbox-{index}",{{scale:0.9}},{{scale:1,duration:{3.0 / float(fps):.3f},ease:"power2.out"}},{start:.4f});')
@@ -399,8 +409,7 @@ def build_kallaway(spec, spec_path, project):
                     css = "payoff box"
                 else:
                     css = "payoff"
-                token_id = f' id="hdr-{index}-key"' if payoff_style == "box" else ""
-                return f'<span{token_id} class="{css}">{escape(token)}</span>'
+                return f'<span class="{css}">{escape(token)}</span>'
             return escape(token)
 
         if lines:
@@ -418,10 +427,6 @@ def build_kallaway(spec, spec_path, project):
         parts.append(
             f'<div id="hdr-{index}" class="header clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
             f'data-track-index="4">{inner}</div>')
-        if payoff_style == "box":
-            animations.append(
-                f'tl.fromTo("#hdr-{index}-key",{{scale:0}},{{scale:1,duration:0.22,ease:"back.out(2.2)",'
-                f'transformOrigin:"50% 60%"}},{start:.3f});')
 
     mono_family = theme["fonts"]["mono"]["family"]
     for index, notice in enumerate(spec.get("notices") or []):
@@ -453,16 +458,16 @@ def build_kallaway(spec, spec_path, project):
             if sound.get("file"):
                 from kallaway_audio import write_wav
                 from kallaway_pack import render
-                samples, placed, _info = render(sound)
-                if placed < 0:
-                    drop = int(round(-placed * 48000))
+                samples, cue_at, _info = render(sound)
+                if cue_at < 0:
+                    drop = int(round(-cue_at * 48000))
                     samples = samples[drop:]
-                    placed = 0.0
+                    cue_at = 0.0
                 dest = library / f"cue-{index}.wav"
                 write_wav(dest, samples)
                 path = media(str(dest))
                 length = max(0.04, len(samples) / 48000.0)
-                start_at = placed
+                start_at = cue_at
             elif sound.get("kind"):
                 variants = sfx_variants(sound["kind"], library)
                 if not variants:
@@ -512,17 +517,22 @@ def build_kallaway(spec, spec_path, project):
     title_px = layout_spec["title_font_px"] * scale
     mono_px = layout_spec["mono_font_px"] * scale
     card_radius_css = radius_css(first["borderRadius"])
+    split_open = placed and shots and shots[0].get("layout") == "split"
+    aroll_open = "opacity:0;visibility:hidden;" if split_open else ""
+    plate_open = "" if split_open else "opacity:0;visibility:hidden;"
     css = f'''{font_faces(theme, media)}
     *{{box-sizing:border-box}} body{{margin:0;background:{colors['background']}}}
     #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;{background}}}
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{card_radius_css};box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
-    #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
-    .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
+    #speaker-plate{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:0;{plate_open}}}
+    #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%;z-index:1}}
+    .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position};{aroll_open}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
     #pop-camera{{position:absolute}}
+    #pop-camera.placed-edge{{mask-image:linear-gradient(to right,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);-webkit-mask-image:linear-gradient(to right,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
-    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:12;pointer-events:none;font-size:{caption_px:.1f}px}}
+    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none;font-size:{caption_px:.1f}px}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
     .caption-text{{display:inline-block;white-space:nowrap;font-family:'{caption}',sans-serif;font-weight:900;font-size:1em;line-height:1.02;letter-spacing:-0.04em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .cap.marker{{font-family:'{display}',cursive;font-weight:400;font-size:1.12em;letter-spacing:0}}
@@ -542,19 +552,6 @@ def build_kallaway(spec, spec_path, project):
     .thumb{{position:relative;border-radius:{16*scale:.0f}px;overflow:hidden;transform:scale(0.8);display:flex;flex-direction:column;justify-content:flex-end;padding:{12*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{22*scale:.0f}px}}
     .thumb .mono{{position:absolute;top:{10*scale:.0f}px;left:{10*scale:.0f}px;color:{colors['muted']};font-size:{mono_px*0.8:.1f}px}}
     .thumb i{{position:absolute;right:{12*scale:.0f}px;bottom:{12*scale:.0f}px;color:{colors['muted']};font-style:normal;font-size:{16*scale:.0f}px}}
-    .thumb em{{display:block;font-style:normal;font-weight:650;font-size:{16*scale:.0f}px;line-height:1.2;color:{colors['muted']};margin-top:4px}}
-    .face{{position:absolute;left:8%;right:8%;top:16%;height:46%;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}}
-    .face.photo{{background:{colors['contrast']};border:1px solid {colors['border']};flex-direction:column;gap:4px;color:{colors['muted']};font-size:{14*scale:.0f}px}}
-    .face.contrast{{gap:6px}}
-    .face.contrast i{{position:static;width:42%;height:70%;border-radius:6px;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800}}
-    .face.button b{{padding:8px 18px;border-radius:999px;color:{colors['on_accent']};font-size:{18*scale:.0f}px}}
-    .face.lines{{flex-direction:column;gap:6px;align-items:stretch;padding:8px}}
-    .face.lines i{{position:static;height:8px;border-radius:4px;background:{colors['border']}}}
-    .face.lines i:first-child{{width:80%;background:{colors['text']}}}
-    .face.form i{{position:static;height:28%;width:80%;border-radius:6px;border:2px solid {colors['border']}}}
-    .face.focus{{border:3px solid {colors['accent']};box-shadow:0 0 0 4px {colors['accent']}33}}
-    .face.ok{{background:{colors['accent']}22;color:{colors['accent']};font-weight:800}}
-    .scan-beam{{position:absolute;left:8%;width:84%;height:3px;top:0;background:{colors['accent']};box-shadow:0 0 16px {colors['accent']};z-index:6;pointer-events:none}}
     .phone{{width:{430*scale:.0f}px;height:92%;margin:0 auto;background:{colors['contrast']};border-radius:{36*scale:.0f}px;padding:{12*scale:.0f}px;box-shadow:{colors['card_shadow']},0 0 48px {colors['accent']}55}}
     .phone-screen{{position:relative;height:100%;border-radius:{26*scale:.0f}px;overflow:hidden;background:{colors['surface']};border:1px solid {colors['border']}}}
     .phone-screen img,.broll-card img,.shotcard img,.phone-screen video,.broll-card video,.shotcard video{{width:100%;height:100%;object-fit:cover}}
@@ -582,7 +579,6 @@ def build_kallaway(spec, spec_path, project):
     .counter{{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}}
     .counter.dense{{justify-content:space-between;padding:1% 0 0}}
     .count-num{{font-family:'{caption}',sans-serif;font-weight:900;font-size:{210*scale:.0f}px;line-height:0.9;color:{colors['accent']};letter-spacing:-0.04em;text-shadow:0 0 36px {colors['accent']}88}}
-    .count-num.bad{{color:{colors['warning_text']};text-shadow:0 0 36px {colors['warning']}66}}
     .counter.dense .count-num{{font-size:{148*scale:.0f}px}}
     .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:8px}}
     .counter.range{{position:relative;justify-content:flex-start;gap:{10*scale:.0f}px;padding-top:1%}}
@@ -612,24 +608,10 @@ def build_kallaway(spec, spec_path, project):
     .page{{height:100%;background:{colors['surface']};border:1px solid {colors['border']};border-radius:12px;box-shadow:{colors['card_shadow']};padding:8% 8%;color:{colors['text']}}}
     .page-rule{{height:6px;width:100%;background:{colors['accent_strong']};margin-bottom:12px}}
     .page .mono{{color:{colors['muted']};font-size:{mono_px*0.85:.1f}px}}
-    .page-title{{position:relative;font-family:'{display}',cursive;font-size:{36*scale:.0f}px;line-height:1.05;margin-top:10px}}
-    .page-copy{{margin-top:12px;font-family:'{caption}',sans-serif;font-weight:700;font-size:{22*scale:.0f}px;line-height:1.28;color:{colors['text']}}}
-    .page-copy span{{display:block;margin-top:8px}}
-    .page-sweep{{position:absolute;left:0;right:0;bottom:0.05em;height:0.42em;background:{_rgba(colors['accent'], 0.45)};transform:scaleX(0);transform-origin:0% 50%;z-index:-1}}
+    .page-title{{font-family:'{display}',cursive;font-size:{36*scale:.0f}px;line-height:1.05;margin-top:10px}}
     .fan.stack .page-rot{{width:74%;height:90%;top:4%}}
     .fan.stack .page-title{{font-size:{56*scale:.0f}px}}
     .fan-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none;border-radius:12px}}
-    .hero-board{{height:100%;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:2% 4%;border-radius:28px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid {colors['border']};box-shadow:{colors['card_shadow']}}}
-    .hero-kicker{{color:{colors['accent']};letter-spacing:0.14em}}
-    .hero-num{{font-family:'{display}',cursive;font-size:{168*scale:.0f}px;line-height:0.85;color:{colors['warning_text']}}}
-    .hero-label{{color:{colors['muted']};letter-spacing:0.08em}}
-    .hero-beam{{height:4px;width:100%;background:{colors['accent']};transform:scaleX(0);transform-origin:0% 50%;box-shadow:0 0 12px {colors['accent']}}}
-    .hero-row{{display:flex;gap:{10*scale:.0f}px}}
-    .hero-cell{{flex:1;position:relative;min-height:{140*scale:.0f}px;border-radius:16px;background:{colors['contrast']};border:1px solid {colors['border']};padding:8px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{16*scale:.0f}px}}
-    .hero-cell .face{{top:8px;height:58px}}
-    .hero-cell b{{position:absolute;left:8px;right:8px;bottom:22px}}
-    .hero-cell em{{position:absolute;left:8px;right:8px;bottom:6px;font-style:normal;color:{colors['muted']};font-size:{12*scale:.0f}px}}
-    .quote-under{{position:absolute;left:8%;right:8%;bottom:0.08em;height:0.18em;background:{_rgba(colors['accent'], 0.55)};transform:scaleX(0);transform-origin:0% 50%}}
     .window{{height:86%;border-radius:{18*scale:.0f}px;overflow:hidden;border:1px solid {colors['border']};background:{colors['contrast']};box-shadow:{colors['card_shadow']}}}
     .window.terminal{{height:100%;box-shadow:0 28px 64px rgba(0,0,0,0.5), 0 0 42px {colors['accent']}55, inset 0 1px 0 rgba(255,255,255,0.12)}}
     .window.terminal .win-body{{font-size:{36*scale:.0f}px;line-height:1.28}}
@@ -718,21 +700,31 @@ def build_kallaway(spec, spec_path, project):
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     cover = "visibility:hidden;opacity:0;" if spec.get("speaker_reveal") else ""
-    speaker = f'<div id="speaker-card" style="{cover}"><div id="presenter-camera" data-layout-allow-overflow>{"".join(part for part in parts if part.startswith("<video"))}</div></div>'
+    plate_html = f'<img id="speaker-plate" src="{plate_src}" alt="">' if plate_src else ""
+    speaker = (
+        f'<div id="speaker-card" style="{cover}">{plate_html}'
+        f'<div id="presenter-camera" data-layout-allow-overflow>'
+        f'{"".join(part for part in parts if part.startswith("<video"))}</div></div>')
     if pop_parts:
         opening = shots[0]
         if opening.get("layout") == "split" and not spec.get("speaker_reveal"):
-            geo = pop_geometry(
-                first, video_w, video_h, opening.get("object_position") or position, height)
+            if placed:
+                geo = placed_pop_geometry(
+                    first, video_w, video_h,
+                    popout["head_top"], popout["pop_px"], popout["scale"])
+            else:
+                geo = pop_geometry(
+                    first, video_w, video_h, opening.get("object_position") or position, height)
             pop_style = f'style="opacity:1;visibility:visible;clip-path:{geo["clipPath"]}"'
             cam_style = (
                 f'style="left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;height:{geo["height"]}px"')
         else:
             pop_style = 'style="opacity:0;visibility:hidden;clip-path:inset(100% 0px 0px 0px)"'
             cam_style = ""
+        edge = ' class="placed-edge"' if placed else ""
         speaker += (
             f'<div id="speaker-pop" data-layout-allow-overflow {pop_style}>'
-            f'<div id="pop-camera" {cam_style}>{"".join(pop_parts)}</div></div>')
+            f'<div id="pop-camera"{edge} {cam_style}>{"".join(pop_parts)}</div></div>')
     rest = [part for part in parts if not part.startswith("<video")]
     slide = (
         "function kallawaySlide(t){var x1=0.25,y1=1,x2=0.5,y2=1,cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;"

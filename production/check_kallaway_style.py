@@ -40,6 +40,165 @@ def _colors_in(html):
     return {f"#{match.group(1).lower()}" for match in re.finditer(r"#([0-9A-Fa-f]{6})(?![0-9A-Fa-fA-Z_])", html)}
 
 
+def scene_cuts(video, threshold=0.30):
+    """Hard-cut times in a rendered file. Ordinary caption motion stays under this."""
+    import subprocess
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(video),
+         "-filter:v", f"select='gt(scene,{float(threshold):.3f})',showinfo", "-f", "null", "-"],
+        capture_output=True, text=True)
+    times = []
+    for line in result.stderr.splitlines():
+        if "pts_time:" not in line:
+            continue
+        token = line.split("pts_time:", 1)[1].split()[0]
+        try:
+            times.append(float(token))
+        except ValueError:
+            continue
+    return times
+
+
+def short_spans(cuts, duration, minimum=0.5, fps=30):
+    """Spans between output scene cuts that are under ``minimum`` seconds."""
+    tolerance = 0.5 / float(fps or 30)
+    edges = [0.0]
+    for moment in sorted(float(item) for item in cuts or []):
+        if moment <= edges[-1] + tolerance or moment >= float(duration) - tolerance:
+            continue
+        edges.append(moment)
+    edges.append(float(duration))
+    found = []
+    for begin, end in zip(edges, edges[1:]):
+        if end - begin < float(minimum) - tolerance:
+            found.append({"start": round(begin, 3), "end": round(end, 3), "seconds": round(end - begin, 3)})
+    return found
+
+
+def _probe_duration(video):
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
+        capture_output=True, text=True)
+    return float(probe.stdout.strip() or 0)
+
+
+def insert_spans_from_diffs(diffs, fps=30, prev_min=20.0, next_min=25.0, hold_max=10.0):
+    """Spans where a cut in and a cut out land within two frames, then the picture holds.
+
+    ``diffs[i]`` is the mean absolute difference between frame i and frame i+1.
+    A head turn differs from both neighbors and keeps moving. A stray take is a
+    second cut one or two frames later, and the frame after that cut holds.
+    """
+    step = 1.0 / float(fps)
+    spans = []
+    count = len(diffs) + 1
+    index = 1
+    while index < count - 2:
+        entered = diffs[index - 1] >= prev_min
+        left = diffs[index] >= next_min and diffs[index + 1] < hold_max
+        if entered and left:
+            spans.append((round(index * step, 4), round((index + 1) * step, 4)))
+            index += 2
+            continue
+        two = (
+            index < count - 3
+            and entered
+            and diffs[index] < hold_max
+            and diffs[index + 1] >= next_min
+            and diffs[index + 2] < hold_max
+        )
+        if two:
+            spans.append((round(index * step, 4), round((index + 2) * step, 4)))
+            index += 3
+            continue
+        index += 1
+    return spans
+
+
+def find_insert_spans(video, prev_min=20.0, next_min=25.0, hold_max=10.0, fps=30):
+    """One- and two-frame takes measured on decoded output frames."""
+    import subprocess
+    import numpy as np
+    duration = _probe_duration(video)
+    if duration <= 0:
+        return []
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(video),
+         "-vf", "fps=30,scale=180:320", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+        stderr=subprocess.DEVNULL)
+    frame = 180 * 320
+    count = len(raw) // frame
+    if count < 4:
+        return []
+    frames = [np.frombuffer(raw[i * frame:(i + 1) * frame], dtype=np.uint8) for i in range(count)]
+    diffs = [
+        float(np.mean(np.abs(frames[index + 1].astype(np.float32) - frames[index].astype(np.float32))))
+        for index in range(count - 1)
+    ]
+    return insert_spans_from_diffs(diffs, fps=fps, prev_min=prev_min, next_min=next_min, hold_max=hold_max)
+
+
+def shift_moment(moment, spans):
+    """Move a timestamp left by the spans cut out of the picture before it."""
+    moment = float(moment)
+    lost = 0.0
+    for start, end in spans:
+        if end <= moment:
+            lost += end - start
+        elif start < moment:
+            return round(start - lost, 4)
+        else:
+            break
+    return round(moment - lost, 4)
+
+
+def punch_tight_spans(ranges, spans):
+    """Drop tightened-clock spans from the source ranges that were concatenated to build them."""
+    spans = sorted((float(start), float(end)) for start, end in spans)
+    out = []
+    cursor = 0.0
+    index = 0
+    for begin, end in ranges:
+        begin, end = float(begin), float(end)
+        length = end - begin
+        local = []
+        while index < len(spans) and spans[index][0] < cursor + length - 1e-4:
+            start, stop = spans[index]
+            if stop <= cursor + 1e-4:
+                index += 1
+                continue
+            local_start = max(0.0, start - cursor)
+            local_end = min(length, stop - cursor)
+            if local_end > local_start + 1e-4:
+                local.append((local_start, local_end))
+            if stop <= cursor + length + 1e-4:
+                index += 1
+            else:
+                break
+        pos = 0.0
+        for local_start, local_end in local:
+            if local_start > pos + 0.005:
+                out.append((round(begin + pos, 4), round(begin + local_start, 4)))
+            pos = local_end
+        if length > pos + 0.005:
+            out.append((round(begin + pos, 4), round(end, 4)))
+        cursor += length
+    return out
+
+
+def output_short_shots(video, minimum=0.5, threshold=0.30):
+    """Fail a rendered shot under 0.5 s. This reads the output frames, not the plan."""
+    duration = _probe_duration(video)
+    classic = short_spans(scene_cuts(video, threshold), duration, minimum=minimum)
+    inserts = [
+        {"start": start, "end": end, "seconds": round(end - start, 3), "kind": "insert"}
+        for start, end in find_insert_spans(video)
+        if end - start < float(minimum)
+    ]
+    return classic + inserts
+
+
 def check(timeline_path, words_path=None, project=None):
     errors, warnings = [], []
     path = Path(timeline_path)
@@ -279,28 +438,38 @@ def check(timeline_path, words_path=None, project=None):
     for key in ("wide_scale", "tight_scale", "full_scale", "punch_scale"):
         if float(layout.get(key, 1)) < 0.999:
             errors.append(f"fill: {key} is {layout.get(key)}; the face must fill the card or the frame")
+    popout = (data.get("source") or {}).get("popout") or {}
+    placed = bool(popout.get("face_px"))
     for shot in shots:
         scale = shot.get("scale")
-        if scale is None:
+        if scale is None or float(scale) >= 0.999:
             continue
-        if shot.get("layout") == "split":
-            if float(scale) < 0.30:
-                errors.append(
-                    f"fill: {shot.get('id')} split scale {scale} shrinks the face below the card")
+        if shot.get("layout") == "split" and placed:
             continue
-        if float(scale) < 0.999:
-            errors.append(
-                f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
-                "full bleed uses scale 1")
+        errors.append(
+            f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
+            "full bleed stays at scale 1, and a split shrink needs the foliage plate")
+    if placed:
+        face_px = float(popout["face_px"])
+        pop_px = float(popout.get("pop_px") or popout.get("median_above_px") or 0)
+        if face_px > 230.5:
+            errors.append(f"face: split face is {face_px:.0f}px; the target is 200-230")
+        if pop_px < 49 or pop_px > 101:
+            errors.append(f"face: crown pop is {pop_px:.0f}px; the band is 50-100")
     from kallaway_motifs import hero_phone_box
     stage_w = float(layout["stage_width"]) * frame_w
     stage_h = float(layout["stage_height"]) * frame_h
     phone = hero_phone_box(stage_w, stage_h)
-    if phone["top"] < -1:
+    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h - 40:
         errors.append(
-            f"phone: the mock starts at {phone['top']} px and is cropped at the top of the panel")
-    if phone["top"] + phone["height"] > stage_h - 40:
-        errors.append("phone: the mock runs out of the panel")
+            f"phone: the handset is cropped (top {phone['top']}, height {phone['height']}, stage {stage_h:.0f})")
+    if phone["width"] > stage_w + 1:
+        errors.append(f"phone: the handset is wider than the stage ({phone['width']} > {stage_w:.0f})")
+    if phone["width"] < stage_w * 0.65 - 1:
+        errors.append(
+            f"phone: the handset is {phone['width']}px, under 65% of the {stage_w:.0f}px stage")
+    if abs((phone["left"] + phone["width"] / 2.0) - stage_w / 2.0) > 2:
+        errors.append(f"phone: the handset is off center (left {phone['left']})")
     style_at = (data.get("captions") or {}).get("style_at") or []
     if words and style_at and len(style_at) == len(words):
         from kallaway_beats import _sentence_spans

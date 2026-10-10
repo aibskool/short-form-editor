@@ -308,42 +308,27 @@ def decorate_events(motif, events, stage, start, end):
             event["mute"] = True
             event["combo"] = "25"
             event["label"] = "Counter tick"
-        if ticks:
-            ticks[0]["mute"] = False
-            ticks[0]["kind"] = "pop"
-            ticks[0]["combo"] = "19"
-            ticks[0]["label"] = "Graphic entrance"
-        origin = int(stage.get("from") or 0)
-        try:
-            target = int(stage.get("value", origin))
-        except (TypeError, ValueError):
-            target = origin
-        rolls = origin != target
+        money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
         for event in events:
             if event["kind"] != "ding":
                 continue
+            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
+            roll = max(0.45, float(event["at"]) - start_at)
             event.update({
-                "file": BELL_5, "combo": "25", "label": "Number Counter",
+                "file": KA_CHING if money else BELL_5,
+                "combo": "25", "label": "Number Counter",
                 "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
             })
-            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
-            span = max(0.12, round(float(event["at"]) - start_at, 3))
-            # Ui 30 loops under the whole roll. Bell 5 hits as the final digit lands.
+            event.pop("mute", None)
+            event.pop("mute_reason", None)
+            # The loop is the whole roll. It shares the bell's one budget slot.
             event["bed"] = {
-                "kind": "ticking", "at": round(start_at, 3),
-                "sound_at": round(start_at, 3),
-                "file": UI_30, "combo": "25", "label": "Number Counter bed",
-                "under_db": 13.0, "loop": span, "fade_frames": 2,
-                "fixed_file": True, "fixed_lead": True, "band": "bed",
+                "kind": "ticking", "at": start_at,
+                "file": UI_30, "combo": "25", "label": "Number Counter",
+                "under_db": 13.0, "loop": round(roll, 3), "fixed_file": True, "band": "bed",
+                "budget_free": True,
             }
-            if not rolls:
-                event["mute"] = True
-                event["mute_reason"] = "no visual"
-                event["bed"]["mute"] = True
-                event["bed"]["mute_reason"] = "no visual"
-            else:
-                event["lands_on"] = event.get("lands_on") or "counter lock"
     if motif == "bar_chart" and stage.get("reveal") == "slice":
         riser = next(event for event in events if event["kind"] == "riser")
         riser.update({
@@ -649,13 +634,14 @@ def _density_rank(cue):
         return 0
     if combo == "42":
         return 1
-    if cue.get("label") in {"Chapter header", "Chart entrance", "Graphic entrance"}:
+    # The count-up bell and the typing line are the sound of those cards.
+    # They sort with the entrances so a later graphic does not take their slot.
+    if cue.get("label") in {
+        "Chapter header", "Chart entrance", "Graphic entrance",
+        "Typewriter Line", "Number Counter",
+    } or combo == "21":
         return 2
-    # The terminal's typing line is the sound for that card. It stays ahead of
-    # a strike buzzer and a highlight pop when the reel is on the density line.
-    if cue.get("label") == "Typewriter Line" or combo == "21":
-        return 3
-    if combo == "8" or cue.get("label") == "Number Counter":
+    if combo == "8":
         return 3
     if combo in {"23", "25", "36"}:
         return 4
@@ -686,30 +672,40 @@ def _mute_whoosh_beside_card(flat):
             cue["mute_reason"] = "stacked"
 
 
-def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None):
+def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None, duration=None):
     """Put a sound back on an entrance the density cap silenced.
 
     Only a cue at least ``gap`` seconds from anything still playing is restored,
     and only a few of them, so stacked pops stay muted. Restores stop at the
-    per-minute budget.
+    per-minute budget. One more isolated entrance is allowed when the reel is
+    still about 20 cues a minute (20.6), which is how a second phone keeps a
+    whoosh after the count-up has taken the last hard slot.
     """
     labels = {"Graphic entrance", "Chart entrance", "Chapter header"}
     audible = [
         index for index, cue in enumerate(flat)
-        if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
     ]
     muted = [
         index for index, cue in enumerate(flat)
         if cue.get("mute") and cue.get("label") in labels and float(cue.get("under_db") or 0) < 20
     ]
+    if duration is None and flat:
+        duration = max(float(cue["at"]) for cue in flat)
     restored = 0
     for index in sorted(muted, key=lambda item: float(flat[item].get("sound_at", flat[item]["at"]))):
-        if restored >= extra or (budget is not None and len(audible) >= budget):
+        if restored >= extra:
             break
+        if budget is not None and len(audible) >= budget:
+            rate = (len(audible) + 1) * 60.0 / float(duration) if duration else 99.0
+            if len(audible) >= budget + 1 or rate > 20.6:
+                break
         moment = float(flat[index].get("sound_at", flat[index]["at"]))
         if any(abs(float(flat[other].get("sound_at", flat[other]["at"])) - moment) < gap for other in audible):
             continue
         flat[index]["mute"] = False
+        flat[index].pop("mute_reason", None)
         audible.append(index)
         restored += 1
 
@@ -780,7 +776,8 @@ def _limit_density(flat):
     _thin_close_whooshes(flat, budget)
     audible = [
         index for index, cue in enumerate(flat)
-        if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
     ]
     if len(audible) <= budget:
         return
@@ -833,7 +830,7 @@ def _limit_density(flat):
     for index in audible:
         if index not in keep_ids:
             flat[index]["mute"] = True
-    _restore_isolated_entrances(flat, budget=budget)
+    _restore_isolated_entrances(flat, budget=budget, duration=duration)
     beds = [
         index for index, cue in enumerate(flat)
         if not cue.get("mute") and float(cue.get("under_db") or 0) >= 20

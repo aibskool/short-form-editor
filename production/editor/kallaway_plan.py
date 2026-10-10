@@ -7,7 +7,9 @@ source video path, and the same motif is not used on two split shots in a row.
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from kallaway_motifs import MOTIFS, stage_events, stage_windows
@@ -271,6 +273,24 @@ def word_gaps(words, minimum=0.02):
     return gaps
 
 
+def _caption_block(words, styles, stage_plan=None, style_at=None, keep_case=None):
+    """Caption contract. A stage plan can set the full-face baseline for this take."""
+    block = {
+        "max_words": 1,
+        "uppercase": False,
+        "word_styles": styles,
+        "phrases": caption_phrases(words, styles),
+        "omit_terminal_punctuation": True,
+    }
+    if style_at is not None:
+        block["style_at"] = style_at
+    if keep_case is not None:
+        block["keep_case"] = keep_case
+    if isinstance(stage_plan, dict) and stage_plan.get("caption_full_baseline_px") is not None:
+        block["full_baseline_px"] = float(stage_plan["caption_full_baseline_px"])
+    return block
+
+
 def gap_at(moment, gaps):
     """The word before ``moment`` when that moment sits strictly inside its pause."""
     moment = float(moment)
@@ -311,6 +331,102 @@ def anchor_sfx(cues, words, fps=30):
         cue["mute"] = True
         cue["mute_reason"] = "gap"
     return cues
+
+
+def whoosh_attack_seconds(path, cap=0.16):
+    """Seconds from the file start to the sustained whoosh, ignoring a short blip.
+
+    The hit has to lead the cut. Silence, and a one-frame tick at the head of
+    the sample, do not.
+    """
+    path = Path(path) if path else None
+    if path is None or not path.is_file():
+        return 0.0
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+        stderr=subprocess.DEVNULL)
+    import numpy as np
+    samples = np.frombuffer(raw, dtype=np.float32)
+    if samples.size < 160:
+        return 0.0
+    hop = 160  # 10 ms
+    levels = []
+    for origin in range(0, min(len(samples), 16000), hop):
+        chunk = samples[origin:origin + hop]
+        rms = float(np.sqrt(np.mean(np.square(chunk)) + 1e-12))
+        levels.append(20.0 * np.log10(rms))
+    # Absolute floor. A relative-to-peak floor waits for the crack and the
+    # whoosh then lands after the cut. -28 dB is the swell a listener marks.
+    floor = -28.0
+    run = 0
+    start = None
+    for index, level in enumerate(levels):
+        if level >= floor:
+            if start is None:
+                start = index
+            run += 1
+            if run >= 4 and start is not None and start >= 2:
+                return round(min(cap, start * 0.01), 3)
+        else:
+            # A blip under 40 ms is not the whoosh.
+            if run < 4:
+                start = None
+            run = 0
+    if start is not None and run >= 4:
+        return round(min(cap, start * 0.01), 3)
+    return 0.0
+
+
+def _cue_attack(cue):
+    name = str(cue.get("file") or "")
+    if not name:
+        return 0.0
+    path = Path(name)
+    if not path.is_file():
+        root = os.environ.get("SFX_PACK_DIR") or ""
+        path = Path(root) / name if root else path
+    try:
+        return whoosh_attack_seconds(path)
+    except (OSError, subprocess.CalledProcessError):
+        return 0.0
+
+
+def reanchor_led_sfx(timeline, original_starts, fps=30, attack_of=None):
+    """Put a whoosh on the snapped picture, leading that cut by about 4 frames.
+
+    Planning runs before the scene snap, so a whoosh aimed at the old edge
+    lands on or after the picture. ``attack_of`` overrides the file measurement
+    in tests. A cue whose audible onset already leads by 3 frames is left put.
+    """
+    lead = 4.0 / float(fps or 30)
+    minimum = 3.0 / float(fps or 30)
+    shots = timeline.get("shots") or []
+    starts = [float(shot["start"]) for shot in shots]
+    originals = [float(moment) for moment in (original_starts or [])]
+    if not originals or not starts:
+        return timeline
+    for cue in timeline.get("sfx") or []:
+        if cue.get("mute") or cue.get("fixed_lead"):
+            continue
+        kind = cue.get("kind")
+        if kind not in {"whoosh", "riser"} and cue.get("rotate") != "whoosh":
+            continue
+        visual = float(cue.get("at", cue.get("sound_at", 0)))
+        index = min(range(len(originals)), key=lambda item: abs(originals[item] - visual))
+        if abs(originals[index] - visual) > 0.08:
+            continue
+        if index >= len(starts):
+            continue
+        new_visual = starts[index]
+        attack = float(attack_of(cue) if attack_of else _cue_attack(cue))
+        current = float(cue.get("sound_at", visual))
+        if new_visual - (current + attack) >= minimum - 1e-3:
+            cue["at"] = round(new_visual, 3)
+            continue
+        cue["at"] = round(new_visual, 3)
+        cue["sound_at"] = round(max(0.0, new_visual - lead - attack), 3)
+    timeline["sfx_log"] = sfx_placement_rows(timeline.get("sfx"))
+    return timeline
 
 
 def sfx_placement_rows(cues):
@@ -625,10 +741,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
         "headers": headers,
         "shots": shots,
         "stage_slots": stage_slots,
-        "captions": {
-            "max_words": 1, "uppercase": False, "word_styles": styles,
-            "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
-        },
+        "captions": _caption_block(ordered, styles, stage_plan),
         "sfx": sfx,
         "sfx_log": sfx_placement_rows(sfx),
     }
