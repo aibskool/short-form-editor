@@ -482,4 +482,5 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },
         "sfx": sfx,
+        "speaker_reveal": float(stage_plan["speaker_reveal"]) if stage_plan.get("speaker_reveal") else None,
     }
