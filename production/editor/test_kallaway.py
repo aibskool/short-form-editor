@@ -1326,6 +1326,28 @@ class KallawayTests(unittest.TestCase):
         again = feather_boundary_alpha(hand, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
         self.assertTrue(np.array_equal(again, faded_hand))
 
+    def test_an_arm_on_the_torso_row_stays_opaque_past_the_hand_ramp(self):
+        from kallaway_matte import feather_boundary_alpha
+        alpha = np.zeros((80, 200), np.uint8)
+        alpha[40:, :] = 255
+        rgb = np.zeros((80, 200, 3), np.uint8)
+        rgb[40:, :] = (40, 50, 80)
+        rgb[50:70, 0:40] = (210, 150, 130)
+        out = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5, rgb=rgb)
+        # The last hand-ramp columns of a crossing arm may fade.
+        self.assertLess(int(out[60, 0]), 128)
+        # Skin past that ramp stays solid, even though the torso ramp is wider.
+        self.assertEqual(int(out[60, 8]), 255)
+        self.assertEqual(int(out[60, 14]), 255)
+        # The shirt on the same wide run still eases into the frame edge.
+        self.assertLess(int(out[45, 0]), 32)
+        self.assertLess(int(out[45, 4]), 160)
+        self.assertGreater(int(out[45, 12]), int(out[45, 4]))
+        self.assertEqual(int(out[60, 100]), 255)
+        # Without color, the old wide-run ramp still covers the arm columns.
+        plain = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
+        self.assertLess(int(plain[60, 8]), 255)
+
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate
         height, width = 240, 120

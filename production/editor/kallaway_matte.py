@@ -55,8 +55,8 @@ BOUNDARY_RAMP_CARD_PX = 64.0
 HAND_RAMP_CARD_PX = 20.0
 # A run this wide, touching the frame, is the torso. A narrower contact is a hand.
 TORSO_RUN_FRACTION = 0.28
-# Geometric frame-edge ramp only. A silhouette detector is not part of this token.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v4"
+# Geometric frame-edge ramp. Skin outside the short hand ramp stays opaque.
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v5"
 # First frames of a segment are seeded from this many frames later, then checked.
 SEGMENT_OPEN_FRAMES = 3
 # Pixels of matte that sit off the stable silhouette on an opening frame.
@@ -1324,13 +1324,25 @@ def _row_runs(hot):
     return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)))
 
 
-def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px):
+def _skin_mask(rgb):
+    """Bare skin: redder than the shirt and the foliage, and bright enough to be an arm."""
+    color = np.asarray(rgb)
+    red = color[:, :, 0].astype(np.int16)
+    green = color[:, :, 1].astype(np.int16)
+    blue = color[:, :, 2].astype(np.int16)
+    return (red > 90) & (red > green + 12) & (red > blue + 8)
+
+
+def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
     """Ease only the matte that is actually cut by the left or right frame edge.
 
     Rows above the shoulder stay at 1. A run that does not touch the frame stays
     at 1, so a hand inside the frame does not dissolve. A wide run is the torso
     and fades across ``ramp_px``. A narrow run is a hand or arm and fades across
-    ``hand_ramp_px``. There is no fade along the bottom.
+    ``hand_ramp_px``. Skin on that wide run stays opaque past the short hand
+    ramp, so an arm that shares the torso's row does not dissolve with the shirt.
+    The last ``hand_ramp_px`` at the frame may still fade. There is no fade along
+    the bottom.
     """
     alpha = np.asarray(alpha)
     height, width = alpha.shape
@@ -1355,15 +1367,25 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px):
                 x0 = max(start, width - int(np.ceil(span_ramp)))
                 if x0 < stop:
                     gain[y, x0:stop] *= _smoothstep((width - 1.0 - xs[x0:stop]) / span_ramp)
+    if rgb is not None:
+        skin = _skin_mask(rgb)
+        if skin.shape != (height, width):
+            raise ValueError("contact color must match the alpha plane")
+        hand_cols = min(width, int(np.ceil(hand)))
+        skin[:shoulder, :] = False
+        skin[:, :hand_cols] = False
+        skin[:, width - hand_cols:] = False
+        gain[skin] = 1.0
     return gain
 
 
-def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None):
+def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
     """Ease alpha where the torso is cut by the source frame, below the shoulder.
 
     ``ramp_px`` is the torso fade, in the same pixels as ``alpha``. A hand that
-    crosses the frame uses ``hand_ramp_px``. Rows above ``shoulder_y``, and any
-    matte that does not touch the frame, keep the matte's own feather.
+    crosses the frame uses ``hand_ramp_px``. Skin farther in than that stays
+    opaque when ``rgb`` is passed. Rows above ``shoulder_y``, and any matte that
+    does not touch the frame, keep the matte's own feather.
     """
     alpha = np.asarray(alpha)
     if alpha.ndim != 2:
@@ -1371,7 +1393,7 @@ def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=N
     if gain is None:
         if hand_ramp_px is None:
             hand_ramp_px = max(1.0, float(ramp_px) * (HAND_RAMP_CARD_PX / BOUNDARY_RAMP_CARD_PX))
-        gain = contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px)
+        gain = contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=rgb)
     elif gain.shape != alpha.shape:
         raise ValueError("boundary gain must match the alpha plane")
     faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)
@@ -1688,8 +1710,10 @@ def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_h
                 break
             plane = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 4).copy()
             raw_alpha = plane[:, :, 3].copy()
+            # The plane is BGRA. Skin is judged in RGB.
+            color = plane[:, :, 2::-1]
             plane[:, :, 3] = feather_boundary_alpha(
-                raw_alpha, ramp_src, shoulder_y, hand_ramp_px=hand_src)
+                raw_alpha, ramp_src, shoulder_y, hand_ramp_px=hand_src, rgb=color)
             head_box_holds(raw_alpha, plane[:, :, 3], head_top, head_height)
             writer.stdin.write(plane.tobytes())
             frames += 1
