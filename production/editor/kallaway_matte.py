@@ -602,7 +602,7 @@ def _segment_gray(source, output):
                 if len(blob) < frame_bytes:
                     break
                 rgb = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 3)
-                src = torch.from_numpy(np.ascontiguousarray(rgb))
+                src = torch.from_numpy(np.array(rgb, copy=True))
                 src = src.permute(2, 0, 1).unsqueeze(0).float().mul_(1 / 255)
                 _fgr, pha, *rec = model(src, *rec, RVM_DOWNSAMPLE)
                 alpha = pha[0, 0].clamp_(0, 1).mul_(255).byte().cpu().numpy()
