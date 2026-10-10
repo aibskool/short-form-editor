@@ -81,6 +81,30 @@ def _cue_time(block):
     return None
 
 
+def hero_phone_box(stage_w, stage_h):
+    """Size a phone so its screen fills the panel and the bezel runs off the edge.
+
+    The screen is about 82% of the panel width. The top bezel sits above the
+    panel and the bottom bezel below it, so the stage crops the frame. The
+    screenshot is fit to that screen's width, which keeps its text uncropped
+    left to right.
+    """
+    stage_w, stage_h = float(stage_w), float(stage_h)
+    phone_w = round(stage_w * 0.86)
+    pad = max(10, round(phone_w * 0.022))
+    screen_w = phone_w - 2 * pad
+    screen_h = round(stage_h)
+    phone_h = screen_h + pad + round(stage_h * 0.22)
+    return {
+        "screen": (float(screen_w), float(screen_h)),
+        "width": phone_w,
+        "height": phone_h,
+        "left": round((stage_w - phone_w) / 2),
+        "top": -pad,
+        "pad": pad,
+    }
+
+
 def image_height_percent(stage):
     frame = stage.get("frame") or {}
     if frame.get("img_h"):
@@ -130,10 +154,12 @@ def motion_window(stage, start, end):
 
 
 def draw_moment(cue, motion, end):
-    """First moment a stroke may appear: after the entrance, after the pan, and on the word if the word is later."""
+    """First moment a stroke may appear: after the entrance, the pan, the push, and on the word if the word is later."""
     settled = float(motion["entrance_end"])
     if motion.get("scroll_end") is not None:
         settled = max(settled, float(motion["scroll_end"]))
+    if motion.get("push_end") is not None:
+        settled = max(settled, float(motion["push_end"]))
     moment = max(settled, float(cue))
     latest = max(settled, float(end) - 0.05)
     return round(min(moment, latest), 3)
@@ -151,10 +177,18 @@ def resolve_annotations(stage, start, end, screen=None):
     from kallaway_targets import place_targets
     place_targets(stage, screen)
     motion = motion_window(stage, start, end)
+    if stage.get("motif") == "phone_frame":
+        # The push starts once the slide has finished and ends before the circle.
+        push_start = round(float(motion["entrance_end"]) + 0.02, 3)
+        push_end = round(min(float(end) - 0.08, push_start + 0.38), 3)
+        motion["push_start"] = push_start
+        motion["push_end"] = push_end
     stage["motion"] = {
         "entrance_end": motion["entrance_end"],
         "scroll_start": motion["scroll_start"],
         "scroll_end": motion["scroll_end"],
+        "push_start": motion.get("push_start"),
+        "push_end": motion.get("push_end"),
     }
     for key in ("callout", "highlight"):
         block = stage.get(key)
@@ -321,9 +355,12 @@ def _slide(selector, at):
 def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, track_index=2):
     stage = stage or {}
     if motif in {"phone_frame", "broll_card"}:
-        # The stage box is the padded phone's parent. 8px of pad at 1080 wide.
-        pad = 8 * (float(box["width"]) / 0.9) / 1080
-        screen = (float(box["width"]) - 2 * pad, float(box["height"]) - 2 * pad)
+        if motif == "phone_frame":
+            # The visible screen, not the whole stage, so the pan centers on what we see.
+            screen = hero_phone_box(box["width"], box["height"])["screen"]
+        else:
+            pad = 8 * (float(box["width"]) / 0.9) / 1080
+            screen = (float(box["width"]) - 2 * pad, float(box["height"]) - 2 * pad)
         resolve_annotations(stage, start, end, screen)
     events = stage_events(motif, start, end, stage)
     animations = []
@@ -360,17 +397,13 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         desat = float(stage.get("desaturate") or 0)
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
         motion = stage.get("motion") or resolve_annotations(stage, start, end)
-        uncropped = bool(stage.get("uncropped"))
-        img_h = 100.0 if uncropped else image_height_percent(stage)
+        geo = hero_phone_box(box["width"], box["height"])
+        img_h = image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
-        scroll_to = 0.0 if uncropped else (float(scroll.get("to", 0)) if scroll else 0)
-        # A measured target uses a pan whose aspect matches the file, so image
-        # percentages land on the same pixels. An uncropped phone shows the
-        # whole frame and the camera pushes toward the circle.
-        if uncropped:
-            fit = "contain"
-        else:
-            fit = "fill" if (stage.get("frame") or {}).get("img_h") else "cover"
+        scroll_to = float(scroll.get("to", 0)) if scroll else 0
+        # Width-fit the recording. A taller pan crops top and bottom only,
+        # so a line of text is never cut off at the left or right edge.
+        fit = "cover"
         if media_url:
             picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:
@@ -393,36 +426,41 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top:.2f}%">'
                        f'{_esc(highlight.get("label") or "")}</div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
-        if uncropped:
-            klass = "phone fit"
-        elif media_url and detailed:
-            klass = "phone fill"
-        else:
-            klass = "phone"
         # A filling bar reads as a stray underline. It is off unless the beat asks.
         bar = ""
         if stage.get("progress"):
             bar = f'<div class="phone-bar"><div id="{ident}-prog"></div></div>'
-        body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">'
+        phone_style = (
+            f'position:absolute;left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;'
+            f'height:{geo["height"]}px;margin:0;padding:{geo["pad"]}px {geo["pad"]}px 0')
+        body = (f'<div id="{ident}-phone" class="phone hero" style="{phone_style}">'
+                f'<div class="phone-screen" style="height:{int(geo["screen"][1])}px">'
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
                 f'{bar}{thumb}</div></div>')
-        if uncropped:
-            animations.append(
-                f'tl.fromTo("#{ident}-phone",{{y:96,opacity:0,rotation:-4}},'
-                f'{{y:0,opacity:1,rotation:-1.4,duration:0.42,ease:"back.out(1.5)",'
-                f'transformOrigin:"50% 80%",immediateRender:false}},{events[0]["at"]});')
-            animations.append(
-                f'tl.to("#{ident}-phone",{{scale:1.07,rotation:0,duration:0.5,ease:"power2.out",'
-                f'transformOrigin:"50% 42%"}},{events[0]["at"] + 0.42:.3f});')
-        else:
-            animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
+        animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
+        origin = "50% 42%"
+        callout = stage.get("callout") or {}
+        frame = stage.get("frame") or {}
+        if callout.get("y") is not None and frame.get("viewport_height"):
+            view_top = float(frame.get("viewport_top") or 0)
+            view_h = float(frame["viewport_height"])
+            cy = (float(callout["y"]) + float(callout.get("h") or 0) / 2 - view_top) / view_h
+            cx = float(callout.get("x") or 0.5) + float(callout.get("w") or 0) / 2
+            ox = (geo["pad"] + min(1.0, max(0.0, cx)) * geo["screen"][0]) / geo["width"] * 100
+            oy = (geo["pad"] + min(1.0, max(0.0, cy)) * geo["screen"][1]) / geo["height"] * 100
+            origin = f"{ox:.1f}% {oy:.1f}%"
+        push_at = float(motion.get("push_start") or (start + 0.42))
+        push_end = float(motion.get("push_end") or (push_at + 0.38))
+        animations.append(
+            f'tl.to("#{ident}-phone",{{scale:1.06,duration:{max(0.2, push_end - push_at):.3f},ease:"power2.out",'
+            f'transformOrigin:"{origin}"}},{push_at:.3f});')
         if stage.get("progress"):
             animations.append(
                 f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
         if not detailed:
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
-        if scroll and not uncropped:
+        if scroll:
             # The pan is the screenshot. yPercent moves the callout with the pixels.
             extra = img_h - 100
             fro = -float(scroll.get("from", 0)) * extra / img_h * 100

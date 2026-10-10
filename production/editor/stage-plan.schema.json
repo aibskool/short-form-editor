@@ -246,7 +246,7 @@
         "target_still": {"type": "string"},
         "typing": {"type": "boolean"},
         "variant": {"type": "string", "description": "Motif composition. quote_card uses receipt or browser."},
-        "uncropped": {"type": "boolean", "description": "Show the phone frame in full. The camera pushes in after the slide."}
+        "uncropped": {"type": "boolean", "description": "Kept so older plans still validate. Phones are large either way: the screen fills about 80-90% of the panel, the bezel runs off the top and bottom, and the camera pushes toward the target before the circle."}
       }
     }
   }

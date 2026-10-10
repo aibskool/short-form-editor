@@ -585,6 +585,33 @@ class KallawayTests(unittest.TestCase):
         self.assertIn('tl.set("#stage-9",{autoAlpha:1},1.200);', script)
         self.assertIn('tl.set("#stage-9",{autoAlpha:0},3.000);', script)
 
+    def test_phone_screen_fills_the_panel_and_pushes_before_the_circle(self):
+        from kallaway_motifs import hero_phone_box
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B",
+                  "on_accent": "#111", "negative": "#E0533D"}
+        box = {"left": 54, "top": 298, "width": 972, "height": 672}
+        stage = {
+            "motif": "phone_frame",
+            "uncropped": True,
+            "callout": {"at": 1.5, "x": 0.5, "y": 0.35, "w": 0.13, "h": 0.04},
+        }
+        section, animations, _events = motif_markup(
+            "phone_frame", stage, 0.0, 3.0, box, colors, "stage-4", "clip.mp4")
+        geo = hero_phone_box(box["width"], box["height"])
+        screen_w = geo["screen"][0]
+        self.assertGreaterEqual(screen_w / box["width"], 0.80)
+        self.assertLessEqual(screen_w / box["width"], 0.90)
+        self.assertGreater(geo["height"], box["height"])
+        self.assertLess(geo["top"], 0)
+        self.assertIn(f'width:{geo["width"]}px', section)
+        self.assertIn("object-fit:cover", section)
+        self.assertNotIn("object-fit:contain", section)
+        self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
+        script = "".join(animations)
+        self.assertIn("scale:1.06", script)
+        self.assertLess(stage["motion"]["push_end"], stage["callout"]["at"] + 0.001)
+
     def test_state_swap_exit_is_hard_killed_on_a_clip_boundary(self):
         from edit import boundary_hard_kills
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",

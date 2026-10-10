@@ -405,9 +405,8 @@ def build_kallaway(spec, spec_path, project):
     .logo-row{{position:absolute;left:0;right:0;top:34%;display:flex;justify-content:space-between;padding:0 8%;z-index:2}}
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
-    .phone.fill{{width:100%;height:100%;margin:0;padding:{8*scale:.0f}px;border-radius:{28*scale:.0f}px}}
-    .phone.fit{{width:auto;height:100%;aspect-ratio:9/16;max-width:92%;margin:0 auto;padding:{8*scale:.0f}px;box-shadow:0 28px 64px rgba(0,0,0,0.55),0 0 48px {colors['accent']}44}}
-    .phone.fit .phone-screen img,.phone.fit .phone-screen video{{object-fit:contain;background:{colors['contrast']}}}
+    .phone.hero{{position:absolute;margin:0;box-shadow:0 28px 64px rgba(0,0,0,0.55),0 0 48px {colors['accent']}44}}
+    .phone.hero .phone-screen img,.phone.hero .phone-screen video{{object-fit:cover}}
     .phone-pan{{position:absolute;left:0;top:0;width:100%}}
     .callout-draw{{position:absolute;overflow:visible;pointer-events:none;z-index:4;opacity:0}}
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}

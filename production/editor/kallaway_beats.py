@@ -105,9 +105,10 @@ def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUN
 
 
 def _phone_screen(theme, width, height):
+    from kallaway_motifs import hero_phone_box
     layout = theme["layout"]
-    pad = 8 * (width / 1080)
-    return (layout["stage_width"] * width - 2 * pad, layout["stage_height"] * height - 2 * pad)
+    box = hero_phone_box(layout["stage_width"] * width, layout["stage_height"] * height)
+    return box["screen"]
 
 
 def _tokens(text):
