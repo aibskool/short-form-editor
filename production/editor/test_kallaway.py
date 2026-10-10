@@ -1016,8 +1016,15 @@ class KallawayTests(unittest.TestCase):
         punched = punch_short_jumps(full, [24.27])
         self.assertEqual(punched[0]["layout"], "punch_in")
         self.assertAlmostEqual(punched[0]["scale"], 1.12, places=2)
-        self.assertAlmostEqual(punched[0]["end"], 24.3, places=2)
+        self.assertAlmostEqual(punched[0]["end"], 24.266, places=3)
         self.assertEqual(punched[1]["layout"], "full")
+        # 5.514 sits inside the frame that starts at 5.500. The punch has to
+        # land on that frame, not the next one.
+        landed = punch_short_jumps(
+            [{"id": "shot-00", "start": 4.369, "end": 6.429, "layout": "full", "scale": 1.0}],
+            [5.514])
+        self.assertEqual(landed[1]["layout"], "punch_in")
+        self.assertAlmostEqual(landed[1]["start"], 5.5, places=3)
 
     def test_phone_after_a_face_cut_enters_with_the_whoosh(self):
         words = [

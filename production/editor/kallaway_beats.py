@@ -368,16 +368,18 @@ def short_picture_runs(path, minimum=0.5, change=28.0, edge=32):
     return short
 
 
-def next_frame(moment, fps=30):
-    """First frame boundary at or after ``moment``.
+def holding_frame(moment, fps=30):
+    """GSAP time of the frame that shows ``moment``.
 
-    A join at 5.514 is still the old picture on the frame that starts at 5.500.
-    The new picture is the next frame. The layout has to change there too, or
-    one frame shows the new scale on the old take.
+    The concat puts the new picture on the frame that contains the join. A set
+    on the following boundary is one frame late, and that unscaled frame reads
+    as a one-frame insert. Three decimals round 24.2666... up to 24.267, which
+    is past the frame, so the time is floored to the millisecond.
     """
     step = 1.0 / float(fps)
-    index = int(math.ceil(float(moment) / step - 1e-6))
-    return round(index * step, 3)
+    index = int(math.floor(float(moment) * float(fps) + 1e-9))
+    start = index * step
+    return math.floor(start * 1000 + 1e-9) / 1000
 
 
 def punch_short_jumps(shots, joins, scale=1.12, short=1.5, fps=30):
@@ -399,7 +401,7 @@ def punch_short_jumps(shots, joins, scale=1.12, short=1.5, fps=30):
         if not inside:
             built.append(shot)
             continue
-        cut = next_frame(min(inside, key=lambda moment: min(moment - start, end - moment)), fps)
+        cut = holding_frame(min(inside, key=lambda moment: min(moment - start, end - moment)), fps)
         if not start + 0.2 < cut < end - 0.2:
             built.append(shot)
             continue
