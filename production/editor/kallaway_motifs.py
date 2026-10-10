@@ -246,6 +246,13 @@ def stage_windows(shot):
 
 def stage_events(motif, start, end, stage=None):
     """SFX cues for one stage shot. Times match the entrance animations."""
+    events = _stage_events(motif, start, end, stage)
+    from kallaway_pack import decorate_events
+    return decorate_events(motif, events, stage or {}, float(start), float(end))
+
+
+def _stage_events(motif, start, end, stage=None):
+    """SFX cues for one stage shot. Times match the entrance animations."""
     stage = stage or {}
     start, end = float(start), float(end)
     if motif not in MOTIFS:

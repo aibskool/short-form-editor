@@ -141,7 +141,9 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.012)
         self.assertAlmostEqual(theme["layout"]["full_scale"], 1.13)
         self.assertIn("paper", SFX_KINDS)
-        self.assertGreaterEqual(len(sfx_variants("whoosh")), 2)
+        from kallaway_pack import pack_ready
+        if pack_ready():
+            self.assertGreaterEqual(len(sfx_variants("whoosh")), 2)
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         self.assertFalse(theme["audio"]["music_default"])
 
@@ -302,6 +304,9 @@ class KallawayTests(unittest.TestCase):
             (root / "words.json").write_text(json.dumps(words))
             spec = root / "timeline.json"
             spec.write_text(json.dumps(timeline))
+            from kallaway_pack import pack_ready
+            if not pack_ready():
+                self.skipTest("SFX_PACK_DIR has no Viral Reels pack")
             write_sfx_library(root / "sfx")
             project = root / "composition"
             receipt = build(spec, project)
@@ -466,15 +471,17 @@ class KallawayTests(unittest.TestCase):
             self.assertAlmostEqual(float(unders[kind]), under, places=1)
 
     def test_sfx_stem_hits_every_cue_level(self):
+        # Pack files are several seconds long. Space the cues past each file so a
+        # tail is not scored inside the next 400 ms window.
         rate = 48000
-        t = np.arange(int(rate * 4.4)) / rate
+        t = np.arange(int(rate * 12.0)) / rate
         voice = 0.2 * np.sin(2 * np.pi * 180 * t)
         cues = [
-            {"kind": "bass", "at": 0.05, "under_db": 7},
-            {"kind": "pop", "at": 0.90, "under_db": 11},
-            {"kind": "whoosh", "at": 1.80, "under_db": 13},
-            {"kind": "ding", "at": 2.70, "under_db": 11},
-            {"kind": "marker", "at": 3.60, "under_db": 11},
+            {"kind": "bass", "at": 0.20, "under_db": 6},
+            {"kind": "pop", "at": 5.20, "under_db": 16},
+            {"kind": "whoosh", "at": 6.40, "under_db": 10},
+            {"kind": "ding", "at": 8.60, "under_db": 12},
+            {"kind": "marker", "at": 10.20, "under_db": 14},
         ]
         rows = measure_sfx_stem(voice, rate, cues)
         self.assertEqual(len(rows), len(cues))
@@ -740,6 +747,9 @@ class KallawayTests(unittest.TestCase):
             (root / "words.json").write_text(json.dumps(words))
             spec = root / "timeline.json"
             spec.write_text(json.dumps(timeline))
+            from kallaway_pack import pack_ready
+            if not pack_ready():
+                self.skipTest("SFX_PACK_DIR has no Viral Reels pack")
             write_sfx_library(root / "sfx")
             project = root / "composition"
             build(spec, project)
@@ -825,6 +835,42 @@ class KallawayTests(unittest.TestCase):
         above = out_a[center - radius - 16:center - radius - 3, center - 8:center + 8].mean()
         self.assertGreater(below, above + 0.04)
         self.assertLess(below, 0.75)
+
+
+    def test_pack_cues_follow_the_combo_guide(self):
+        from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
+        ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
+        self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking"))
+        ding = next(event for event in ticks if event["kind"] == "ding")
+        self.assertEqual(ding["combo"], "25")
+        self.assertIn("Bell 5", ding["file"])
+        self.assertIn("Ui 30", ding["bed"]["file"])
+        self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
+        pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
+        self.assertTrue(pages[0].get("file"))
+        self.assertTrue(all(event.get("mute") for event in pages[1:]))
+        money = stage_events("quote_card", 1.0, 2.4, {"variant": "receipt", "text": "$2,000", "items": ["JAN"]})
+        self.assertEqual(money[0]["combo"], "42")
+        self.assertIn("Ka Ching", money[0]["file"])
+        merge = stage_events("vacuum_merge", 1.0, 2.4, {"items": ["A", "B"]})
+        suck = next(event for event in merge if event["kind"] == "whoosh")
+        self.assertEqual(suck["align"], "end")
+        self.assertIn("Cinematic Reverse", suck["file"])
+        self.assertEqual(suck["sound_at"], next(event["at"] for event in merge if event["kind"] == "ding"))
+        marker = next(event for event in stage_events("phone_frame", 0.0, 3.0, {
+            "callout": {"at": 1.2, "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.2},
+        }) if event["kind"] == "marker")
+        self.assertEqual(marker["at"], 1.2)
+        self.assertEqual(marker["combo"], "callout")
+        if not pack_ready():
+            return
+        samples, info = load(resolve(BACKWARDS))
+        self.assertLessEqual(float(np.max(np.abs(samples))), 1.0)
+        self.assertLess(info["clip_gain_db"], -10.0)
+        whoosh, _placed, whoosh_info = render({"file": "03 Whooshes/Fast Whip.wav", "at": 0, "kind": "whoosh"})
+        raw, _raw_info = load(resolve("03 Whooshes/Fast Whip.wav"))
+        self.assertEqual(whoosh_info["clip_gain_db"], 0.0)
+        self.assertLess(float(np.max(np.abs(whoosh - raw))), 1e-4)
 
 
 if __name__ == "__main__":

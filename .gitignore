@@ -16,5 +16,5 @@ production/pilots/
 *.mp4
 *.mov
 *.wav
-!production/editor/sfx/kallaway/*.wav
 *.mp3
+production/editor/sfx/viral-pack/

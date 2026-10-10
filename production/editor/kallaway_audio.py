@@ -1,10 +1,11 @@
 """Voice tightening, podcast leveling, and recorded sound cues for Kallaway-style edits.
 
-Sound effects live in ``sfx/kallaway`` and the lo-fi bed in ``music/kallaway-bed.ogg``.
-Both are CC0 recordings. Sources and licenses are in THIRD_PARTY_NOTICES.md.
-This module keeps each word through its decay, removes only the gap between
-phrases, crossfades each join, and copies the library into a composition.
-It does not synthesize the cues.
+Sound effects come from a local Viral Reels SFX Pack (``SFX_PACK_DIR``). The
+files are not committed. The lo-fi bed in ``music/kallaway-bed.ogg`` is CC0.
+Sources and licenses are in THIRD_PARTY_NOTICES.md. This module keeps each
+word through its decay, removes only the gap between phrases, crossfades each
+join, and copies the pack cues into a composition. It does not synthesize,
+EQ, pitch-shift, stretch, or filter the cues.
 """
 import math
 import shutil
@@ -17,7 +18,6 @@ import numpy as np
 
 RATE = 48000
 HERE = Path(__file__).resolve().parent
-SFX_LIBRARY = HERE / "sfx" / "kallaway"
 BED_FILE = HERE / "music" / "kallaway-bed.ogg"
 BED_NATIVE_BPM = 105.5
 SFX_KINDS = (
@@ -42,38 +42,55 @@ def write_wav(path, samples, rate=RATE):
 
 
 def sfx_variants(kind, directory=None):
-    """Recorded takes for one cue, in stable order."""
+    """Recorded takes for one cue, in stable order.
+
+    A composition directory that already has ``kind-N.wav`` wins. Otherwise
+    the files come from the local Viral Reels pack.
+    """
     if kind not in SFX_KINDS:
         raise ValueError(f"unknown sfx kind: {kind}")
-    root = Path(directory) if directory else SFX_LIBRARY
-    found = sorted(root.glob(f"{kind}-*.wav"))
-    single = root / f"{kind}.wav"
-    if not found and single.is_file():
-        return [single]
-    return found
+    if directory:
+        root = Path(directory)
+        found = sorted(root.glob(f"{kind}-*.wav"))
+        single = root / f"{kind}.wav"
+        if not found and single.is_file():
+            return [single]
+        if found:
+            return found
+    from kallaway_pack import kind_paths
+    return kind_paths(kind)
 
 
 def write_sfx_library(directory):
-    """Copy the committed CC0 library into a composition. Variants stay kind-N.wav."""
+    """Decode the local pack into a composition as kind-N.wav.
+
+    Clip gain is applied when a file peaks above 0 dBFS. Nothing else is
+    processed. The pack itself is not copied into git.
+    """
+    from kallaway_pack import kind_paths, load, pack_dir
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    if not SFX_LIBRARY.is_dir():
-        raise FileNotFoundError(f"kallaway sfx library missing: {SFX_LIBRARY}")
     written = {}
     for kind in SFX_KINDS:
-        variants = sfx_variants(kind)
-        if len(variants) < 2:
-            raise FileNotFoundError(f"kallaway sfx kind {kind} needs at least two recorded variants")
+        sources = kind_paths(kind)
+        if len(sources) < 2:
+            raise FileNotFoundError(
+                f"kallaway sfx kind {kind} needs the Viral Reels pack at {pack_dir()} "
+                "(set SFX_PACK_DIR). At least two files are required.")
         copied = []
-        for source in variants:
-            dest = directory / source.name
-            shutil.copyfile(source, dest)
+        for index, source in enumerate(sources[:3], start=1):
+            samples, _info = load(source)
+            dest = directory / f"{kind}-{index}.wav"
+            write_wav(dest, samples)
             copied.append(dest)
         shutil.copyfile(copied[0], directory / f"{kind}.wav")
         written[kind] = copied
-    note = SFX_LIBRARY / "SOURCES.md"
-    if note.is_file():
-        shutil.copyfile(note, directory / "SOURCES.md")
+    note = directory / "PACK.txt"
+    note.write_text(
+        "Decoded from a local Viral Reels SFX Pack for this composition only.\n"
+        "The pack is not redistributed. See THIRD_PARTY_NOTICES.md.\n"
+        f"SFX_PACK_DIR={pack_dir()}\n"
+    )
     return written
 
 
@@ -545,13 +562,13 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
 
 
 # Momentary SFX loudness sits this far under the voice's short-term loudness.
-# Midpoints of the phone-speaker bands: transients 10–12, whooshes 12–14, bass 6–8.
+# Midpoints of the Viral Reels cheat sheet, with no music in the reel:
+# whooshes -8 to -12, impacts -4 to -8, text pops -14 to -18.
 UNDER_DB = {
-    "pop": 11.0, "click": 11.0, "typing": 11.0, "ticking": 11.0,
-    "marker": 11.0, "paper": 11.0, "error": 11.0,
-    "whoosh": 13.0, "riser": 13.0, "ding": 11.0, "bass": 7.0,
+    "pop": 16.0, "click": 16.0, "typing": 16.0, "ticking": 16.0,
+    "marker": 14.0, "paper": 14.0, "error": 6.0,
+    "whoosh": 10.0, "riser": 10.0, "ding": 12.0, "bass": 6.0,
 }
-_LOWPASS_KINDS = {"whoosh", "riser"}
 _MOMENTARY_S = 0.400
 _SHORTTERM_S = 3.0
 # ITU-R BS.1770-4 pre-filter and RLB weighting, 48 kHz.
@@ -623,57 +640,83 @@ def _load_wav(path):
     return _resample(samples, rate, RATE)
 
 
-def _prepare_cue(samples, kind):
-    if kind in _LOWPASS_KINDS:
-        return _rbj(samples, RATE, 8000.0, "lowpass")
-    return np.asarray(samples, dtype=np.float64)
-
-
-def mix_cues(voice, rate, cues, library=None):
-    """Place each cue so its momentary loudness sits under the voice at that moment.
-
-    The offset is SFX momentary LUFS minus voice short-term LUFS, not a peak
-    ratio. Whooshes and risers are low-passed at 8 kHz before the measurement
-    and before they are added.
-    """
-    voice = _resample(voice, rate, RATE)
-    weighted_voice = _k_weight(voice, RATE)
-    mixed = np.array(voice, dtype=np.float64, copy=True)
-    variant_use = {}
-    report = []
-    for cue in cues:
-        kind = str(cue.get("kind") or "")
-        if kind not in SFX_KINDS:
-            raise ValueError(f"unknown sfx kind: {kind}")
-        at = float(cue["at"])
+def _cue_for_mix(cue, library, variant_use):
+    """Resolve one cue to a pack path. Muted cues are not played."""
+    if cue.get("mute"):
+        return None
+    kind = str(cue.get("kind") or "")
+    if kind not in SFX_KINDS:
+        raise ValueError(f"unknown sfx kind: {kind}")
+    chosen = cue.get("file")
+    if not chosen:
         variants = sfx_variants(kind, library)
         if not variants:
             raise FileNotFoundError(f"no recordings for {kind}")
         slot = variant_use.get(kind, 0)
         variant_use[kind] = slot + 1
         chosen = variants[slot % len(variants)]
-        prepared = _prepare_cue(_load_wav(chosen), kind)
+    prepared_cue = dict(cue)
+    prepared_cue["file"] = str(chosen)
+    prepared_cue["kind"] = kind
+    return prepared_cue
+
+
+def mix_cues(voice, rate, cues, library=None):
+    """Place each cue so its momentary loudness sits under the voice at that moment.
+
+    The offset is SFX momentary LUFS minus voice short-term LUFS, not a peak
+    ratio. Pack files are not filtered. A file that peaks above 0 dBFS is
+    turned down to 0 dBFS before that measurement. ``sound_at`` is the sample
+    start; a reverse cue with ``align`` end finishes on ``sound_at``.
+    """
+    from kallaway_pack import render
+    voice = _resample(voice, rate, RATE)
+    weighted_voice = _k_weight(voice, RATE)
+    mixed = np.array(voice, dtype=np.float64, copy=True)
+    variant_use = {}
+    report = []
+    for cue in cues:
+        prepared_cue = _cue_for_mix(cue, library, variant_use)
+        if prepared_cue is None:
+            continue
+        prepared, placed, info = render(prepared_cue)
+        if len(prepared) == 0:
+            continue
         cue_lufs = _momentary_lufs(_k_weight(prepared, RATE), 0.0)
-        voice_lufs = _short_term_lufs(weighted_voice, at)
-        under = cue.get("under_db")
-        under = float(UNDER_DB.get(kind, 11.0) if under is None else under)
+        voice_lufs = _short_term_lufs(weighted_voice, max(0.0, placed))
+        under = prepared_cue.get("under_db")
+        under = float(UNDER_DB.get(prepared_cue["kind"], 16.0) if under is None else under)
         target = voice_lufs - under
         gain_db = target - cue_lufs
         gain = 10 ** (gain_db / 20.0)
-        start = int(round(at * RATE))
-        if 0 <= start < len(mixed):
-            stop = min(len(mixed), start + len(prepared))
-            mixed[start:stop] += prepared[:stop - start] * gain
+        start = int(round(placed * RATE))
+        chunk = prepared
+        if start < 0:
+            chunk = prepared[-start:]
+            start = 0
+        if 0 <= start < len(mixed) and len(chunk):
+            stop = min(len(mixed), start + len(chunk))
+            mixed[start:stop] += chunk[:stop - start] * gain
         report.append({
-            "kind": kind,
-            "at": round(at, 3),
+            "kind": prepared_cue["kind"],
+            "at": round(placed, 3),
+            "cue_at": round(float(cue.get("at", placed)), 3),
             "under_db": under,
             "voice_lufs": round(voice_lufs, 2),
             "cue_lufs": round(cue_lufs, 2),
             "target_lufs": round(target, 2),
             "gain_db": round(gain_db, 2),
             "gain": round(gain, 5),
-            "file": Path(chosen).name,
+            "file": str(prepared_cue["file"]),
+            "combo": cue.get("combo"),
+            "label": cue.get("label"),
+            "clip_gain_db": info.get("clip_gain_db", 0.0),
+            "trim": prepared_cue.get("trim"),
+            "trim_from": prepared_cue.get("trim_from"),
+            "fade_out": prepared_cue.get("fade_out"),
+            "fade_in": prepared_cue.get("fade_in"),
+            "align": prepared_cue.get("align"),
+            "loop": prepared_cue.get("loop"),
         })
     return mixed, report
 
@@ -689,6 +732,7 @@ def measure_sfx_stem(voice, rate, cues, library=None):
     mixed, report = mix_cues(voice, RATE, cues, library)
     isolated = mixed - voice
     weighted = _k_weight(isolated, RATE)
+    from kallaway_pack import render
     rows = []
     for row in report:
         measured = _momentary_lufs(weighted, row["at"])
@@ -699,9 +743,12 @@ def measure_sfx_stem(voice, rate, cues, library=None):
         ]
         attack_n = int(round(0.030 * RATE))
         origin = int(round(float(row["at"]) * RATE))
-        attack = isolated[origin:origin + attack_n]
+        if origin < 0:
+            attack = isolated[0:max(0, origin + attack_n)]
+        else:
+            attack = isolated[origin:origin + attack_n]
         attack_peak = float(np.max(np.abs(attack))) if len(attack) else 0.0
-        prepared = _prepare_cue(_load_wav(Path(library or SFX_LIBRARY) / row["file"]), row["kind"])
+        prepared, _placed, _info = render(row)
         cue_peak = float(np.max(np.abs(prepared[:attack_n]))) if len(prepared) else 0.0
         cue_peak *= 10 ** (row["gain_db"] / 20.0)
         if cue_peak > 1e-8 and attack_peak > 0:

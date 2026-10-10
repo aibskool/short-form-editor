@@ -303,9 +303,25 @@ def build_kallaway(spec, spec_path, project):
             write_sfx_library(library)
         variant_use = {}
         for index, sound in enumerate(spec.get("sfx", [])):
+            if sound.get("mute"):
+                continue
             if sound.get("kind"):
                 if sound["kind"] not in SFX_KINDS:
                     raise ValueError(f"unknown sfx kind: {sound['kind']}")
+            if sound.get("file"):
+                from kallaway_audio import write_wav
+                from kallaway_pack import render
+                samples, placed, _info = render(sound)
+                if placed < 0:
+                    drop = int(round(-placed * 48000))
+                    samples = samples[drop:]
+                    placed = 0.0
+                dest = library / f"cue-{index}.wav"
+                write_wav(dest, samples)
+                path = media(str(dest))
+                length = max(0.04, len(samples) / 48000.0)
+                start_at = placed
+            elif sound.get("kind"):
                 variants = sfx_variants(sound["kind"], library)
                 if not variants:
                     raise ValueError(f"sfx library has no files for {sound['kind']}")
@@ -314,12 +330,17 @@ def build_kallaway(spec, spec_path, project):
                 chosen = variants[slot % len(variants)]
                 path = media(str(chosen))
                 length = float(probe(project / path)["format"]["duration"])
+                start_at = float(sound.get("sound_at", sound["at"]))
             else:
                 path = media(sound["path"])
                 length = float(sound.get("duration", probe(project / path)["format"]["duration"]))
-            gain = sound.get("gain", theme.get("sfx_gain", {}).get(sound.get("kind"), 0.35))
+                start_at = float(sound.get("sound_at", sound["at"]))
+            if sound.get("under_db") is not None:
+                gain = 10 ** (-float(sound["under_db"]) / 20.0)
+            else:
+                gain = sound.get("gain", theme.get("sfx_gain", {}).get(sound.get("kind"), 0.35))
             audio.append(
-                f'<audio id="sfx-{index}" src="{path}" data-start="{float(sound["at"]):.4f}" data-duration="{length:.4f}" '
+                f'<audio id="sfx-{index}" src="{path}" data-start="{float(start_at):.4f}" data-duration="{length:.4f}" '
                 f'data-track-index="{20+index}" data-volume="{float(gain):.4f}"></audio>')
 
     for index, sound in enumerate(spec.get("music", [])):

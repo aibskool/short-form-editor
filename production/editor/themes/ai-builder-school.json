@@ -112,29 +112,29 @@
     "default_keyword": "VAULT"
   },
   "sfx_under_db": {
-    "pop": 11,
-    "click": 11,
-    "typing": 11,
-    "ticking": 11,
-    "marker": 11,
-    "paper": 11,
-    "error": 11,
-    "whoosh": 13,
-    "riser": 13,
-    "ding": 11,
-    "bass": 7
+    "pop": 16,
+    "click": 16,
+    "typing": 16,
+    "ticking": 16,
+    "marker": 14,
+    "paper": 14,
+    "error": 6,
+    "whoosh": 10,
+    "riser": 10,
+    "ding": 12,
+    "bass": 6
   },
   "sfx_gain": {
     "pop": 0.1585,
-    "whoosh": 0.1259,
+    "whoosh": 0.3162,
     "click": 0.1585,
     "typing": 0.1585,
     "ticking": 0.1585,
-    "ding": 0.1995,
-    "bass": 0.3981,
-    "riser": 0.1259,
-    "error": 0.1585,
-    "marker": 0.1585,
-    "paper": 0.1585
+    "ding": 0.2512,
+    "bass": 0.5012,
+    "riser": 0.3162,
+    "error": 0.5012,
+    "marker": 0.1995,
+    "paper": 0.1995
   }
 }

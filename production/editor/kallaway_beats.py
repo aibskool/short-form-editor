@@ -421,7 +421,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
 
     from kallaway_audio import UNDER_DB
     unders = theme.get("sfx_under_db") or {}
-    sfx = _cover_sfx(shots, ordered, styles, unders)
+    sfx = _cover_sfx(shots, ordered, styles, unders, fps)
     present = {(item["kind"], item["at"]) for item in sfx}
     for moment in bass_at:
         key = ("bass", round(moment, 3))

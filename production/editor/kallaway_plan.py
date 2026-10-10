@@ -247,20 +247,19 @@ def _match_entry(entry, slots, ordered, claimed):
     return hits[0]
 
 
-# A whoosh leads the picture. A second whoosh that would stack on the first becomes a pop.
-_WHOOSH_LEAD = 0.07
-_WHOOSH_GAP = 0.32
-_MAX_BOOMS = 3
+def _cover_sfx(shots, words, styles, unders=None, fps=30):
+    """One sound carries the move, one lands the arrival. Full-screen holds stay quiet.
 
-
-def _cover_sfx(shots, words, styles, unders=None):
-    """Sounds on graphic entrances only. Punch-ins, layout cuts, and exits stay silent.
-
-    ``unders`` is how many dB the cue's momentary loudness sits under the voice's
-    short-term loudness. The mixer turns that into a gain per cue.
+    Frame counts follow the pack guide at ``fps`` (the guide is written at 30).
+    ``at`` stays on the picture so the style check still sees the motif. The
+    sample itself starts at ``sound_at``.
     """
     from kallaway_audio import UNDER_DB
+    from kallaway_pack import (
+        BACKWARDS, BOOM_14, COOL_WHOOSH, DEEP_HIT, finish_sfx,
+    )
     unders = unders or {}
+    fps = float(fps or 30)
     events = []
     for shot in shots:
         if shot.get("layout") != "split":
@@ -269,30 +268,47 @@ def _cover_sfx(shots, words, styles, unders=None):
             for event in stage_events(motif, start, end, stage):
                 events.append(dict(event))
     if shots:
-        events.append({"at": 0.0, "kind": "bass"})
-    events.sort(key=lambda item: (float(item["at"]), item["kind"]))
-    last_whoosh = -10.0
-    booms = 0
-    sfx = []
-    for event in events:
-        kind = event["kind"]
-        at = float(event["at"])
-        if kind in {"whoosh", "riser"}:
-            led = max(0.0, at - _WHOOSH_LEAD)
-            if led - last_whoosh < _WHOOSH_GAP:
-                kind = "pop"
-            else:
-                at = led
-                last_whoosh = at
-        if kind == "bass":
-            booms += 1
-            if booms > _MAX_BOOMS:
-                continue
-        if at < 0:
-            continue
-        under = float(unders.get(kind, UNDER_DB.get(kind, 11.0)))
-        sfx.append({"kind": kind, "at": round(at, 3), "under_db": under})
-    return sfx
+        events.append({
+            "at": 0.0, "kind": "bass", "file": BOOM_14, "combo": "2",
+            "label": "Cold Slam", "under_db": float(unders.get("bass", UNDER_DB["bass"])),
+            "fixed_file": True, "fixed_lead": True, "band": "low",
+        })
+    for index, shot in enumerate(shots):
+        start = float(shot["start"])
+        layout = shot.get("layout")
+        if layout == "punch_in":
+            events.append({
+                "at": round(start, 3), "kind": "whoosh", "file": BACKWARDS, "combo": "15",
+                "label": "Zoom Punch", "align": "end", "sound_at": round(start, 3),
+                "trim_frames": 8, "fade_in_frames": 3, "fixed_lead": True,
+                "rotate": "punch", "band": "mid",
+                "under_db": float(unders.get("whoosh", UNDER_DB["whoosh"])),
+            })
+            events.append({
+                "at": round(start, 3), "kind": "ding", "file": DEEP_HIT, "combo": "15",
+                "label": "Zoom Punch hit", "fixed_lead": True,
+                "rotate": "hit", "trim_frames": 12, "fade_frames": 3, "band": "low",
+                "under_db": float(unders.get("bass", UNDER_DB["bass"])),
+            })
+        elif layout == "split" and index > 0:
+            covered = any(
+                item.get("kind") in {"whoosh", "riser"} and abs(float(item["at"]) - start) < 0.2
+                for item in events
+            )
+            if not covered:
+                events.append({
+                    "at": round(start, 3), "kind": "whoosh", "combo": "8",
+                    "label": "Standard Cut", "rotate": "whoosh", "band": "mid",
+                })
+    if shots:
+        duration = max(float(shot["end"]) for shot in shots)
+        events.append({
+            "at": round(duration, 3), "kind": "whoosh", "file": COOL_WHOOSH, "combo": "47",
+            "label": "Loop Close", "sound_at": round(max(0.0, duration - (1.0 / fps)), 3),
+            "fixed_file": True, "fixed_lead": True, "band": "mid",
+            "under_db": float(unders.get("whoosh", UNDER_DB["whoosh"])),
+        })
+    return finish_sfx(events, fps, unders, UNDER_DB)
 
 
 def _append_cut(cuts, point, duration):
@@ -517,7 +533,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
             "max_words": 2, "uppercase": False, "word_styles": styles,
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },
-        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}),
+        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}, fps),
     }
 
 

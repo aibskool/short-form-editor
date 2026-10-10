@@ -59,7 +59,7 @@ python3 kallaway_plan.py --words /absolute/words.json --source /absolute/raw.mp4
 python3 ../check_kallaway_style.py --timeline /absolute/composition/timeline.json --words /absolute/composition/words.json --project /absolute/composition
 ```
 
-Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. SFX are the CC0 recordings in `sfx/kallaway/`, leveled by `sfx_gain` in the theme (about 10 to 14 dB under the voice). The lo-fi bed in `music/` stays off unless you pass `--music`. `kallaway_audio.py` copies whichever of those the render uses.
+Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. SFX are a local Viral Reels SFX Pack. Set `SFX_PACK_DIR` (default `sfx/viral-pack/`, not committed). Levels follow `sfx_under_db` in the theme: whooshes about 10 dB under the voice, impacts about 6, text pops about 16. The lo-fi bed in `music/` stays off unless you pass `--music`. `kallaway_audio.py` copies whichever of those the render uses.
 
 ## Verification receipt
 
