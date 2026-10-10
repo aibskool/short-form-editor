@@ -7,7 +7,9 @@ source video path, and the same motif is not used on two split shots in a row.
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from kallaway_motifs import MOTIFS, stage_events, stage_windows
@@ -51,18 +53,9 @@ def _snap(target, starts, low, high):
 
 
 def caption_phrases(words, styles):
-    phrases, index = [], 0
-    while index < len(words):
-        take = 1
-        if styles.get(_token(words[index]), "normal") == "normal" and index + 1 < len(words):
-            if styles.get(_token(words[index + 1]), "normal") == "normal":
-                gap = float(words[index + 1]["start"]) - float(words[index]["end"])
-                if gap < 0.22 and not str(words[index]["word"]).endswith((".", "?", "!", ":")):
-                    if len(_token(words[index])) + len(_token(words[index + 1])) <= 16:
-                        take = 2
-        phrases.append({"word_range": [index, index + take]})
-        index += take
-    return phrases
+    """One lowercase word per chunk. Emphasis still lives on the word style."""
+    del styles
+    return [{"word_range": [index, index + 1]} for index in range(len(words))]
 
 
 def _title_case(text):
@@ -247,17 +240,234 @@ def _match_entry(entry, slots, ordered, claimed):
     return hits[0]
 
 
-def _cover_sfx(shots, words, styles, unders=None, fps=30):
-    """One sound carries the move, one lands the arrival. Full-screen holds stay quiet.
+def _lands_on(motif, stage):
+    """Short name of the picture a cue is allowed to hit."""
+    stage = stage or {}
+    motif = str(motif or "graphic")
+    detail = ""
+    for key in ("label", "text", "variant"):
+        value = stage.get(key)
+        if isinstance(value, str) and value.strip():
+            detail = re.sub(r"\s+", " ", value).strip()[:60]
+            break
+    if not detail:
+        items = stage.get("items")
+        if isinstance(items, list) and items:
+            detail = re.sub(r"\s+", " ", str(items[0])).strip()[:40]
+    return f"{motif}: {detail}" if detail else motif
 
-    Frame counts follow the pack guide at ``fps`` (the guide is written at 30).
-    ``at`` stays on the picture so the style check still sees the motif. The
-    sample itself starts at ``sound_at``.
+
+def word_gaps(words, minimum=0.02):
+    """Pauses between aligned words. Silencedetect is not used.
+
+    SFX and outdoor rumble sit above the silence threshold, so a detector on
+    the mix hides the pause. The word clock is the only one that still shows it.
+    """
+    ordered = sorted(words or [], key=lambda word: float(word["start"]))
+    gaps = []
+    for prev, nxt in zip(ordered, ordered[1:]):
+        start = float(prev["end"])
+        end = float(nxt["start"])
+        if end - start >= minimum:
+            gaps.append((start, end, prev))
+    return gaps
+
+
+def _caption_block(words, styles, stage_plan=None, style_at=None, keep_case=None):
+    """Caption contract. A stage plan can set the full-face baseline for this take."""
+    block = {
+        "max_words": 1,
+        "uppercase": False,
+        "word_styles": styles,
+        "phrases": caption_phrases(words, styles),
+        "omit_terminal_punctuation": True,
+    }
+    if style_at is not None:
+        block["style_at"] = style_at
+    if keep_case is not None:
+        block["keep_case"] = keep_case
+    if isinstance(stage_plan, dict) and stage_plan.get("caption_full_baseline_px") is not None:
+        block["full_baseline_px"] = float(stage_plan["caption_full_baseline_px"])
+    return block
+
+
+def gap_at(moment, gaps):
+    """The word before ``moment`` when that moment sits strictly inside its pause."""
+    moment = float(moment)
+    for start, end, prev in gaps:
+        if start < moment < end:
+            return prev
+    return None
+
+
+def anchor_sfx(cues, words, fps=30):
+    """Keep every audible hit on a picture, and off every aligned pause.
+
+    A whoosh or riser leads its visual by 3–4 frames. That lead is the hit,
+    so it is not pulled back onto the picture. Any other hit that only lands
+    in a pause is muted.
+    """
+    gaps = word_gaps(words)
+    lead = 4.0 / float(fps or 30)
+    for cue in cues:
+        if cue.get("mute"):
+            continue
+        if not str(cue.get("lands_on") or "").strip():
+            cue["mute"] = True
+            cue["mute_reason"] = "no visual"
+            continue
+        heard = float(cue.get("sound_at", cue.get("at", 0)))
+        visual = float(cue.get("at", heard))
+        kind = cue.get("kind")
+        if kind in {"whoosh", "riser"} or cue.get("rotate") == "whoosh":
+            if gap_at(visual, gaps) is None:
+                cue["sound_at"] = round(max(0.0, visual - lead), 3)
+                continue
+        if gap_at(heard, gaps) is None:
+            continue
+        if gap_at(visual, gaps) is None and abs(visual - heard) <= 0.35:
+            cue["sound_at"] = round(visual, 3)
+            continue
+        # A count-up tick starts on the shot edge. That edge can sit in the
+        # 40 ms of air before the next word. The loop still covers the roll,
+        # so it starts when the word does instead of going silent.
+        loop = float(cue.get("loop") or 0)
+        span = next(((start, end) for start, end, _prev in gaps if start < heard < end), None)
+        if loop > 0.2 and span is not None and heard + loop > span[1] + 0.02:
+            cue["sound_at"] = round(span[1], 3)
+            cue["loop"] = round(max(0.12, heard + loop - span[1]), 3)
+            continue
+        cue["mute"] = True
+        cue["mute_reason"] = "gap"
+    return cues
+
+
+def whoosh_attack_seconds(path, cap=0.16):
+    """Seconds from the file start to the sustained whoosh, ignoring a short blip.
+
+    The hit has to lead the cut. Silence, and a one-frame tick at the head of
+    the sample, do not.
+    """
+    path = Path(path) if path else None
+    if path is None or not path.is_file():
+        return 0.0
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+        stderr=subprocess.DEVNULL)
+    import numpy as np
+    samples = np.frombuffer(raw, dtype=np.float32)
+    if samples.size < 160:
+        return 0.0
+    hop = 160  # 10 ms
+    levels = []
+    for origin in range(0, min(len(samples), 16000), hop):
+        chunk = samples[origin:origin + hop]
+        rms = float(np.sqrt(np.mean(np.square(chunk)) + 1e-12))
+        levels.append(20.0 * np.log10(rms))
+    # Absolute floor. A relative-to-peak floor waits for the crack and the
+    # whoosh then lands after the cut. -28 dB is the swell a listener marks.
+    floor = -28.0
+    run = 0
+    start = None
+    for index, level in enumerate(levels):
+        if level >= floor:
+            if start is None:
+                start = index
+            run += 1
+            if run >= 4 and start is not None and start >= 2:
+                return round(min(cap, start * 0.01), 3)
+        else:
+            # A blip under 40 ms is not the whoosh.
+            if run < 4:
+                start = None
+            run = 0
+    if start is not None and run >= 4:
+        return round(min(cap, start * 0.01), 3)
+    return 0.0
+
+
+def _cue_attack(cue):
+    name = str(cue.get("file") or "")
+    if not name:
+        return 0.0
+    path = Path(name)
+    if not path.is_file():
+        root = os.environ.get("SFX_PACK_DIR") or ""
+        path = Path(root) / name if root else path
+    try:
+        return whoosh_attack_seconds(path)
+    except (OSError, subprocess.CalledProcessError):
+        return 0.0
+
+
+def reanchor_led_sfx(timeline, original_starts, fps=30, attack_of=None):
+    """Put a whoosh on the snapped picture, leading that cut by about 4 frames.
+
+    Planning runs before the scene snap, so a whoosh aimed at the old edge
+    lands on or after the picture. ``attack_of`` overrides the file measurement
+    in tests. A cue whose audible onset already leads by 3 frames is left put.
+    """
+    lead = 4.0 / float(fps or 30)
+    minimum = 3.0 / float(fps or 30)
+    shots = timeline.get("shots") or []
+    starts = [float(shot["start"]) for shot in shots]
+    originals = [float(moment) for moment in (original_starts or [])]
+    if not originals or not starts:
+        return timeline
+    for cue in timeline.get("sfx") or []:
+        if cue.get("mute") or cue.get("fixed_lead"):
+            continue
+        kind = cue.get("kind")
+        if kind not in {"whoosh", "riser"} and cue.get("rotate") != "whoosh":
+            continue
+        visual = float(cue.get("at", cue.get("sound_at", 0)))
+        index = min(range(len(originals)), key=lambda item: abs(originals[item] - visual))
+        if abs(originals[index] - visual) > 0.08:
+            continue
+        if index >= len(starts):
+            continue
+        new_visual = starts[index]
+        attack = float(attack_of(cue) if attack_of else _cue_attack(cue))
+        current = float(cue.get("sound_at", visual))
+        if new_visual - (current + attack) >= minimum - 1e-3:
+            cue["at"] = round(new_visual, 3)
+            continue
+        cue["at"] = round(new_visual, 3)
+        cue["sound_at"] = round(max(0.0, new_visual - lead - attack), 3)
+    timeline["sfx_log"] = sfx_placement_rows(timeline.get("sfx"))
+    return timeline
+
+
+def sfx_placement_rows(cues):
+    """Audible cues only: when they play, which pack file, and the picture they hit."""
+    rows = []
+    for cue in cues or []:
+        if cue.get("mute"):
+            continue
+        pack = str(cue.get("file") or "")
+        rows.append({
+            "time": round(float(cue.get("sound_at", cue.get("at", 0))), 3),
+            "file": Path(pack).name,
+            "pack_file": pack,
+            "lands_on": str(cue.get("lands_on") or ""),
+            "label": str(cue.get("label") or ""),
+        })
+    rows.sort(key=lambda row: (row["time"], row["file"], row["label"]))
+    return rows
+
+
+def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
+    """Graphic entrances get the mapped pack sound. Face cuts stay silent.
+
+    Whooshes lead panel slides, chapter-header swaps, and big graphic
+    transitions by 4 frames. ``at`` stays on the picture so the style check
+    still sees the motif. The sample itself starts at ``sound_at``.
+    A cue with no picture, and a cue whose sound falls in an aligned pause,
+    is muted. The loop-close whoosh has no entrance to land on, so it stays muted.
     """
     from kallaway_audio import UNDER_DB
-    from kallaway_pack import (
-        BACKWARDS, BOOM_14, COOL_WHOOSH, DEEP_HIT, finish_sfx,
-    )
+    from kallaway_pack import BOOM_14, COOL_WHOOSH, finish_sfx
+    del styles
     unders = unders or {}
     fps = float(fps or 30)
     events = []
@@ -266,49 +476,59 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30):
             continue
         for motif, start, end, stage in stage_windows(shot):
             for event in stage_events(motif, start, end, stage):
-                events.append(dict(event))
+                event = dict(event)
+                landing = _lands_on(motif, stage)
+                event["lands_on"] = landing
+                for extra in event.get("also") or []:
+                    extra.setdefault("lands_on", landing)
+                bed = event.get("bed")
+                if isinstance(bed, dict):
+                    bed.setdefault("lands_on", landing)
+                events.append(event)
     if shots:
+        opening = "opening title"
+        first = shots[0]
+        if first.get("layout") == "split" and first.get("stage"):
+            opening = _lands_on(first["stage"].get("motif"), first["stage"])
+        elif headers:
+            text = str(headers[0].get("text") or "")
+            if text:
+                opening = f"chapter header: {text}"
         events.append({
             "at": 0.0, "kind": "bass", "file": BOOM_14, "combo": "2",
             "label": "Cold Slam", "under_db": float(unders.get("bass", UNDER_DB["bass"])),
             "fixed_file": True, "fixed_lead": True, "band": "low",
+            "lands_on": opening,
         })
-    for index, shot in enumerate(shots):
-        start = float(shot["start"])
-        layout = shot.get("layout")
-        if layout == "punch_in":
-            events.append({
-                "at": round(start, 3), "kind": "whoosh", "file": BACKWARDS, "combo": "15",
-                "label": "Zoom Punch", "align": "end", "sound_at": round(start, 3),
-                "trim_frames": 8, "fade_in_frames": 3, "fixed_lead": True,
-                "rotate": "punch", "band": "mid",
-                "under_db": float(unders.get("whoosh", UNDER_DB["whoosh"])),
-            })
-            events.append({
-                "at": round(start, 3), "kind": "ding", "file": DEEP_HIT, "combo": "15",
-                "label": "Zoom Punch hit", "fixed_lead": True,
-                "rotate": "hit", "trim_frames": 12, "fade_frames": 3, "band": "low",
-                "under_db": float(unders.get("bass", UNDER_DB["bass"])),
-            })
-        elif layout == "split" and index > 0:
+    previous = None
+    for header in headers or []:
+        text = str(header.get("text") or "")
+        at = float(header.get("start") or 0.0)
+        if previous and text and text != previous:
             covered = any(
-                item.get("kind") in {"whoosh", "riser"} and abs(float(item["at"]) - start) < 0.2
+                item.get("kind") in {"whoosh", "riser"} and abs(float(item.get("at", 0)) - at) < 0.2
                 for item in events
             )
             if not covered:
                 events.append({
-                    "at": round(start, 3), "kind": "whoosh", "combo": "8",
-                    "label": "Standard Cut", "rotate": "whoosh", "band": "mid",
+                    "at": round(at, 3), "kind": "whoosh", "combo": "8",
+                    "label": "Chapter header", "rotate": "whoosh", "band": "mid",
+                    "lands_on": f"chapter header: {text}",
                 })
+        if text:
+            previous = text
     if shots:
         duration = max(float(shot["end"]) for shot in shots)
+        # The tail whoosh does not open a picture. It stays on the timeline
+        # so the density pass can see it, and it does not play.
         events.append({
             "at": round(duration, 3), "kind": "whoosh", "file": COOL_WHOOSH, "combo": "47",
             "label": "Loop Close", "sound_at": round(max(0.0, duration - (1.0 / fps)), 3),
             "fixed_file": True, "fixed_lead": True, "band": "mid",
             "under_db": float(unders.get("whoosh", UNDER_DB["whoosh"])),
+            "mute": True, "mute_reason": "no visual",
         })
-    return finish_sfx(events, fps, unders, UNDER_DB)
+    return anchor_sfx(finish_sfx(events, fps, unders, UNDER_DB), words)
 
 
 def _append_cut(cuts, point, duration):
@@ -322,7 +542,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
                   width=1080, height=1920, fps=30, seed_path=None):
     if not words:
         raise ValueError("planning needs word timings")
-    if set(LIBRARY) != set(MOTIFS) - {"doc_fan"}:
+    if set(LIBRARY) != set(MOTIFS) - {"doc_fan", "hero_board"}:
         raise ValueError("motif rotation is missing a library entry")
     theme, _colors, mode, path = load_theme(theme_mode, theme_path)
     ordered = sorted(words, key=lambda word: float(word["start"]))
@@ -422,7 +642,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
                 motif = "doc_fan"
             else:
                 motif = _rotate(seed, split_index, previous_motif)
-            shot["crop"] = "tight" if split_index % 2 else "wide"
+            shot["crop"] = "wide"
             shot["stage"] = _stage_for(motif, covered, theme, keyword)
             previous_motif = motif
             split_index += 1
@@ -504,8 +724,9 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
     from kallaway_beats import apply_emphasis_punches
     shots = apply_emphasis_punches(
         shots, ordered, styles,
-        float(theme["layout"].get("full_scale", 1.13)),
+        float(theme["layout"].get("full_scale", 0.90)),
         float(theme["layout"].get("punch_step", 1.12)))
+    sfx = _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}, fps, headers)
     return {
         "style": "kallaway",
         "theme": theme["id"],
@@ -529,11 +750,9 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
         "headers": headers,
         "shots": shots,
         "stage_slots": stage_slots,
-        "captions": {
-            "max_words": 2, "uppercase": False, "word_styles": styles,
-            "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
-        },
-        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}, fps),
+        "captions": _caption_block(ordered, styles, stage_plan),
+        "sfx": sfx,
+        "sfx_log": sfx_placement_rows(sfx),
     }
 
 

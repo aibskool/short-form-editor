@@ -80,6 +80,28 @@ def _try_transcribe(source, destination):
     return words
 
 
+# A 1-frame take change sits under 0.16. 0.10 still ignores ordinary head motion.
+SCENE_THRESHOLD = 0.10
+
+
+def _scene_times(video, threshold=SCENE_THRESHOLD):
+    """Picture-cut times. A layout boundary near one of these is the same cut."""
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(video),
+         "-filter:v", f"select='gt(scene,{float(threshold):.3f})',showinfo", "-f", "null", "-"],
+        capture_output=True, text=True)
+    times = []
+    for line in result.stderr.splitlines():
+        if "pts_time:" not in line:
+            continue
+        token = line.split("pts_time:", 1)[1].split()[0]
+        try:
+            times.append(float(token))
+        except ValueError:
+            continue
+    return times
+
+
 def render(source, output, words_path=None, project=None, keyword=None, title=None, theme_mode="dark",
            theme_path=None, stage_plan=None, music=None, emphasis=None, quality="draft", workers=1,
            skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None):
@@ -96,11 +118,13 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         source, raw_words, project / "tightened.mp4",
         gap=float(audio_cfg["pause_gap_seconds"]),
         handle=float(audio_cfg["join_handle_seconds"]),
-        crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)))
+        crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)),
+        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])))
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),
-        presence_hz=float(audio_cfg["presence_hz"]), presence_db=float(audio_cfg["presence_db"]))
+        presence_hz=float(audio_cfg["presence_hz"]), presence_db=float(audio_cfg["presence_db"]),
+        ratio=float(audio_cfg.get("compression_ratio", 2.2)))
     words = tightened["words"]
     # The processed file keeps the tightened picture. Word times are on that clock.
     if words[-1]["end"] > tightened["duration"] + 0.08:
@@ -132,13 +156,47 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         seed_path=str(source))
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
+    from kallaway_beats import (
+        close_short_picture_gaps, lengthen_closing_face, output_join_times,
+        punch_short_jumps, snap_shot_edges,
+    )
+    joins = output_join_times(tightened.get("ranges") or [])
+    picture_cuts = _scene_times(leveled["output"])
+    timeline["shots"] = snap_shot_edges(
+        timeline.get("shots") or [], picture_cuts, joins=joins)
+    timeline["shots"] = close_short_picture_gaps(timeline["shots"], joins)
+    timeline["shots"] = punch_short_jumps(timeline["shots"], joins)
+    # Scene snap can pull the last face back under a second and a half.
+    # Do not cross back over the picture cut; use the hold after the last word.
+    timeline["shots"] = lengthen_closing_face(
+        timeline["shots"], timeline.get("headers"), minimum=1.52,
+        scene_times=picture_cuts, video_end=float(tightened["duration"]))
+    # Shot edges moved after the plan, so the cues have to be built again
+    # or a counter ding lands on the old time and the style check rejects it.
+    from kallaway_plan import _cover_sfx, sfx_placement_rows
+    timeline["sfx"] = _cover_sfx(
+        timeline["shots"], words, (timeline.get("captions") or {}).get("word_styles") or {},
+        theme.get("sfx_under_db") or {}, timeline.get("output", {}).get("fps", 30),
+        timeline.get("headers"))
+    timeline["sfx_log"] = sfx_placement_rows(timeline["sfx"])
+    timeline["source_ranges"] = [
+        [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
+    ]
+    timeline["source_words"] = [
+        {"word": str(word.get("word") or word.get("text") or ""),
+         "start": float(word["start"]), "end": float(word["end"])}
+        for word in (tightened.get("aligned") or raw_words)
+    ]
     if timeline.get("sfx"):
         baked = project / "voice-sfx.mp4"
         mixed = mix_voice_sfx(leveled["output"], baked, timeline["sfx"], project / "sfx")
         timeline["source"]["path"] = str(baked.resolve())
         timeline["sfx_baked"] = True
         timeline["sfx_mix"] = {"peak": mixed["peak"], "trim_db": mixed["trim_db"]}
-        for cue, row in zip(timeline["sfx"], mixed["cues"]):
+        # The report lists only the cues that were played. Zip would write
+        # those levels onto muted rows and drop the rest.
+        for row in mixed["cues"]:
+            cue = timeline["sfx"][row["source_index"]]
             cue.update({
                 "under_db": row["under_db"],
                 "gain_db": row["gain_db"],
@@ -146,12 +204,23 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
                 "target_lufs": row["target_lufs"],
                 "voice_lufs": row["voice_lufs"],
                 "file": row["file"],
+                "body_at": row["body_at"],
             })
-    timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
+    _write_sfx_log(timeline, project)
+    played = round(float(timeline["shots"][-1]["end"]), 3)
+    file_end = round(float(tightened["duration"]), 3)
+    timeline["source"]["segments"] = [{"start": 0, "end": min(played, file_end)}]
     timeline["joins"] = tightened.get("joins") or []
     attach_popout(
         timeline, source, tightened.get("ranges") or [],
         timeline["source"]["path"], theme)
+    from kallaway_matte import sample_shot_chins
+    from kallaway_style import assign_full_captions
+    assign_full_captions(
+        timeline.get("shots") or [],
+        sample_shot_chins(timeline["source"]["path"], timeline.get("shots") or []),
+        theme["layout"],
+        int(timeline.get("output", {}).get("height", 1920)))
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)
@@ -181,16 +250,45 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     finalize = [sys.executable, str(HERE.parent / "finalize_render.py"),
                 "--input", str(rendered), "--output", str(final),
                 "--receipt", str(project / "final-receipt.json")]
-    if target_lufs is not None:
-        finalize.extend(["--target-lufs", str(target_lufs)])
-    if true_peak is not None:
-        finalize.extend(["--true-peak", str(true_peak)])
-    if codec_headroom_db is not None:
-        finalize.extend(["--codec-headroom-db", str(codec_headroom_db)])
+    # Playbook S9: -14 LUFS and a true peak at or below -1 dBTP. The headroom
+    # keeps the AAC encode from poking back through that ceiling.
+    if target_lufs is None:
+        target_lufs = -14.0
+    if true_peak is None:
+        true_peak = -1.0
+    if codec_headroom_db is None:
+        codec_headroom_db = 0.8
+    finalize.extend(["--target-lufs", str(target_lufs), "--true-peak", str(true_peak),
+                     "--codec-headroom-db", str(codec_headroom_db)])
     subprocess.run(finalize, check=True, env=env)
+    from check_kallaway_style import output_short_shots
+    shorts = output_short_shots(final)
+    report["short_picture_runs"] = shorts
     report["output"] = str(final)
+    report["output_short_shots"] = shorts
+    report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
+    if shorts:
+        (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
+        raise SystemExit(
+            "output frames have a shot under 0.5s:\n" + json.dumps(shorts, indent=2))
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
+
+
+def _write_sfx_log(timeline, project, output=None):
+    """Placement log for gate G9: time, pack file, and the picture the hit lands on."""
+    from kallaway_plan import sfx_placement_rows
+    rows = sfx_placement_rows(timeline.get("sfx"))
+    timeline["sfx_log"] = rows
+    payload = {"schema": "kallaway-sfx-log/v1", "cues": rows}
+    text = json.dumps(payload, indent=2) + "\n"
+    path = Path(project) / "sfx-placement.json"
+    path.write_text(text)
+    if output is not None:
+        side = Path(output).with_name(Path(output).stem + "-sfx-log.json")
+        side.write_text(text)
+        return side
+    return path
 
 
 def main():

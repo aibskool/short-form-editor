@@ -11,7 +11,8 @@ import re
 
 from kallaway_motifs import resolve_annotations
 from kallaway_plan import (
-    NEGATIVE, _cover_sfx, _slot_words, _spoken, _token, caption_phrases, plain_text,
+    NEGATIVE, _caption_block, _cover_sfx, _lands_on, _slot_words, _spoken, _token, anchor_sfx,
+    caption_phrases, plain_text, sfx_placement_rows,
 )
 
 
@@ -22,12 +23,12 @@ STAGE_KEYS = (
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
     "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
-    "variant", "uncropped",
+    "variant", "uncropped", "scan", "notes", "from", "sweep", "motion", "lock_at", "negative",
 )
 
-# Full-screen sits 13% tighter than a wide split. Each punch stacks another 12%.
-FULL_SCALE = 1.13
-PUNCH_STEP = 1.12
+# Full-screen and punch share scale 1 so the face is full bleed with no mid-shot jump.
+FULL_SCALE = 1.0
+PUNCH_STEP = 1.0
 CONTRAST_WORDS = {"but", "so", "now", "most", "never", "stop", "you"}
 
 
@@ -81,7 +82,8 @@ def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUN
                     best = (rank, at)
         piece = {key: value for key, value in shot.items() if key != "stage"}
         piece["scale"] = round(float(full_scale), 3)
-        if best is None:
+        punch_scale = round(float(full_scale) * float(step), 3)
+        if best is None or abs(punch_scale - float(full_scale)) < 0.001:
             piece["start"] = round(start, 3)
             piece["end"] = round(end, 3)
             piece["layout"] = "full"
@@ -97,7 +99,7 @@ def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUN
         punch["start"] = round(at, 3)
         punch["end"] = round(end, 3)
         punch["layout"] = "punch_in"
-        punch["scale"] = round(float(full_scale) * float(step), 3)
+        punch["scale"] = punch_scale
         built.append(punch)
     for index, shot in enumerate(built):
         shot["id"] = f"shot-{index:02d}"
@@ -158,6 +160,367 @@ def _cut_points(start, end, words):
     return points
 
 
+_SMALL_WORDS = {"a", "an", "the", "for", "to", "of", "and", "or", "in", "on", "at", "by", "vs"}
+
+
+def _title_word(token, first):
+    bare = token.strip(".,!?:;\"'")
+    if not bare:
+        return token
+    if any(ch.isdigit() for ch in bare) or bare.startswith("$"):
+        return token
+    # AI, ADA, and WCAG stay initials. WEBSITE stays capped when the line wrote it that way.
+    if bare.upper() in {"AI", "ADA", "WCAG"} or (bare.upper() == "WEBSITE" and bare.isupper()):
+        return bare.upper() + token[len(bare):]
+    if not first and bare.lower() in _SMALL_WORDS:
+        return bare.lower() + token[len(bare):]
+    return bare[:1].upper() + bare[1:].lower() + token[len(bare):]
+
+
+def _title_case(text):
+    words = str(text).split()
+    return " ".join(_title_word(word, index == 0) for index, word in enumerate(words))
+
+
+def _fit_header(header, width, height, layout):
+    """Title Case Inter, one payoff word, kept inside y 100–240."""
+    lines = [_title_case(line) for line in (header.get("lines") or [])]
+    text = _title_case(header.get("text") or " ".join(lines))
+    if not lines:
+        lines = [text] if text else []
+    green = {int(index) for index in header.get("green_lines") or []}
+    emphasis = [_title_case(word) if not any(ch.isdigit() for ch in word) else word
+                for word in header.get("emphasis") or []]
+    payoff = ""
+    payoff_style = "marker"
+    if emphasis:
+        payoff = emphasis[-1].strip(".,!?:;\"'")
+    elif green and lines:
+        source = lines[min(max(green), len(lines) - 1)]
+        payoff = source.split()[-1].strip(".,!?:;\"'") if source.split() else ""
+    if payoff and (payoff[:1] == "$" or any(ch.isdigit() for ch in payoff)):
+        # A price in the title is the bad offer. Amber, not a green payoff box.
+        payoff_style = "amber"
+    if header.get("payoff_tone") == "amber":
+        payoff_style = "amber"
+    if header.get("payoff_style") in {"box", "marker", "amber"}:
+        payoff_style = header["payoff_style"]
+    title_top = float(layout.get("title_top", 0.0520833333)) * height
+    # 40–60 px between the title and the stage. The final card sits on that line.
+    max_bottom = min(240.0, float(layout["stage_top"]) * height - 50.0)
+    room = max(48.0, max_bottom - title_top)
+    line_count = max(1, len(lines))
+    size = min(72.0, room / (line_count * 1.05))
+    # Shrink until the longest line fits the title width.
+    usable = width * 0.86
+    longest = max((len(line) for line in lines), default=1)
+    while size > 36 and longest * size * 0.52 > usable:
+        size -= 2
+    bottom = round(title_top + line_count * size * 1.05, 1)
+    entry = {
+        "text": text,
+        "emphasis": [payoff] if payoff else [],
+        "payoff": payoff,
+        "payoff_style": payoff_style,
+        "variant": header.get("variant") or "headline",
+        "size": round(size, 1),
+        "bottom": bottom,
+    }
+    if lines:
+        entry["lines"] = lines
+    if header.get("sub"):
+        entry["sub"] = _clean(header["sub"])
+    return entry
+
+
+def output_join_times(ranges):
+    """Picture-cut times on the tightened clock. The concat hard-cuts at each range end."""
+    clock = 0.0
+    times = []
+    ordered = list(ranges or [])
+    for begin, end in ordered[:-1]:
+        clock += float(end) - float(begin)
+        times.append(round(clock, 3))
+    return times
+
+
+def quantize_cut(moment, fps=30):
+    """Presentation time of a scene frame, early enough that the frame is in the new shot.
+
+    A scene at 10.6666... rounded to 3 decimals is 10.667, which is after that
+    frame. The layout then changes on the next frame and the new take flashes
+    for one frame in the old layout.
+    """
+    index = int(round(float(moment) * float(fps)))
+    return round(index / float(fps) - 0.0005, 3)
+
+
+def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5, joins=None, fps=30):
+    """Move a layout cut onto a nearby picture cut so a 1–3 frame orphan cannot sit between them.
+
+    A tighten join within two frames wins, so the layout and the take change on
+    the same frame. Otherwise the picture change is the earliest scene inside
+    the window. A one-frame pull is kept even when a neighbor is already short:
+    reverting it is what leaves the stray frame of the previous take.
+    """
+    if len(shots) < 2 or (not scene_times and not joins):
+        return shots
+    original = [float(shot["start"]) for shot in shots] + [float(shots[-1]["end"])]
+    edges = list(original)
+    scenes = sorted(float(moment) for moment in (scene_times or []))
+    join_times = sorted(float(moment) for moment in (joins or []))
+    locked = set()
+    frame = 1.0 / float(fps)
+    for index in range(1, len(edges) - 1):
+        if not join_times:
+            break
+        nearest = min(join_times, key=lambda moment: abs(moment - edges[index]))
+        if abs(nearest - edges[index]) <= 2.5 / 30.0:
+            edges[index] = nearest
+            locked.add(index)
+    for index in range(1, len(edges) - 1):
+        if index in locked or not scenes:
+            continue
+        near = [moment for moment in scenes if abs(moment - edges[index]) <= window]
+        if not near:
+            continue
+        before = [moment for moment in near if moment <= edges[index] + frame]
+        chosen = min(before) if before else min(near, key=lambda moment: abs(moment - edges[index]))
+        edges[index] = quantize_cut(chosen, fps)
+    for index in range(1, len(edges) - 1):
+        if index in locked:
+            continue
+        moved = abs(edges[index] - original[index])
+        short = edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum
+        if short and moved > 0.15:
+            edges[index] = original[index]
+    for shot, start, end in zip(shots, edges, edges[1:]):
+        shot["start"] = round(start, 3)
+        shot["end"] = round(end, 3)
+    return shots
+
+
+def close_short_picture_gaps(shots, joins, minimum=0.5):
+    """Move a layout edge onto a picture join that would leave a flash under 0.5 s.
+
+    The plan can call a shot 2 s long while the picture changes 0.4 s after the
+    layout cut. On the output frames that 0.4 s is its own shot. Pull the edge
+    onto the join when both neighbors still hold `minimum`.
+    """
+    if len(shots) < 2 or not joins:
+        return shots
+    edges = [float(shots[0]["start"])] + [float(shot["end"]) for shot in shots]
+    for join in sorted(float(moment) for moment in joins):
+        nearest = min(range(1, len(edges) - 1), key=lambda index: abs(edges[index] - join))
+        if abs(edges[nearest] - join) < 1.0 / 30.0 or abs(edges[nearest] - join) >= minimum:
+            continue
+        if join - edges[nearest - 1] + 1e-3 < minimum or edges[nearest + 1] - join + 1e-3 < minimum:
+            continue
+        edges[nearest] = join
+    for shot, start, end in zip(shots, edges, edges[1:]):
+        shot["start"] = round(start, 3)
+        shot["end"] = round(end, 3)
+    return shots
+
+
+def short_picture_runs(path, minimum=0.5, change=28.0, edge=32):
+    """Shots under `minimum` seconds, measured from output-frame changes.
+
+    A hard cut moves the whole downscaled frame. A caption or a small graphic
+    does not clear `change`, so those are not extra shots.
+    """
+    import subprocess
+    import numpy as np
+    probe = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", str(path)],
+        text=True).strip()
+    num, den = (probe.split("/") + ["1"])[:2]
+    fps = float(num) / float(den or 1)
+    if fps <= 0:
+        fps = 30.0
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(path),
+         "-vf", f"scale={edge}:{edge}:flags=area",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        stderr=subprocess.DEVNULL)
+    frame = edge * edge * 3
+    count = len(raw) // frame
+    if count < 2:
+        return []
+    frames = np.frombuffer(raw[:count * frame], dtype=np.uint8).reshape(count, edge, edge, 3).astype(np.int16)
+    diffs = np.abs(frames[1:].astype(np.int16) - frames[:-1]).mean(axis=(1, 2, 3))
+    cuts = [0]
+    for index, diff in enumerate(diffs, start=1):
+        if float(diff) >= change:
+            cuts.append(index)
+    cuts.append(count)
+    short = []
+    for begin, end in zip(cuts, cuts[1:]):
+        seconds = (end - begin) / fps
+        if seconds + 1e-6 < minimum:
+            short.append({
+                "start": round(begin / fps, 3),
+                "end": round(end / fps, 3),
+                "seconds": round(seconds, 3),
+            })
+    return short
+
+
+def punch_short_jumps(shots, joins, scale=1.12, short=1.5):
+    """A picture join inside a full-face shot that leaves a piece under 1.5 s becomes a punch.
+
+    The jump stays in the take. The short side scales up, at most 15 percent,
+    so the cut is a punch instead of a naked jump.
+    """
+    join_times = [float(moment) for moment in (joins or [])]
+    if len(shots) < 1 or not join_times or scale <= 1.0 or scale > 1.15:
+        return shots
+    built = []
+    for shot in shots:
+        start, end = float(shot["start"]), float(shot["end"])
+        if shot.get("layout") != "full":
+            built.append(shot)
+            continue
+        inside = [moment for moment in join_times if start + 0.2 < moment < end - 0.2]
+        if not inside:
+            built.append(shot)
+            continue
+        cut = min(inside, key=lambda moment: min(moment - start, end - moment))
+        left, right = cut - start, end - cut
+        if min(left, right) >= short or min(left, right) < 0.5:
+            built.append(shot)
+            continue
+        opening = dict(shot)
+        opening["end"] = round(cut, 3)
+        closing = dict(shot)
+        closing["start"] = round(cut, 3)
+        if left <= right:
+            opening["layout"] = "punch_in"
+            opening["scale"] = round(float(scale), 3)
+            closing["layout"] = "full"
+            closing["scale"] = 1.0
+        else:
+            closing["layout"] = "punch_in"
+            closing["scale"] = round(float(scale), 3)
+            opening["layout"] = "full"
+            opening["scale"] = 1.0
+        built.extend((opening, closing))
+    for index, shot in enumerate(built):
+        shot["id"] = f"shot-{index:02d}"
+    return built
+
+
+def lengthen_closing_face(shots, headers=None, minimum=1.52, scene_times=None, video_end=None):
+    """The last full-face or punch has to hold at least a second and a half.
+
+    The start does not cross back over a picture cut. Stealing that frame is
+    what puts one take inside the next layout. When the previous shot cannot
+    give the time, the end may run up to a tenth of a second into the hold
+    that follows the last word.
+    """
+    if len(shots) < 2:
+        return shots
+    last = shots[-1]
+    if last.get("layout") not in {"full", "punch_in"}:
+        return shots
+    start = float(last["start"])
+    end = float(last["end"])
+    floor = start
+    if scene_times:
+        on_cut = [float(moment) for moment in scene_times if float(moment) <= start + (1.0 / 30.0)]
+        if on_cut and start - max(on_cut) <= 0.08:
+            floor = max(floor, quantize_cut(max(on_cut)))
+    span = end - start
+    if span + 1e-3 < minimum:
+        prev = shots[-2]
+        room = float(prev["end"]) - float(prev["start"]) - 1.2
+        room = min(room, start - floor)
+        shift = min(max(0.0, room), minimum - span)
+        if shift >= 0.03:
+            boundary = round(max(floor, start - shift), 3)
+            prev["end"] = boundary
+            last["start"] = boundary
+            start = boundary
+            for header in headers or []:
+                if float(header.get("start", 0)) < boundary < float(header.get("end", 0)):
+                    header["end"] = boundary
+    span = end - start
+    if span + 1e-3 < minimum and video_end is not None:
+        need = minimum - span
+        extra = min(need, 0.10, max(0.0, float(video_end) - end))
+        if extra >= 0.02:
+            end = round(end + extra, 3)
+            last["end"] = end
+            for header in headers or []:
+                if abs(float(header.get("end", 0)) - (end - extra)) <= 0.02:
+                    header["end"] = end
+    return shots
+
+
+def _sentence_spans(words):
+    """Sentence slices. A period, a long pause, or a capital start opens the next one."""
+    if not words:
+        return []
+    continuations = {"and", "but", "that", "so", "when", "or", "because"}
+    spans = []
+    begin = 0
+    for index, word in enumerate(words[:-1]):
+        text = str(word.get("word") or word.get("text") or "").rstrip()
+        nxt = str(words[index + 1].get("word") or words[index + 1].get("text") or "").strip()
+        gap = float(words[index + 1]["start"]) - float(word["end"])
+        token = _token(word)
+        nxt_token = _token(words[index + 1])
+        end_punct = text.endswith((".", "!", "?"))
+        capital = bool(nxt[:1].isupper()) and nxt_token not in {"i", "ive", "id", "im"}
+        fresh_i = nxt_token in {"i", "ive", "id", "im"} and token not in continuations
+        if end_punct or gap > 0.35 or capital or fresh_i:
+            spans.append((begin, index + 1))
+            begin = index + 1
+    spans.append((begin, len(words)))
+    return spans
+
+
+def _cap_emphasis(words, styles, spans):
+    """One colored word per sentence. Amber counts. A price beats another amber."""
+    rank = {"marker": 0, "amber": 1, "green": 2}
+    chosen = {}
+    groups = _sentence_spans(words) or list(spans)
+    for begin, end in groups:
+        best = None
+        seen = []
+        for index in range(begin, end):
+            token = _token(words[index])
+            style = styles.get(token)
+            if style not in rank:
+                continue
+            score = rank[style]
+            if any(ch.isdigit() for ch in token) and style == "amber":
+                score = -1
+            seen.append(index)
+            if best is None or score < best[0] or (score == best[0] and index >= best[2]):
+                best = (score, token, index)
+        if best:
+            chosen[best[2]] = styles.get(best[1], "normal")
+    style_at = []
+    for index, word in enumerate(words):
+        token = _token(word)
+        style = styles.get(token, "normal")
+        if style in rank:
+            style = chosen.get(index, "normal")
+        style_at.append(style if style in {"normal", "marker", "green", "amber"} else "normal")
+    kept = {}
+    for index, style in enumerate(style_at):
+        if style in rank:
+            kept[_token(words[index])] = style
+    for token in list(styles):
+        if styles.get(token) in rank and token not in kept:
+            styles[token] = "normal"
+    for token, style in kept.items():
+        styles[token] = style
+    return style_at
+
+
 def _clean(value):
     if isinstance(value, str):
         return plain_text(value)
@@ -173,6 +536,14 @@ def _stage_from(beat, motif):
     for key in STAGE_KEYS:
         if beat.get(key) is not None:
             stage[key] = _clean(beat[key])
+    # A phone chip with no place used to sit on the mock header. The bottom
+    # edge is the only place that clears the screen and the title.
+    if motif == "phone_frame":
+        chip = stage.get("chip")
+        if isinstance(chip, str):
+            stage["chip"] = {"text": chip, "place": "bottom"}
+        elif isinstance(chip, dict) and not chip.get("place"):
+            chip["place"] = "bottom"
     return stage
 
 
@@ -247,7 +618,6 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         item["end"] = round(end, 3)
 
     shots = []
-    split_index = 0
     screen = _phone_screen(theme, width, height)
     for item in resolved:
         beat = item["beat"]
@@ -265,7 +635,10 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                 "end": round(end, 3),
                 "layout": layout,
             }
-            position = beat.get("object_position") or stage_plan.get("object_position")
+            if layout == "split":
+                position = beat.get("object_position") or stage_plan.get("object_position")
+            else:
+                position = beat.get("object_position") or stage_plan.get("full_object_position") or theme["layout"].get("full_object_position")
             if position:
                 shot["object_position"] = position
             if layout == "punch_in":
@@ -276,7 +649,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                 motif = beat.get("motif")
                 if not motif:
                     raise ValueError(f"split beat {beat['spoken']!r} needs a motif")
-                crop = beat.get("crop") or ("tight" if split_index % 2 else "wide")
+                crop = beat.get("crop") or "wide"
                 shot["crop"] = crop
                 only_split = piece_index == 0
                 stage = _stage_from(beat, motif)
@@ -297,6 +670,13 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                             stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
                     else:
                         stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
+                if beat.get("lock_spoken"):
+                    at = float(ordered[locate(ordered, beat["lock_spoken"], item["index"])]["start"])
+                    if start - 0.02 <= at < end:
+                        stage["lock_at"] = round(at, 3)
+                if motif == "phone_frame" and shots and shots[-1].get("layout") in {"full", "punch_in"}:
+                    # The handset enters after the face cut. The whoosh rides that entrance.
+                    stage["enter_after"] = 0.20
                 shot["stage"] = stage
                 if motif in {"phone_frame", "broll_card"}:
                     resolve_annotations(stage, start, end, screen)
@@ -313,7 +693,6 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                             resolve_annotations(overlay, overlay["start"], overlay["end"], screen)
                     shot["overlays"] = overlays
                 split_pieces.append(shot)
-                split_index += 1
             shots.append(shot)
         # A callout that belongs to a later word stays on the split piece above.
         del split_pieces
@@ -333,6 +712,19 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         if right["end"] - right["start"] > 5.5:
             raise ValueError(f"{right['id']} is longer than 5.5s")
 
+    spans = []
+    for index, (item, nxt) in enumerate(zip(resolved, resolved[1:] + [None])):
+        begin = 0 if index == 0 else item["index"]
+        stop = nxt["index"] if nxt else len(ordered)
+        spans.append((begin, stop))
+    # Colors baked onto the transcript join the cap. A plan entry already in
+    # ``styles`` keeps its color, so an amber price is not put back to green.
+    for word in ordered:
+        baked = word.get("style")
+        token = _token(word)
+        if baked in {"marker", "green", "amber"} and token not in styles:
+            styles[token] = baked
+    style_at = _cap_emphasis(ordered, styles, spans)
     full_scale = float(stage_plan.get("full_scale") or theme["layout"].get("full_scale") or FULL_SCALE)
     step = float(stage_plan.get("punch_step") or PUNCH_STEP)
     shots = apply_emphasis_punches(shots, ordered, styles, full_scale, step)
@@ -343,23 +735,14 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         beat = item["beat"]
         header = beat.get("header")
         if header:
-            lines = [_clean(line) for line in header.get("lines") or []]
-            text = _clean(header.get("text") or " ".join(lines))
-            entry = {
-                "start": item["start"],
-                "end": item["end"],
-                "text": text,
-                "emphasis": [_clean(word) for word in header.get("emphasis") or []],
-                "variant": header.get("variant") or "headline",
-            }
-            if lines:
-                entry["lines"] = lines
-                entry["green_lines"] = [int(index) for index in header.get("green_lines") or []]
-            if header.get("sub"):
-                entry["sub"] = _clean(header["sub"])
-            if header.get("size"):
-                entry["size"] = float(header["size"])
-            headers.append(entry)
+            entry = _fit_header(header, width, height, theme["layout"])
+            entry["start"] = item["start"]
+            entry["end"] = item["end"]
+            # The same title across beats is one hold, not a new card that pops in again.
+            if headers and headers[-1].get("text") == entry.get("text") and abs(headers[-1]["end"] - entry["start"]) < 0.08:
+                headers[-1]["end"] = entry["end"]
+            else:
+                headers.append(entry)
         if beat.get("disclaimer"):
             notices.append({
                 "start": item["start"], "end": item["end"], "text": _clean(beat["disclaimer"]),
@@ -419,17 +802,33 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             track["envelope"] = envelope
         music_tracks.append(track)
 
+    lengthen_closing_face(shots, headers, minimum=1.52)
     from kallaway_audio import UNDER_DB
     unders = theme.get("sfx_under_db") or {}
-    sfx = _cover_sfx(shots, ordered, styles, unders, fps)
+    sfx = _cover_sfx(shots, ordered, styles, unders, fps, headers)
     present = {(item["kind"], item["at"]) for item in sfx}
     for moment in bass_at:
         key = ("bass", round(moment, 3))
         if key not in present:
-            sfx.append({
-                "kind": "bass", "at": key[1],
+            landing = ""
+            for shot in shots:
+                if shot.get("layout") != "split" or not shot.get("stage"):
+                    continue
+                if float(shot["start"]) - 0.05 <= key[1] <= float(shot["end"]) + 0.02:
+                    landing = _lands_on(shot["stage"].get("motif"), shot["stage"])
+                    break
+            from kallaway_pack import BOOM_14
+            cue = {
+                "kind": "bass", "at": key[1], "file": BOOM_14, "combo": "2",
                 "under_db": float(unders.get("bass", UNDER_DB["bass"])),
-            })
+                "lands_on": landing, "label": "Music return",
+                "fixed_file": True, "fixed_lead": True,
+            }
+            if not landing:
+                cue["mute"] = True
+                cue["mute_reason"] = "no visual"
+            sfx.append(cue)
+    sfx = anchor_sfx(sfx, ordered)
     sfx.sort(key=lambda item: (item["at"], item["kind"]))
 
     title = headers[0]["text"] if headers else plain_text(keyword)
@@ -478,10 +877,10 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         "notices": notices,
         "shots": shots,
         "stage_slots": stage_slots,
-        "captions": {
-            "max_words": 2, "uppercase": False, "word_styles": styles,
-            "keep_case": [_clean(token) for token in keep_case],
-            "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
-        },
+        "captions": _caption_block(
+            ordered, styles, stage_plan, style_at=style_at,
+            keep_case=[_clean(token) for token in keep_case]),
         "sfx": sfx,
+        "sfx_log": sfx_placement_rows(sfx),
+        "speaker_reveal": float(stage_plan["speaker_reveal"]) if stage_plan.get("speaker_reveal") else None,
     }

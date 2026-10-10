@@ -18,16 +18,18 @@ RATE = 48000
 
 POP_3 = "27 Pops, Zaps & Switches/Pop 3.mp3"
 POP_5 = "27 Pops, Zaps & Switches/Pop 5.mp3"
+POP_4 = "27 Pops, Zaps & Switches/Pop 4.mp3"
 POP_1 = "27 Pops, Zaps & Switches/Pop 1.mp3"
+POP_CYCLE = [POP_3, POP_5, POP_4]
 FAST_WHIP = "03 Whooshes/Fast Whip.wav"
 QUICK_SWING = "03 Whooshes/Quick Swing B.wav"
 COOL_WHOOSH = "03 Whooshes/Cool Whoosh.wav"
-EPIC_03 = "04 Swishes & Swooshes/Epic Swishes 03.wav"
-EPIC_05 = "04 Swishes & Swooshes/Epic Swishes 05.wav"
-EPIC_08 = "04 Swishes & Swooshes/Epic Swishes 08.wav"
+SWIPE = "03 Whooshes/Movement Swipe Whoosh 2.mp3"
 SIMPLE_WHOOSH = "03 Whooshes/Simple Whoosh 1.wav"
+EPIC_03 = "04 Swishes & Swooshes/Epic Swishes 03.wav"
 SWOOSH_FAST = "04 Swishes & Swooshes/Swoosh Fast 1.mp3"
-DEEP_WHOOSH = "05 Deep & Power Whooshes/Deep Whoosh 2.wav"
+SWISH_2 = "04 Swishes & Swooshes/Swish 2.mp3"
+SWOOSH_17 = "04 Swishes & Swooshes/Swoosh 17.mp3"
 BACKWARDS = "04 Swishes & Swooshes/Backwards Swoosh.wav"
 DEEP_HIT = "06 Hits & Punches/Deep Hit.wav"
 IMPACT = "00 Viral Reels Essentials/Impact Cinematic Boom.mp3"
@@ -38,13 +40,17 @@ REVERSE_2 = "02 Reverse FX/Cinematic Reverse 2.wav"
 RISER_14 = "11 Risers/Riser 14.wav"
 RISER_12 = "11 Risers/Riser 12.wav"
 EXPLOSION = "09 Explosions & Crashes/Explosion 3.mp3"
-BELL_6 = "28 Dings, Bells & Chimes/Bell 6.wav"
 BELL_5 = "28 Dings, Bells & Chimes/Bell 5.wav"
+BELL_6 = "28 Dings, Bells & Chimes/Bell 6.wav"
+BELL_7 = "28 Dings, Bells & Chimes/Bell 7.wav"
+LIST_BELLS = [BELL_5, BELL_6, BELL_7]
 CORRECT = "30 Notifications & Alerts/Alert Positive Correct.mp3"
 BUZZER = "18 Fails & Buzzers/Buzzer 2.mp3"
 BUZZER_ALT = "18 Fails & Buzzers/Buzzer 1.mp3"
 UI_30 = "24 UI Sounds/Ui 30.wav"
 KA_CHING = "35 Money & Cash/Cash Register Ka Ching.mp3"
+KA_CHING_02 = "35 Money & Cash/Cash Register Ka Ching 02.mp3"
+MONEY_FILES = [KA_CHING, KA_CHING_02]
 TYPING_3 = "26 Typing & Keyboard/Typing 3.mp3"
 TYPING_4 = "26 Typing & Keyboard/Typing 4.mp3"
 CLICK_10 = "25 Mouse Clicks/Mouse Click 10.mp3"
@@ -53,8 +59,8 @@ CLICK_8 = "25 Mouse Clicks/Mouse Click 8.mp3"
 # Editor kinds keep their animation meaning. These are the takes the HTML
 # preview and the stem test rotate when a cue does not name a file.
 KIND_FILES = {
-    "pop": [POP_3, POP_5, POP_1],
-    "whoosh": [FAST_WHIP, QUICK_SWING, EPIC_03],
+    "pop": [POP_3, POP_5, POP_4],
+    "whoosh": [FAST_WHIP, QUICK_SWING, SWIPE],
     "click": [BELL_6, CLICK_10, CLICK_8],
     "typing": [TYPING_3, TYPING_4],
     "ticking": [UI_30, BELL_6],
@@ -62,24 +68,22 @@ KIND_FILES = {
     "bass": [BOOM_14, DEEP_HIT, IMPACT],
     "riser": [RISER_14, RISER_12],
     "error": [BUZZER, BUZZER_ALT],
-    "marker": [SWOOSH_FAST, SIMPLE_WHOOSH],
+    "marker": [SWISH_2, SWOOSH_FAST],
     "paper": [SWOOSH_FAST, SIMPLE_WHOOSH],
 }
 
-# Cool Whoosh is reserved for the loop close (combo 47), so a cut cannot be the third play.
-WHOOSH_ROTATION = [
-    FAST_WHIP, QUICK_SWING, EPIC_03, EPIC_05, EPIC_08,
-    SIMPLE_WHOOSH, SWOOSH_FAST, DEEP_WHOOSH,
-]
-CALLOUT_ROTATION = [SWOOSH_FAST, SIMPLE_WHOOSH, EPIC_03]
-PUNCH_SWOOSH = [BACKWARDS, REVERSE_2]
-PUNCH_HIT = [DEEP_HIT, IMPACT]
+# Cool Whoosh stays on the optional loop close. Whoosh Fast Short is not in this pack.
+WHOOSH_ROTATION = [FAST_WHIP, QUICK_SWING, SWIPE, SIMPLE_WHOOSH]
+UI_ROTATION = [SWIPE, SWISH_2, SWOOSH_17]
+CALLOUT_ROTATION = [SWISH_2, SWOOSH_FAST, SIMPLE_WHOOSH]
 
-# Midpoints of the mix cheat sheet, dB under the voice. No music in the reel.
+# Playbook S5, dB under the voice, with no music. Pops and ticks sit mid-range
+# of -10 to -16. Dings and the cash register sit mid-range of -8 to -12.
+# Marker draws use the quiet end because the pack has no squeak.
 UNDER_FROM_SHEET = {
-    "pop": 16.0, "click": 16.0, "typing": 16.0, "ticking": 16.0,
-    "marker": 14.0, "paper": 14.0,
-    "error": 6.0, "whoosh": 10.0, "riser": 10.0, "ding": 12.0, "bass": 6.0,
+    "pop": 13.0, "click": 13.0, "typing": 13.0, "ticking": 13.0,
+    "marker": 18.0, "paper": 10.0,
+    "error": 6.0, "whoosh": 10.0, "riser": 10.0, "ding": 10.0, "bass": 6.0,
 }
 
 _CACHE = {}
@@ -181,7 +185,7 @@ def render(cue):
             if len(samples) > count:
                 samples = samples[-count:]
                 if fade_in <= 0:
-                    fade_in = 0.04
+                    fade_in = 0.005
     else:
         start = int(round(float(cue.get("trim_from") or 0.0) * RATE))
         if start > 0:
@@ -191,7 +195,7 @@ def render(cue):
             if len(samples) > count:
                 samples = samples[:count]
                 if fade_out <= 0:
-                    fade_out = 0.04
+                    fade_out = 0.1
     if cue.get("loop"):
         need = max(1, int(round(float(cue["loop"]) * RATE)))
         if len(samples) == 0:
@@ -233,32 +237,51 @@ def decorate_events(motif, events, stage, start, end):
     """
     events = [dict(event) for event in events]
     stage = stage or {}
-    if motif in {"phone_frame", "broll_card", "highlight_box", "line_chart", "flow_line", "cursor_mock", "logo_row"}:
+    if motif in {"phone_frame", "broll_card", "highlight_box", "line_chart", "flow_line"}:
         for event in events:
             if event["kind"] == "whoosh":
                 event.setdefault("combo", "8")
-                event.setdefault("label", "Standard Cut")
+                event.setdefault("label", "Panel slide")
                 event.setdefault("rotate", "whoosh")
+    if motif in {"cursor_mock", "logo_row"}:
+        for event in events:
+            if event["kind"] == "whoosh":
+                event.setdefault("combo", "8")
+                event.setdefault("label", "UI swipe")
+                event.setdefault("rotate", "ui")
+    if motif in {"phone_frame", "broll_card"}:
+        for event in events:
+            if event["kind"] == "whoosh":
+                event["label"] = "Graphic entrance"
     if motif in {"phone_frame", "broll_card", "hand_circle"}:
         draw = 0.45 if motif == "hand_circle" else float((stage.get("callout") or {}).get("draw") or 0.36)
         for event in events:
             if event["kind"] != "marker":
                 continue
+            # The pack has no marker squeak. A quiet swish covers the draw.
             event.update({
-                "combo": "callout", "label": "Callout swish", "rotate": "callout",
-                "under_db": 14.0, "band": "mid",
+                "file": SWISH_2, "combo": "callout", "label": "Callout swish",
+                "fixed_file": True, "under_db": 18.0, "band": "mid",
+                "trim": round(draw, 3), "fade_frames": 3,
             })
-            event["also"] = [{
-                "kind": "pop", "at": event["at"], "sound_at": _land(event["at"], end, draw),
-                "combo": "callout", "label": "Callout pop",
-                "under_db": 16.0, "band": "high",
-            }]
     if motif == "doc_fan":
         for index, event in enumerate(events):
+            if event["kind"] == "error":
+                event.update({
+                    "file": BUZZER, "combo": "24", "label": "Graphic entrance",
+                    "fixed_file": True, "under_db": 8.0, "trim_frames": 8,
+                    "fade_frames": 3, "band": "noise",
+                })
+                continue
             event.update({
                 "file": SWOOSH_FAST, "combo": "paper", "label": "Page swish",
-                "rotate": "callout", "under_db": 14.0, "band": "mid",
+                "fixed_file": True, "under_db": 10.0, "band": "mid",
             })
+            event["also"] = [{
+                "kind": "pop", "at": event["at"], "combo": "19",
+                "label": "Graphic entrance" if index == 0 else "Page pop",
+                "sound_at": event["at"], "band": "high",
+            }]
             if index:
                 event["mute"] = True
     if motif == "vacuum_merge":
@@ -268,7 +291,7 @@ def decorate_events(motif, events, stage, start, end):
                 event.update({
                     "file": REVERSE_14, "combo": "13", "label": "Reverse Lead-In",
                     "align": "end", "sound_at": ding["at"], "trim_frames": 21,
-                    "fade_in_frames": 3, "fixed_file": True, "fixed_lead": True, "band": "mid",
+                    "fade_in": 0.005, "fixed_file": True, "fixed_lead": True, "band": "mid",
                 })
             elif event["kind"] == "ding":
                 event.update({
@@ -285,18 +308,26 @@ def decorate_events(motif, events, stage, start, end):
             event["mute"] = True
             event["combo"] = "25"
             event["label"] = "Counter tick"
+        money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
         for event in events:
             if event["kind"] != "ding":
                 continue
+            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
+            roll = max(0.45, float(event["at"]) - start_at)
             event.update({
-                "file": BELL_5, "combo": "25", "label": "Number Counter",
-                "fixed_file": True, "under_db": 12.0, "trim_frames": 14, "fade_frames": 3,
+                "file": KA_CHING if money else BELL_5,
+                "combo": "25", "label": "Number Counter",
+                "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
             })
+            event.pop("mute", None)
+            event.pop("mute_reason", None)
+            # The loop is the whole roll. It shares the bell's one budget slot.
             event["bed"] = {
-                "kind": "ticking", "at": ticks[0]["at"] if ticks else event["at"],
-                "file": UI_30, "combo": "25", "label": "Number Counter bed",
-                "under_db": 23.0, "loop": 0.9, "fixed_file": True, "band": "bed",
+                "kind": "ticking", "at": start_at,
+                "file": UI_30, "combo": "25", "label": "Number Counter",
+                "under_db": 13.0, "loop": round(roll, 3), "fixed_file": True, "band": "bed",
+                "budget_free": True,
             }
     if motif == "bar_chart" and stage.get("reveal") == "slice":
         riser = next(event for event in events if event["kind"] == "riser")
@@ -313,11 +344,18 @@ def decorate_events(motif, events, stage, start, end):
             "band": "low",
         })
     elif motif == "bar_chart":
+        seen_pop = False
         for event in events:
             if event["kind"] == "pop":
-                event.setdefault("combo", "19")
-                event.setdefault("label", "Word Pop")
-                event["sound_at"] = _land(event["at"], end, 0.22)
+                if not seen_pop:
+                    event["combo"] = "20"
+                    event["label"] = "Chart entrance"
+                    event["sound_at"] = round(float(event["at"]), 3)
+                    seen_pop = True
+                else:
+                    event.setdefault("combo", "19")
+                    event.setdefault("label", "Word Pop")
+                    event["sound_at"] = _land(event["at"], end, 0.08)
             elif event["kind"] == "error":
                 event.update({
                     "file": BUZZER, "combo": "24", "label": "Wrong Answer",
@@ -328,29 +366,32 @@ def decorate_events(motif, events, stage, start, end):
         card = events[0]
         if _money(stage):
             card.update({
-                "file": KA_CHING, "combo": "42", "label": "Money Shot",
-                "fixed_file": True, "under_db": 6.0, "sound_at": _land(card["at"], end, 0.26),
+                "file": KA_CHING, "combo": "42", "label": "Money Shot", "kind": "pop",
+                "fixed_file": True, "under_db": 10.0,
+                "sound_at": _land(card["at"], end, 0.18),
                 "band": "high",
             })
         else:
+            # The whoosh leads the card by 4 frames. It is not delayed onto the hold.
             card.update({
-                "file": POP_1, "combo": "20", "label": "Caption Slam",
-                "fixed_file": True, "under_db": 16.0, "sound_at": _land(card["at"], end, 0.24),
-                "band": "high",
+                "combo": "8", "label": "Graphic entrance", "band": "mid",
+                "rotate": "whoosh", "kind": "whoosh",
+                "sound_at": round(max(0.0, float(card["at"]) - 4.0 / 30.0), 3),
+                "fixed_lead": True,
             })
-            # Hit Dull at 40% is about 8 dB under a full impact (impact sits at -6).
-            card["also"] = [{
-                "kind": "pop", "at": card["at"], "sound_at": card["sound_at"],
-                "file": HIT_DULL, "combo": "20", "label": "Caption Slam hit",
-                "fixed_file": True, "under_db": 14.0, "band": "low",
-            }]
+        for extra in events[1:]:
+            if extra.get("kind") == "pop" and abs(float(extra.get("at", 0)) - float(card["at"])) < 0.05:
+                extra["mute"] = True
+                extra["mute_reason"] = "stacked"
+        tick_n = 0
         for event in events:
             if event["kind"] == "ticking":
                 event.update({
-                    "file": BELL_6, "combo": "22", "label": "List Tick",
-                    "fixed_file": True, "under_db": 16.0, "trim_frames": 3, "fade_frames": 2,
+                    "file": LIST_BELLS[tick_n % len(LIST_BELLS)], "combo": "22", "label": "List Tick",
+                    "fixed_file": True, "trim_frames": 8, "fade_frames": 3,
                     "sound_at": event["at"], "band": "high",
                 })
+                tick_n += 1
             elif event["kind"] == "error":
                 event.update({
                     "file": BUZZER, "combo": "24", "label": "Wrong Answer",
@@ -358,21 +399,54 @@ def decorate_events(motif, events, stage, start, end):
                     "band": "noise",
                 })
     if motif == "numbered_list":
-        for event in events:
-            event.update({
-                "file": BELL_6, "combo": "22", "label": "List Tick",
-                "fixed_file": True, "under_db": 16.0, "trim_frames": 8, "fade_frames": 3,
-                "band": "high",
-            })
+        if stage.get("variant") == "cards":
+            for event in events:
+                event.update({
+                    "kind": "pop", "combo": "19", "label": "Graphic entrance",
+                    "sound_at": round(float(event["at"]), 3), "band": "high",
+                })
+                event.pop("file", None)
+                event.pop("fixed_file", None)
+        else:
+            for index, event in enumerate(events):
+                event.update({
+                    "file": LIST_BELLS[index % len(LIST_BELLS)], "combo": "22", "label": "List Tick",
+                    "fixed_file": True, "trim_frames": 8, "fade_frames": 3, "band": "high",
+                })
+            if events:
+                events[0]["label"] = "Graphic entrance"
+                events[0]["combo"] = "19"
     if motif == "offer_pair":
-        for event in events:
-            event.update({
-                "combo": "19", "label": "Word Pop", "band": "high",
-                "sound_at": _land(event["at"], end, 0.26),
-            })
+        items = [str(item) for item in (stage.get("items") or [])]
+        money_n = 0
+        for index, event in enumerate(events):
+            label = items[index] if index < len(items) else ""
+            if "$" in label or "£" in label:
+                event.update({
+                    "file": MONEY_FILES[money_n % len(MONEY_FILES)], "combo": "42",
+                    "label": "Money Shot", "fixed_file": True, "under_db": 10.0,
+                    "sound_at": round(float(event["at"]), 3), "band": "high",
+                })
+                money_n += 1
+            else:
+                event.update({
+                    "combo": "19", "label": "Word Pop", "band": "high",
+                    "sound_at": round(float(event["at"]), 3),
+                })
+        # The hook boom already hits this pair. A second money hit, and a hit
+        # delayed off the cards, is what pushed the reel over 20 per minute.
+        if events and float(events[0].get("at", 0)) < 0.5:
+            events[0]["mute"] = True
+            events[0]["mute_reason"] = "stacked"
+        if len(events) > 1:
+            events[1]["mute"] = True
+            events[1]["mute_reason"] = "stacked"
     if motif == "state_swap":
         for event in events:
-            if event["kind"] == "pop":
+            if event["kind"] == "whoosh":
+                event["label"] = "Graphic entrance"
+                event["combo"] = "8"
+            elif event["kind"] == "pop":
                 event.update({"combo": "19", "label": "Word Pop", "sound_at": _land(event["at"], end, 0.26)})
             elif event["kind"] == "error":
                 event.update({
@@ -383,7 +457,7 @@ def decorate_events(motif, events, stage, start, end):
             elif event["kind"] == "ding":
                 event.update({
                     "file": CORRECT, "combo": "23", "label": "Checkmark",
-                    "fixed_file": True, "under_db": 12.0, "band": "high",
+                    "fixed_file": True, "under_db": 10.0, "band": "high",
                 })
     if motif == "typing_ui" or any(event["kind"] == "typing" for event in events):
         typing = [event for event in events if event["kind"] == "typing"]
@@ -401,17 +475,18 @@ def decorate_events(motif, events, stage, start, end):
             if event["kind"] == "click":
                 event.update({
                     "file": CLICK_10, "combo": "click", "label": "Mouse click",
-                    "fixed_file": True, "under_db": 16.0, "band": "high",
+                    "fixed_file": True, "band": "high",
                 })
-    if motif in {"thumbnail_grid", "mind_map", "logo_row", "pill"}:
+    if motif in {"thumbnail_grid", "mind_map", "logo_row", "pill", "hero_board"}:
         for event in events:
             if event["kind"] == "pop":
                 event.setdefault("combo", "19")
                 event.setdefault("label", "Word Pop")
-                event.setdefault("sound_at", _land(event["at"], end, 0.26))
+                delay = 2.0 / 30.0 if motif == "pill" else 0.0
+                event.setdefault("sound_at", _land(event["at"], end, delay))
     defaults = {
         "pop": (None, "19", "Word Pop"),
-        "whoosh": (None, "8", "Standard Cut"),
+        "whoosh": (None, "8", "Panel slide"),
         "click": (BELL_6, "22", "List Tick"),
         "typing": (TYPING_3, "21", "Typewriter Line"),
         "ticking": (None, "25", "Counter tick"),
@@ -489,27 +564,325 @@ def _occupy(cue):
     return 0.5
 
 
-def _claim(cue, candidates, uses, last):
+def _bump(streak, file):
+    if streak[0] == file:
+        streak[1] += 1
+    else:
+        streak[0] = file
+        streak[1] = 1
+
+
+def _claim(cue, candidates, last, streak):
+    """Rotate a family so the same file never plays twice in a row.
+
+    A file may return later. Three identical plays in a row are skipped.
+    """
     group = cue.get("rotate")
+    family = "move" if group in {"whoosh", "ui", "callout"} else (group or "")
     if cue.get("fixed_file") and cue.get("file"):
-        uses[cue["file"]] = uses.get(cue["file"], 0) + 1
-        if group:
-            last[group] = cue["file"]
+        if family:
+            last[family] = cue["file"]
+        _bump(streak, cue["file"])
         return
-    preferred = []
-    if cue.get("file"):
-        preferred.append(cue["file"])
+    preferred = [cue["file"]] if cue.get("file") else []
     ordered = preferred + [item for item in candidates if item not in preferred]
     for rel in ordered:
-        if uses.get(rel, 0) >= 2:
+        if family and rel == last.get(family):
             continue
-        if group and rel == last.get(group):
+        if streak[0] == rel and streak[1] >= 2:
             continue
         cue["file"] = rel
-        uses[rel] = uses.get(rel, 0) + 1
-        last[group or ""] = rel
+        if family:
+            last[family] = rel
+        _bump(streak, rel)
         return
     cue["mute"] = True
+
+
+def _is_boom(cue):
+    if cue.get("mute"):
+        return False
+    if cue.get("kind") == "bass":
+        return True
+    path = str(cue.get("file") or "").lower()
+    return any(token in path for token in ("boom", "deep hit", "impact cinematic", "explosion", "sub drop"))
+
+
+def _collapse_repeats(flat, window=0.45):
+    """One sound per gesture. A stagger of the same combo inside ``window`` keeps the first."""
+    last = {}
+    order = sorted(
+        (index for index, cue in enumerate(flat) if not cue.get("mute") and float(cue.get("under_db") or 0) < 20),
+        key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
+    )
+    for index in order:
+        cue = flat[index]
+        key = str(cue.get("label") or cue.get("combo") or cue.get("kind"))
+        moment = float(cue.get("sound_at", cue["at"]))
+        if _count_roll(cue):
+            last[key] = moment
+            continue
+        if key in last and moment - last[key] < window:
+            cue["mute"] = True
+            continue
+        last[key] = moment
+
+
+def _density_rank(cue):
+    combo = str(cue.get("combo") or "")
+    if combo == "2":
+        return 0
+    if combo == "42":
+        return 1
+    # The count-up bell and the typing line are the sound of those cards.
+    # They sort with the entrances so a later graphic does not take their slot.
+    if cue.get("label") in {
+        "Chapter header", "Chart entrance", "Graphic entrance",
+        "Typewriter Line", "Number Counter",
+    } or combo == "21":
+        return 2
+    if combo == "8":
+        return 3
+    if combo in {"23", "25", "36"}:
+        return 4
+    if combo == "24":
+        return 5
+    if combo == "22":
+        return 6
+    if combo in {"19", "20"}:
+        return 7
+    if combo == "47":
+        return 9
+    return 8
+
+
+def _mute_whoosh_beside_card(flat):
+    """A chapter whoosh within half a second of a card pop is the same entrance."""
+    pops = [
+        float(cue.get("at", 0))
+        for cue in flat
+        if not cue.get("mute") and cue.get("label") == "Graphic entrance" and cue.get("kind") == "pop"
+    ]
+    for cue in flat:
+        if cue.get("mute") or cue.get("label") != "Chapter header":
+            continue
+        visual = float(cue.get("at", 0))
+        if any(abs(visual - at) < 0.45 for at in pops):
+            cue["mute"] = True
+            cue["mute_reason"] = "stacked"
+
+
+def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None, duration=None):
+    """Put a sound back on an entrance the density cap silenced.
+
+    Only a cue at least ``gap`` seconds from anything still playing is restored,
+    and only a few of them, so stacked pops stay muted. Restores stop at the
+    per-minute budget. One more isolated entrance is allowed when the reel is
+    still about 20 cues a minute (20.6), which is how a second phone keeps a
+    whoosh after the count-up has taken the last hard slot.
+    """
+    labels = {"Graphic entrance", "Chart entrance", "Chapter header"}
+    audible = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
+    ]
+    muted = [
+        index for index, cue in enumerate(flat)
+        if cue.get("mute") and cue.get("label") in labels and float(cue.get("under_db") or 0) < 20
+    ]
+    if duration is None and flat:
+        duration = max(float(cue["at"]) for cue in flat)
+    restored = 0
+    for index in sorted(muted, key=lambda item: float(flat[item].get("sound_at", flat[item]["at"]))):
+        if restored >= extra:
+            break
+        if budget is not None and len(audible) >= budget:
+            rate = (len(audible) + 1) * 60.0 / float(duration) if duration else 99.0
+            if len(audible) >= budget + 1 or rate > 20.6:
+                break
+        moment = float(flat[index].get("sound_at", flat[index]["at"]))
+        if any(abs(float(flat[other].get("sound_at", flat[other]["at"])) - moment) < gap for other in audible):
+            continue
+        flat[index]["mute"] = False
+        flat[index].pop("mute_reason", None)
+        audible.append(index)
+        restored += 1
+
+
+def _mute_stacked_openings(flat):
+    """One hit on the opening frame. A whoosh stacked on the boom does not play."""
+    bass_at = [
+        float(cue.get("sound_at", cue["at"]))
+        for cue in flat
+        if not cue.get("mute") and cue.get("kind") == "bass"
+    ]
+    for cue in flat:
+        if cue.get("mute") or cue.get("kind") not in {"whoosh", "riser"}:
+            continue
+        moment = float(cue.get("sound_at", cue["at"]))
+        if any(abs(moment - at) < 0.08 for at in bass_at):
+            cue["mute"] = True
+            cue["mute_reason"] = "stacked"
+
+
+def _thin_close_whooshes(flat, budget, gap=2.5):
+    """Drop a second whoosh that follows another by under ``gap`` when the reel is over budget."""
+    def playing():
+        return [
+            index for index, cue in enumerate(flat)
+            if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+        ]
+
+    guard = 0
+    while len(playing()) > budget and guard < 6:
+        guard += 1
+        whooshes = sorted(
+            (index for index in playing() if flat[index].get("kind") in {"whoosh", "riser"}),
+            key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
+        )
+        dropped = False
+        previous = None
+        for index in whooshes:
+            moment = float(flat[index].get("sound_at", flat[index]["at"]))
+            if previous is not None and moment - previous < gap:
+                flat[index]["mute"] = True
+                flat[index]["mute_reason"] = "density"
+                dropped = True
+                break
+            previous = moment
+        if not dropped:
+            break
+
+
+def _count_roll(cue):
+    """A looping tick under a count, or the bell on its final number."""
+    return cue.get("label") in {"Number Counter", "Number Counter bed"}
+
+
+def _limit_density(flat):
+    """Stay at or under 20 SFX per minute. Beds under 20 dB do not spend the budget.
+
+    The cap drops stacked pops, extra buzzers, and the optional loop close
+    before it drops a money hit, a panel whoosh, or the hook boom.
+    """
+    _collapse_repeats(flat)
+    _mute_stacked_openings(flat)
+    _mute_whoosh_beside_card(flat)
+    if not flat:
+        return
+    duration = max(float(cue["at"]) for cue in flat)
+    budget = max(4, int(20.0 * duration / 60.0))
+    _thin_close_whooshes(flat, budget)
+    audible = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
+    ]
+    if len(audible) <= budget:
+        return
+    # Every count-up keeps its tick loop and its landing bell.
+    reserved = [index for index in audible if _count_roll(flat[index])]
+    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "graphic": 6, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
+    ranked = sorted(audible, key=lambda index: (
+        _density_rank(flat[index]),
+        float(flat[index].get("sound_at", flat[index]["at"])),
+    ))
+    # Keep the buzzer that pairs with the check, not the earliest one.
+    correct_at = next(
+        (float(flat[index].get("sound_at", flat[index]["at"]))
+         for index in audible if str(flat[index].get("combo")) == "23"),
+        None,
+    )
+    if correct_at is not None:
+        buzzers = [index for index in ranked if str(flat[index].get("combo")) == "24"]
+        if buzzers:
+            nearest = min(buzzers, key=lambda index: abs(float(flat[index].get("sound_at", flat[index]["at"])) - correct_at))
+            rest = [index for index in ranked if index != nearest]
+            # Keep this buzzer ahead of the other buzzers. It must not jump the boom or the money hits.
+            slot = next(
+                (i for i, index in enumerate(rest)
+                 if _density_rank(flat[index]) > _density_rank(flat[nearest])),
+                len(rest))
+            rest.insert(slot, nearest)
+            ranked = rest
+    kept = list(reserved)
+    used = {}
+    limit = max(budget, len(reserved))
+    for index in ranked:
+        if index in kept:
+            continue
+        if len(kept) >= limit:
+            break
+        cue = flat[index]
+        if cue.get("label") == "Chapter header":
+            slot = "chapter"
+        elif cue.get("label") == "Graphic entrance":
+            slot = "graphic"
+        else:
+            slot = str(cue.get("combo") or "")
+        cap = caps.get(slot)
+        if cap is not None and used.get(slot, 0) >= cap:
+            continue
+        kept.append(index)
+        used[slot] = used.get(slot, 0) + 1
+    keep_ids = set(kept)
+    for index in audible:
+        if index not in keep_ids:
+            flat[index]["mute"] = True
+    _restore_isolated_entrances(flat, budget=budget, duration=duration)
+    beds = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and float(cue.get("under_db") or 0) >= 20
+    ]
+    playing = [
+        index for index, cue in enumerate(flat) if not cue.get("mute")
+    ]
+    if len(playing) > budget:
+        for index in beds:
+            if len(playing) <= budget:
+                break
+            flat[index]["mute"] = True
+            playing.remove(index)
+    _separate_whooshes(flat)
+    _separate_fixed(flat, "42", MONEY_FILES)
+
+
+def _separate_fixed(flat, combo, rotation):
+    previous = None
+    cursor = 0
+    order = sorted(
+        (index for index, cue in enumerate(flat)
+         if not cue.get("mute") and str(cue.get("combo")) == combo),
+        key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
+    )
+    for index in order:
+        chosen = rotation[cursor % len(rotation)]
+        if chosen == previous:
+            cursor += 1
+            chosen = rotation[cursor % len(rotation)]
+        flat[index]["file"] = chosen
+        previous = chosen
+        cursor += 1
+
+
+def _separate_whooshes(flat):
+    """Heard whooshes alternate files even after the density pass drops one."""
+    previous = None
+    cursor = 0
+    order = sorted(
+        (index for index, cue in enumerate(flat)
+         if not cue.get("mute") and cue.get("kind") == "whoosh" and str(cue.get("combo")) != "47"),
+        key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
+    )
+    for index in order:
+        chosen = WHOOSH_ROTATION[cursor % len(WHOOSH_ROTATION)]
+        if chosen == previous:
+            cursor += 1
+            chosen = WHOOSH_ROTATION[cursor % len(WHOOSH_ROTATION)]
+        flat[index]["file"] = chosen
+        previous = chosen
+        cursor += 1
 
 
 def finish_sfx(cues, fps, unders, under_db):
@@ -523,16 +896,18 @@ def finish_sfx(cues, fps, unders, under_db):
         for extra in companions:
             extra = dict(extra)
             extra.setdefault("at", item["at"])
+            extra.setdefault("lands_on", item.get("lands_on"))
             flat.append(extra)
         if bed:
             bed = dict(bed)
             bed.setdefault("at", item["at"])
+            bed.setdefault("lands_on", item.get("lands_on"))
             flat.append(bed)
     for cue in flat:
         resolve_frames(cue, fps)
         kind = cue.get("kind")
         if cue.get("under_db") is None:
-            cue["under_db"] = float((unders or {}).get(kind, under_db.get(kind, 16.0)))
+            cue["under_db"] = float((unders or {}).get(kind, under_db.get(kind, 13.0)))
         cue["band"] = _band(cue)
         cue["priority"] = _priority(cue)
     lead = 4.0 / float(fps or 30)
@@ -542,9 +917,9 @@ def finish_sfx(cues, fps, unders, under_db):
         if cue.get("kind") in {"whoosh", "riser"} or cue.get("rotate") == "whoosh":
             base = float(cue.get("sound_at", cue["at"]))
             cue["sound_at"] = round(max(0.0, base - lead), 3)
-    uses = {}
     last = {}
-    groups = {"whoosh": WHOOSH_ROTATION, "callout": CALLOUT_ROTATION, "punch": PUNCH_SWOOSH, "hit": PUNCH_HIT}
+    streak = ["", 0]
+    groups = {"whoosh": WHOOSH_ROTATION, "ui": UI_ROTATION, "callout": CALLOUT_ROTATION}
     timed = sorted(range(len(flat)), key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])))
     for index in timed:
         cue = flat[index]
@@ -552,9 +927,9 @@ def finish_sfx(cues, fps, unders, under_db):
             continue
         group = cue.get("rotate")
         if group in groups:
-            _claim(cue, groups[group], uses, last)
+            _claim(cue, groups[group], last, streak)
         elif cue.get("file"):
-            uses[cue["file"]] = uses.get(cue["file"], 0) + 1
+            _bump(streak, cue["file"])
     active = []
     order = sorted(range(len(flat)), key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])))
     for index in order:
@@ -562,6 +937,10 @@ def finish_sfx(cues, fps, unders, under_db):
         if cue.get("mute"):
             continue
         if cue.get("band") == "bed" or float(cue.get("under_db") or 0) >= 20:
+            continue
+        if _count_roll(cue):
+            start = float(cue.get("sound_at", cue["at"]))
+            active.append((start + _occupy(cue), cue["band"], cue["priority"], index))
             continue
         start = float(cue.get("sound_at", cue["at"]))
         if cue.get("align") == "end":
@@ -586,15 +965,30 @@ def finish_sfx(cues, fps, unders, under_db):
                 cue["mute"] = True
                 continue
         active.append((start + _occupy(cue), band, cue["priority"], index))
+    booms = [index for index, cue in enumerate(flat) if _is_boom(cue)]
+    if len(booms) > 3:
+        ranked = sorted(booms, key=lambda index: (
+            -int(flat[index].get("priority") or 0),
+            float(flat[index].get("sound_at", flat[index]["at"])),
+        ))
+        for index in ranked[3:]:
+            flat[index]["mute"] = True
+    _limit_density(flat)
     pop_turn = 0
     heard = sorted(
         (index for index, cue in enumerate(flat)
-         if not cue.get("mute") and cue.get("kind") == "pop" and str(cue.get("combo")) in {"19", "callout"}),
+         if not cue.get("mute") and cue.get("kind") == "pop"
+         and str(cue.get("combo")) in {"19", "20", "callout"}),
         key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
     )
     for index in heard:
-        flat[index]["file"] = POP_3 if pop_turn % 2 == 0 else POP_5
+        flat[index]["file"] = POP_CYCLE[pop_turn % len(POP_CYCLE)]
         pop_turn += 1
+    for cue in flat:
+        if cue.get("mute") or cue.get("file"):
+            continue
+        options = KIND_FILES.get(cue.get("kind")) or [POP_3]
+        cue["file"] = options[0]
     cleaned = []
     for cue in flat:
         item = {key: value for key, value in cue.items() if key not in _DROP and value is not None}

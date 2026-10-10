@@ -1,0 +1,420 @@
+{
+  "schema": "kallaway-stage-plan/v1",
+  "captions": {
+    "keep_case": [
+      "AI",
+      "ADA",
+      "Astra",
+      "WEBSITE",
+      "WCAG"
+    ]
+  },
+  "emphasis": {
+    "selling": "marker",
+    "not": "normal",
+    "but": "normal",
+    "errors": "amber",
+    "astra": "green",
+    "charge": "green",
+    "clean": "normal",
+    "accessible": "marker",
+    "stop": "marker",
+    "sued": "amber",
+    "6500": "amber",
+    "website": "green",
+    "client": "marker"
+  },
+  "beats": [
+    {
+      "spoken": "if you build",
+      "layout": "split",
+      "crop": "wide",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media-nr/sc01-errors.mp4",
+      "media_start": 0.4,
+      "target_time": 1.2,
+      "header": {
+        "lines": [
+          "Your AI Website",
+          "Could Get Your Client Sued"
+        ],
+        "emphasis": [
+          "Sued"
+        ],
+        "payoff_tone": "amber"
+      }
+    },
+    {
+      "spoken": "this scan",
+      "layout": "split",
+      "motif": "hero_board",
+      "value": "56",
+      "kicker": "ADA SCAN",
+      "label": "ACCESSIBILITY ERRORS",
+      "items": [
+        "ALT TEXT",
+        "LOW CONTRAST",
+        "THE OFFER"
+      ],
+      "notes": [
+        "Missing on the hero",
+        "Grey type on grey",
+        "Scan it, then sell the fix"
+      ],
+      "header": {
+        "lines": [
+          "Your AI Website",
+          "Could Get Your Client Sued"
+        ],
+        "emphasis": [
+          "Sued"
+        ],
+        "payoff_tone": "amber"
+      }
+    },
+    {
+      "spoken": "The site",
+      "layout": "full"
+    },
+    {
+      "spoken": "scan about",
+      "layout": "split",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media-nr/sc01-site.mp4",
+      "media_start": 0.35,
+      "scan": true,
+      "chip": {
+        "text": "ADA SCAN",
+        "tone": "green",
+        "place": "bottom"
+      },
+      "header": {
+        "lines": [
+          "The Scan"
+        ],
+        "emphasis": [
+          "Scan"
+        ]
+      }
+    },
+    {
+      "spoken": "56",
+      "layout": "split",
+      "motif": "counter",
+      "from": 0,
+      "value": 56,
+      "negative": true,
+      "lock_spoken": "56",
+      "label": "ACCESSIBILITY ERRORS",
+      "header": {
+        "lines": [
+          "The Scan"
+        ],
+        "emphasis": [
+          "Scan"
+        ]
+      }
+    },
+    {
+      "spoken": "Before launch",
+      "layout": "split",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media-nr/sc01-errors.mp4",
+      "media_start": 0.8,
+      "target_time": 1.5,
+      "chip": {
+        "text": "ASTRA SCAN",
+        "tone": "amber",
+        "place": "bottom"
+      },
+      "header": {
+        "lines": [
+          "The Scan"
+        ],
+        "emphasis": [
+          "Scan"
+        ]
+      },
+      "overlays": [
+        {
+          "motif": "pill",
+          "spoken": "cloud browser",
+          "label": "CLOUD BROWSER"
+        }
+      ]
+    },
+    {
+      "spoken": "It flags",
+      "layout": "split",
+      "motif": "thumbnail_grid",
+      "items": [
+        "ALT TEXT",
+        "LOW CONTRAST",
+        "UNREADABLE BUTTONS"
+      ],
+      "notes": [
+        "Image has no description",
+        "Grey type on a grey fill",
+        "Button has no accessible name"
+      ],
+      "header": {
+        "lines": [
+          "The Scan"
+        ],
+        "emphasis": [
+          "Scan"
+        ]
+      }
+    },
+    {
+      "spoken": "Then have",
+      "layout": "split",
+      "motif": "thumbnail_grid",
+      "variant": "fixed",
+      "items": [
+        "ALT TEXT",
+        "LOW CONTRAST",
+        "UNREADABLE BUTTONS"
+      ],
+      "notes": [
+        "Description written",
+        "Type passes contrast",
+        "Button has a name"
+      ],
+      "header": {
+        "lines": [
+          "The Fix"
+        ],
+        "emphasis": [
+          "Fix"
+        ]
+      }
+    },
+    {
+      "spoken": "rescan until",
+      "layout": "split",
+      "motif": "counter",
+      "from": 56,
+      "value": 0,
+      "negative": true,
+      "label": "ERRORS LEFT",
+      "header": {
+        "lines": [
+          "The Fix"
+        ],
+        "emphasis": [
+          "Fix"
+        ]
+      }
+    },
+    {
+      "spoken": "then charge",
+      "layout": "split",
+      "motif": "quote_card",
+      "variant": "receipt",
+      "text": "COMPLIANCE PASS",
+      "label": "CHARGE THE CLIENT",
+      "header": {
+        "lines": [
+          "The Fix"
+        ],
+        "emphasis": [
+          "Fix"
+        ]
+      }
+    },
+    {
+      "spoken": "AI builds",
+      "layout": "full"
+    },
+    {
+      "spoken": "In Gainesville",
+      "layout": "split",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media/sc02-49.mp4",
+      "media_start": 0.4,
+      "target_time": 1.6,
+      "disclaimer": "NOT LEGAL ADVICE",
+      "chip": {
+        "text": "THE INDEPENDENT FLORIDA ALLIGATOR, FEB 28, 2026",
+        "tone": "green",
+        "place": "bottom"
+      },
+      "highlight": {
+        "spoken": "49",
+        "target_text": "49 businesses"
+      }
+    },
+    {
+      "spoken": "One bakery",
+      "layout": "split",
+      "motif": "quote_card",
+      "text": "One bakery settled",
+      "disclaimer": "NOT LEGAL ADVICE"
+    },
+    {
+      "spoken": "about 6500",
+      "layout": "split",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media/sc02-fee.mp4",
+      "media_start": 0.3,
+      "target_time": 1.4,
+      "disclaimer": "NOT LEGAL ADVICE",
+      "chip": {
+        "text": "NOT COUNTING ATTORNEY FEES",
+        "tone": "amber",
+        "place": "bottom"
+      },
+      "highlight": {
+        "spoken": "6500",
+        "target_text": "approximately $6,500"
+      }
+    },
+    {
+      "spoken": "And don't",
+      "layout": "full"
+    },
+    {
+      "spoken": "Scan sites",
+      "layout": "split",
+      "motif": "phone_frame",
+      "media": "/tmp/reel08/media-nr/sc04-errors.mp4",
+      "media_start": 0.5,
+      "target_time": 1.2,
+      "disclaimer": "NOT LEGAL ADVICE",
+      "chip": {
+        "text": "EXISTING SITE",
+        "tone": "amber",
+        "place": "bottom"
+      },
+      "callout": {
+        "spoken": "errors",
+        "target_text": "23 accessibility errors"
+      }
+    },
+    {
+      "spoken": "Show the",
+      "layout": "split",
+      "motif": "thumbnail_grid",
+      "items": [
+        "ALT TEXT",
+        "CONTRAST",
+        "BUTTONS",
+        "HEADINGS",
+        "FORMS",
+        "FOCUS"
+      ],
+      "notes": [
+        "No description",
+        "Unreadable type",
+        "Unnamed control",
+        "Skipped levels",
+        "Fields without labels",
+        "No focus ring"
+      ],
+      "header": {
+        "lines": [
+          "The Offer"
+        ],
+        "emphasis": [
+          "Offer"
+        ]
+      }
+    },
+    {
+      "spoken": "Offer the",
+      "layout": "split",
+      "motif": "offer_pair",
+      "kicker": "TWO OFFERS",
+      "items": [
+        "SCAN REPORT|Show every error",
+        "THE FIX|Clean it and charge"
+      ],
+      "header": {
+        "lines": [
+          "The Offer"
+        ],
+        "emphasis": [
+          "Offer"
+        ]
+      }
+    },
+    {
+      "spoken": "That's two",
+      "layout": "full"
+    },
+    {
+      "spoken": "If you want",
+      "layout": "split",
+      "motif": "doc_fan",
+      "sweep": true,
+      "pages": [
+        [
+          "VAULT",
+          "AI Business Idea Vault",
+          "Thirty ideas. Each one is a scan you can sell. The offer, the fix, and the first invoice live in one system."
+        ],
+        [
+          "30+",
+          "AI business ideas",
+          "Find the errors on a live site. Show the owner the list. Sell the cleanup as a paid fix."
+        ],
+        [
+          "A TO Z",
+          "First client guide",
+          "Comment WEBSITE. The guide starts at the scan, walks the fix, and ends when you send the invoice."
+        ]
+      ],
+      "header": {
+        "lines": [
+          "Comment WEBSITE",
+          "To Get My AI Business Idea Vault"
+        ],
+        "emphasis": [
+          "WEBSITE"
+        ],
+        "payoff_style": "box"
+      }
+    },
+    {
+      "spoken": "30 plus",
+      "layout": "split",
+      "motif": "counter",
+      "value": 30,
+      "suffix": "+",
+      "from": 8,
+      "label": "AI BUSINESS IDEAS",
+      "header": {
+        "lines": [
+          "Comment WEBSITE",
+          "To Get My AI Business Idea Vault"
+        ],
+        "emphasis": [
+          "WEBSITE"
+        ],
+        "payoff_style": "box"
+      }
+    },
+    {
+      "spoken": "each with",
+      "layout": "split",
+      "motif": "quote_card",
+      "motion": true,
+      "text": "An A to Z guide for the first client",
+      "header": {
+        "lines": [
+          "Comment WEBSITE",
+          "To Get My AI Business Idea Vault"
+        ],
+        "emphasis": [
+          "WEBSITE"
+        ],
+        "payoff_style": "box"
+      }
+    },
+    {
+      "spoken": "guide to",
+      "layout": "full"
+    }
+  ]
+}
