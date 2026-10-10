@@ -241,6 +241,73 @@ def _overlap(run, start, end):
     return max(0.0, min(run[1], end) - max(run[0], start))
 
 
+def _falling_tail_end(times, frames, boundary, run, thresh, runs, later_word):
+    """End of a syllable whose whisper boundary falls inside one falling run.
+
+    The rest of the run is a tail only when it is at least 6 dB under the vowel
+    and the next word's own speech is a later run. A quieter next syllable in
+    this same run stays with that word. ``None`` means the boundary stands.
+    """
+    grid = times[:len(frames)]
+    before = np.where((grid >= run[0]) & (grid < boundary))[0]
+    after = np.where((grid >= boundary) & (grid <= run[1] + 0.008))[0]
+    if len(before) < 2 or len(after) < 2 or later_word is None:
+        return None
+    peak_before = float(np.max(frames[before]))
+    peak_after = float(np.max(frames[after]))
+    # Still at the vowel. A decay is quieter than what came before.
+    if peak_after >= max(peak_before, thresh) * (10 ** (-1.0 / 20.0)):
+        return None
+    later_start = float(later_word["start"])
+    later_end = float(later_word["end"])
+    for follow in runs:
+        if follow[0] <= run[1] - 0.02:
+            continue
+        if _overlap(follow, later_start, later_end) <= 0.03:
+            continue
+        gap = follow[0] - run[1]
+        if gap < 0.08:
+            return None
+        # A close next syllable has to be clearly under the vowel. A far one
+        # is that word's real onset, so the rest of this run is the tail.
+        if gap < 0.20 and peak_after >= max(peak_before, thresh) * (10 ** (-6.0 / 20.0)):
+            return None
+        return float(run[1])
+    return None
+
+
+def _coda_end(times, high_frames, high_thresh, speech_frames, speech_thresh, speech_end, limit):
+    """A delayed /s/ or /th/ after the vowel, across one gap of about 130 ms.
+
+    Stops when the speech band rises. That rise is the next syllable, not the hiss.
+    """
+    count = min(len(times), len(high_frames), len(speech_frames))
+    grid = times[:count]
+    ceiling = min(float(limit), float(speech_end) + 0.26)
+    vowel = speech_thresh * (10 ** (3.0 / 20.0))
+    mask = (grid >= speech_end) & (grid <= ceiling)
+    if not np.any(mask):
+        return float(speech_end)
+    last = float(speech_end)
+    gap_start = None
+    seen = False
+    for moment, high_level, speech_level in zip(grid[mask], high_frames[:count][mask], speech_frames[:count][mask]):
+        moment = float(moment)
+        if float(speech_level) >= vowel and moment > float(speech_end) + 0.02:
+            break
+        if float(high_level) >= high_thresh and float(speech_level) < vowel:
+            if seen and gap_start is not None and moment - gap_start > 0.13:
+                break
+            if not seen and moment - float(speech_end) > 0.13:
+                break
+            last = moment
+            seen = True
+            gap_start = None
+        elif seen and gap_start is None:
+            gap_start = moment
+    return last
+
+
 def _decay_time(times, frames, thresh, whisper_end, limit):
     """Where the word settles at the floor, ignoring a single mouth-noise blip.
 
@@ -273,12 +340,12 @@ def _decay_time(times, frames, thresh, whisper_end, limit):
 def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD):
     """Align each word to speech, including its decay, and leave the pauses out.
 
-    Whisper folds silence into a word and smears the next onset. The onset is the
-    loudest speech burst that overlaps the whisper span, so a separated breath
-    loses to the vowel and a stop closure inside the span stays. The end follows
-    that burst through a fricative or a vowel that is still up, and stops before
-    the silence that belongs to the next word. A low hum is not speech.
-    ``fricative_tail`` is how long the high band stayed up past the whisper mark.
+    Whisper folds silence into a word and smears the next onset. A speech run
+    belongs to the whisper span it overlaps more, so the next word cannot bridge
+    back across a short closure and steal this onset. A stop closure inside one
+    span still bridges. The end follows that burst through a fricative or a vowel
+    that is still up, and stops before the next word's speech. A low hum is not
+    speech. ``fricative_tail`` is how long the high band stayed up past the whisper mark.
     """
     samples = np.asarray(samples, dtype=np.float64)
     ordered = sorted(words, key=lambda word: float(word["start"]))
@@ -335,22 +402,86 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         next_start = float(nxt["start"]) if nxt else duration
         next_end = float(nxt["end"]) if nxt else duration
         chosen = dict(word)
-        inside = [run for run in runs if _overlap(run, start, max(end, start + 0.02)) > 0.012]
-        bridged = _bridge_runs(inside, _WORD_BRIDGE_SECONDS)
+        prev = ordered[index - 1] if index else None
+        claimed = float(refined[-1]["end"]) if refined else 0.0
+
+        def span_overlap(run, item):
+            if item is None:
+                return 0.0
+            return _overlap(
+                run, float(item["start"]), max(float(item["end"]), float(item["start"]) + 0.02))
+
+        body = []
+        for run in runs:
+            if run[1] <= claimed + 0.004:
+                continue
+            ov_here = span_overlap(run, word)
+            ov_next = span_overlap(run, nxt)
+            ov_prev = span_overlap(run, prev)
+            # A few tens of milliseconds of smear stays with the word that owns
+            # the run. A run that truly crosses the boundary is split there.
+            if ov_here > 0.04 and ov_next > 0.04 and run[0] < next_start - 0.012:
+                lo = max(run[0], claimed)
+                hi = min(run[1], next_start)
+                if hi - lo > 0.012:
+                    body.append((lo, hi))
+                continue
+            if ov_prev > 0.04 and ov_here > 0.04 and run[1] > start + 0.012:
+                lo = max(run[0], start, claimed)
+                hi = min(run[1], next_start) if nxt else run[1]
+                if hi - lo > 0.012:
+                    body.append((lo, hi))
+                continue
+            if ov_next > ov_here or ov_prev > ov_here or ov_here <= 0.012:
+                continue
+            lo = max(run[0], claimed)
+            hi = run[1]
+            if hi - lo > 0.012:
+                body.append((lo, hi))
+        bridged = _bridge_runs(body, _WORD_BRIDGE_SECONDS)
         if not bridged:
             floor_start = float(refined[-1]["end"]) if refined else 0.0
             chosen["start"] = round(max(start, floor_start), 4)
-            chosen["end"] = round(max(end, chosen["start"] + 0.041), 4)
+            # The whisper span is the pause. A word with no speech of its own stays a syllable.
+            chosen["end"] = round(min(next_start - 0.004, chosen["start"] + 0.041), 4)
+            if chosen["end"] <= chosen["start"] + 0.016:
+                chosen["end"] = round(chosen["start"] + 0.02, 4)
             chosen["fricative_tail"] = 0.0
             refined.append(chosen)
             continue
         cluster = max(bridged, key=lambda run: (peak(run), _overlap(run, start, end), run[1] - run[0]))
         speech_end = cluster[1]
-        later = [
-            run for run in runs
-            if run[0] >= cluster[0] + 0.05 and _overlap(run, next_start, max(next_end, next_start + 0.02)) > 0.012
-        ]
-        next_onset = min((run[0] for run in later), default=None)
+        # Stop at the next syllable. A continuous phrase still crosses one run, and
+        # the high band would otherwise carry this word through every word after it.
+        next_onset = None
+        if nxt:
+            later_words = ordered[index + 1:]
+            for run in runs:
+                if run[1] <= cluster[0] + 0.02:
+                    continue
+                ov_h = span_overlap(run, word)
+                crossed = None
+                for later in later_words:
+                    boundary = float(later["start"])
+                    ov = span_overlap(run, later)
+                    if ov > 0.04 and run[0] < boundary < run[1] - 0.012:
+                        crossed = boundary
+                        break
+                    if ov > 0.012 and (ov > ov_h or run[0] >= boundary - 0.004):
+                        crossed = boundary if run[0] < boundary else run[0]
+                        break
+                if crossed is not None:
+                    next_onset = crossed
+                    # A falling vowel that merely crosses the whisper mark is still this word.
+                    for run in runs:
+                        if run[0] < next_onset < run[1]:
+                            tail = _falling_tail_end(
+                                times, speech_frames[:len(times)], next_onset, run, speech_thresh,
+                                runs, ordered[index + 1] if index + 1 < len(ordered) else None)
+                            if tail is not None:
+                                next_onset = tail + 0.004
+                            break
+                    break
         guard = 0
         while guard < 8 and speech_end < min(duration, end + 0.70):
             guard += 1
@@ -366,7 +497,12 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 break
             if follower is None:
                 break
-            speech_end = max(speech_end, follower[1])
+            gained = follower[1]
+            if next_onset is not None:
+                gained = min(gained, max(speech_end, next_onset - 0.004))
+            if gained <= speech_end + 0.004:
+                break
+            speech_end = gained
         hiss_end = speech_end
         if len(high_frames):
             hiss_end = max(hiss_end, _decay_time(
@@ -374,6 +510,18 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 min(duration, max(speech_end, end) + _TAIL_SEARCH)))
             if next_onset is not None:
                 hiss_end = min(hiss_end, max(speech_end, next_onset - 0.004))
+        if _ending_consonant(word) in ("s", "th"):
+            coda_limit = speech_end + 0.26
+            for later_run in runs:
+                if later_run[0] <= speech_end + 0.02:
+                    continue
+                if peak(later_run) >= speech_thresh * (10 ** (6.0 / 20.0)):
+                    coda_limit = later_run[0] - 0.004
+                    break
+            if len(high_frames):
+                hiss_end = max(hiss_end, _coda_end(
+                    _high_times, high_frames, high_thresh, speech_frames, speech_thresh,
+                    speech_end, coda_limit))
         decay = max(speech_end, hiss_end)
         onset = max(0.0, cluster[0] - pad_in)
         if refined:
@@ -382,9 +530,10 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         if next_onset is not None and next_onset - 0.004 >= decay:
             offset = min(offset, next_onset - 0.004)
         if offset <= onset + 0.04:
-            floor_start = float(refined[-1]["start"]) + 0.02 if refined else 0.0
-            chosen["start"] = round(max(start, floor_start), 4)
-            chosen["end"] = round(max(end, chosen["start"] + 0.041), 4)
+            # A short burst stays a short burst. Expanding to the whisper mark
+            # puts the pause, and the next word, back into this word.
+            chosen["start"] = round(onset, 4)
+            chosen["end"] = round(max(offset, onset + 0.02), 4)
             chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
             refined.append(chosen)
             continue
@@ -392,6 +541,7 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         chosen["end"] = round(offset, 4)
         chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
         refined.append(chosen)
+    _finish_decays(refined, times, frames, duration)
     for index in range(len(refined) - 1):
         nxt = float(refined[index + 1]["start"])
         if float(refined[index]["end"]) > nxt - 0.004:
@@ -399,6 +549,55 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
             if refined[index]["end"] > nxt - 0.004:
                 refined[index]["end"] = round(nxt - 0.004, 4)
     return refined
+
+
+def _finish_decays(refined, times, frames, duration):
+    """Carry a word through a falling release, and stop when the next syllable rises.
+
+    The speech-band end can sit on the vowel. The cut then lands while the
+    waveform is still up, which clips the release.
+    """
+    if not len(frames):
+        return
+    grid = times[:len(frames)]
+    for index, word in enumerate(refined):
+        end = float(word["end"])
+        nxt = float(refined[index + 1]["start"]) if index + 1 < len(refined) else duration
+        if nxt - end <= 0.012:
+            continue
+        near = (grid >= end - 0.25) & (grid <= end + 0.005)
+        recent = (grid >= end - 0.04) & (grid <= end + 0.005)
+        if not np.any(near) or not np.any(recent):
+            continue
+        peak = float(np.max(frames[:len(grid)][near]))
+        at = float(np.percentile(frames[:len(grid)][recent], 60))
+        cursor = end
+        quiet = 0
+        limit = min(nxt - 0.008, end + 0.18)
+        for moment, level in zip(grid, frames[:len(grid)]):
+            moment = float(moment)
+            level = float(level)
+            if moment <= end:
+                continue
+            if moment > limit:
+                break
+            if moment > end + 0.025 and level > max(at, 1e-4) * (10 ** (4.0 / 20.0)) and level > peak * (10 ** (-8.0 / 20.0)):
+                break
+            cursor = moment
+            if level < peak * (10 ** (-12.0 / 20.0)) or _db(level) <= -36.0:
+                quiet += 1
+                if quiet >= 3:
+                    break
+            else:
+                quiet = 0
+        if cursor > end + 0.008:
+            word["end"] = round(min(cursor + 0.008, nxt - 0.004), 4)
+        # Still up against the next syllable: keep the phrase together instead of cutting the vowel.
+        end = float(word["end"])
+        if nxt - end > 0.012 and nxt - end < 0.12:
+            here = (grid >= end - 0.02) & (grid <= end + 0.005)
+            if np.any(here) and _db(float(np.max(frames[:len(grid)][here]))) > -24.0:
+                word["end"] = round(nxt - 0.004, 4)
 
 
 def _ending_consonant(word):
@@ -433,7 +632,11 @@ def measure_joins(samples, rate, ranges, words):
         # still up with the vowel, not when a released consonant is merely above silence.
         peak_mask = (times >= float(end) - 0.45) & (times <= float(end) - 0.02)
         peak = float(frames[peak_mask].max()) if np.any(peak_mask) and len(frames) else rms
-        released = (_db(peak) - _db(rms)) >= 18.0
+        drop = _db(peak) - _db(rms)
+        # A booth never reaches digital silence between words. The cut is bad when
+        # the last 20 ms is still with the vowel. A release 12 dB down, or already
+        # under about -28 dBFS, is the consonant dying out.
+        released = drop >= 12.0 or _db(rms) <= -27.0
         word = min(ordered, key=lambda item: abs(float(item["end"]) - float(end)))
         joins.append({
             "at": round(clock + (float(end) - float(begin)), 3),
@@ -444,6 +647,7 @@ def measure_joins(samples, rate, ranges, words):
             "tail_db": round(_db(rms), 2),
             "floor_db": round(floor_db, 2),
             "over_db": round(over, 2),
+            "drop_db": round(drop, 2),
             "ok": over <= _TAIL_MARGIN_DB + 0.05 or released,
         })
         clock += float(end) - float(begin)

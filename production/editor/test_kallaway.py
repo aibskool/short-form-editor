@@ -112,6 +112,21 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(refined[0]["end"], 0.55)
         self.assertGreater(refined[1]["start"], 0.95)
 
+    def test_next_word_does_not_steal_a_shared_onset(self):
+        rate = 16000
+        t = np.arange(int(rate * 2.0)) / rate
+        your = _voiced(t, 200, 0.12, (t >= 1.03) & (t < 1.22))
+        site = _voiced(t, 180, 0.4, (t >= 1.28) & (t < 1.55))
+        refined = refine_word_bounds(your + site, rate, [
+            {"word": "your", "start": 1.00, "end": 1.20},
+            {"word": "website", "start": 1.20, "end": 1.60},
+        ])
+        self.assertGreater(refined[0]["end"] - refined[0]["start"], 0.10)
+        self.assertLess(refined[0]["start"], 1.08)
+        self.assertGreater(refined[0]["end"], 1.18)
+        self.assertGreater(refined[1]["start"], 1.20)
+        self.assertLess(refined[1]["start"], 1.32)
+
     def test_energy_trim_keeps_a_stop_closure_inside_the_word(self):
         rate = 16000
         t = np.arange(rate) / rate

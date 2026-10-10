@@ -629,7 +629,14 @@ def _limit_density(flat):
         buzzers = [index for index in ranked if str(flat[index].get("combo")) == "24"]
         if buzzers:
             nearest = min(buzzers, key=lambda index: abs(float(flat[index].get("sound_at", flat[index]["at"])) - correct_at))
-            ranked = [nearest] + [index for index in ranked if index != nearest]
+            rest = [index for index in ranked if index != nearest]
+            # Keep this buzzer ahead of the other buzzers. It must not jump the boom or the money hits.
+            slot = next(
+                (i for i, index in enumerate(rest)
+                 if _density_rank(flat[index]) > _density_rank(flat[nearest])),
+                len(rest))
+            rest.insert(slot, nearest)
+            ranked = rest
     kept = []
     used = {}
     for index in ranked:
