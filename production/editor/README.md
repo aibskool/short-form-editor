@@ -51,7 +51,7 @@ For visual shots, use `media` for a local image/video or `graphic` for an explic
 
 ## Kallaway talking-head mode
 
-A new raw talking-head uses `"style": "kallaway"` and `talking_head.py`, documented in [`docs/kallaway-style.md`](../../docs/kallaway-style.md). The house-style builder above runs only when `style` is an object or omitted. Kallaway timelines are three hard-cut camera states, Inter captions of one or two lowercase words, Permanent Marker titles, a `Comment KEYWORD` header, and a graphic stage. Brand colors and fonts live only in [`themes/ai-builder-school.json`](themes/ai-builder-school.json).
+A new raw talking-head uses `"style": "kallaway"` and `talking_head.py`, documented in [`docs/kallaway-style.md`](../../docs/kallaway-style.md). The house-style builder above runs only when `style` is an object or omitted. Kallaway timelines are three hard-cut camera states, one-word lowercase Inter captions, Permanent Marker titles, a `Comment KEYWORD` header, and a graphic stage. Brand colors and fonts live only in [`themes/ai-builder-school.json`](themes/ai-builder-school.json).
 
 ```bash
 python3 talking_head.py --source /absolute/raw.mp4 --words /absolute/words.json --output /absolute/reel.mp4 --cta-keyword VAULT
@@ -59,7 +59,7 @@ python3 kallaway_plan.py --words /absolute/words.json --source /absolute/raw.mp4
 python3 ../check_kallaway_style.py --timeline /absolute/composition/timeline.json --words /absolute/composition/words.json --project /absolute/composition
 ```
 
-Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. SFX are a local Viral Reels SFX Pack. Set `SFX_PACK_DIR` (default `sfx/viral-pack/`, not committed). Levels follow `sfx_under_db` in the theme: whooshes about 10 dB under the voice, impacts about 6, text pops about 16. The lo-fi bed in `music/` stays off unless you pass `--music`. `kallaway_audio.py` copies whichever of those the render uses.
+Author the stage from the transcript with [`stage-plan.schema.json`](stage-plan.schema.json). [`examples/vault-stage-plan.json`](examples/vault-stage-plan.json) is a filled example. With no plan, motifs rotate across the library from a hash of the video path and do not repeat back to back. SFX are a local Viral Reels SFX Pack. Set `SFX_PACK_DIR` (default `sfx/viral-pack/`, not committed). Levels follow `sfx_under_db` in the theme: whooshes about 10 dB under the voice, impacts about 6, text pops about 13. Face layout cuts stay silent. The lo-fi bed in `music/` stays off unless you pass `--music`. `kallaway_audio.py` copies whichever of those the render uses.
 
 ## Verification receipt
 

@@ -30,8 +30,173 @@ def _walk_strings(value, found):
             _walk_strings(item, found)
 
 
+def _boxes_hit(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
 def _colors_in(html):
     return {f"#{match.group(1).lower()}" for match in re.finditer(r"#([0-9A-Fa-f]{6})(?![0-9A-Fa-fA-Z_])", html)}
+
+
+def scene_cuts(video, threshold=0.30):
+    """Hard-cut times in a rendered file. Ordinary caption motion stays under this."""
+    import subprocess
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(video),
+         "-filter:v", f"select='gt(scene,{float(threshold):.3f})',showinfo", "-f", "null", "-"],
+        capture_output=True, text=True)
+    times = []
+    for line in result.stderr.splitlines():
+        if "pts_time:" not in line:
+            continue
+        token = line.split("pts_time:", 1)[1].split()[0]
+        try:
+            times.append(float(token))
+        except ValueError:
+            continue
+    return times
+
+
+def short_spans(cuts, duration, minimum=0.5, fps=30):
+    """Spans between output scene cuts that are under ``minimum`` seconds."""
+    tolerance = 0.5 / float(fps or 30)
+    edges = [0.0]
+    for moment in sorted(float(item) for item in cuts or []):
+        if moment <= edges[-1] + tolerance or moment >= float(duration) - tolerance:
+            continue
+        edges.append(moment)
+    edges.append(float(duration))
+    found = []
+    for begin, end in zip(edges, edges[1:]):
+        if end - begin < float(minimum) - tolerance:
+            found.append({"start": round(begin, 3), "end": round(end, 3), "seconds": round(end - begin, 3)})
+    return found
+
+
+def _probe_duration(video):
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
+        capture_output=True, text=True)
+    return float(probe.stdout.strip() or 0)
+
+
+def insert_spans_from_diffs(diffs, fps=30, prev_min=20.0, next_min=25.0, hold_max=10.0):
+    """Spans where a cut in and a cut out land within two frames, then the picture holds.
+
+    ``diffs[i]`` is the mean absolute difference between frame i and frame i+1.
+    A head turn differs from both neighbors and keeps moving. A stray take is a
+    second cut one or two frames later, and the frame after that cut holds.
+    """
+    step = 1.0 / float(fps)
+    spans = []
+    count = len(diffs) + 1
+    index = 1
+    while index < count - 2:
+        entered = diffs[index - 1] >= prev_min
+        left = diffs[index] >= next_min and diffs[index + 1] < hold_max
+        if entered and left:
+            spans.append((round(index * step, 4), round((index + 1) * step, 4)))
+            index += 2
+            continue
+        two = (
+            index < count - 3
+            and entered
+            and diffs[index] < hold_max
+            and diffs[index + 1] >= next_min
+            and diffs[index + 2] < hold_max
+        )
+        if two:
+            spans.append((round(index * step, 4), round((index + 2) * step, 4)))
+            index += 3
+            continue
+        index += 1
+    return spans
+
+
+def find_insert_spans(video, prev_min=20.0, next_min=25.0, hold_max=10.0, fps=30):
+    """One- and two-frame takes measured on decoded output frames."""
+    import subprocess
+    import numpy as np
+    duration = _probe_duration(video)
+    if duration <= 0:
+        return []
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(video),
+         "-vf", "fps=30,scale=180:320", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+        stderr=subprocess.DEVNULL)
+    frame = 180 * 320
+    count = len(raw) // frame
+    if count < 4:
+        return []
+    frames = [np.frombuffer(raw[i * frame:(i + 1) * frame], dtype=np.uint8) for i in range(count)]
+    diffs = [
+        float(np.mean(np.abs(frames[index + 1].astype(np.float32) - frames[index].astype(np.float32))))
+        for index in range(count - 1)
+    ]
+    return insert_spans_from_diffs(diffs, fps=fps, prev_min=prev_min, next_min=next_min, hold_max=hold_max)
+
+
+def shift_moment(moment, spans):
+    """Move a timestamp left by the spans cut out of the picture before it."""
+    moment = float(moment)
+    lost = 0.0
+    for start, end in spans:
+        if end <= moment:
+            lost += end - start
+        elif start < moment:
+            return round(start - lost, 4)
+        else:
+            break
+    return round(moment - lost, 4)
+
+
+def punch_tight_spans(ranges, spans):
+    """Drop tightened-clock spans from the source ranges that were concatenated to build them."""
+    spans = sorted((float(start), float(end)) for start, end in spans)
+    out = []
+    cursor = 0.0
+    index = 0
+    for begin, end in ranges:
+        begin, end = float(begin), float(end)
+        length = end - begin
+        local = []
+        while index < len(spans) and spans[index][0] < cursor + length - 1e-4:
+            start, stop = spans[index]
+            if stop <= cursor + 1e-4:
+                index += 1
+                continue
+            local_start = max(0.0, start - cursor)
+            local_end = min(length, stop - cursor)
+            if local_end > local_start + 1e-4:
+                local.append((local_start, local_end))
+            if stop <= cursor + length + 1e-4:
+                index += 1
+            else:
+                break
+        pos = 0.0
+        for local_start, local_end in local:
+            if local_start > pos + 0.005:
+                out.append((round(begin + pos, 4), round(begin + local_start, 4)))
+            pos = local_end
+        if length > pos + 0.005:
+            out.append((round(begin + pos, 4), round(end, 4)))
+        cursor += length
+    return out
+
+
+def output_short_shots(video, minimum=0.5, threshold=0.30):
+    """Fail a rendered shot under 0.5 s. This reads the output frames, not the plan."""
+    duration = _probe_duration(video)
+    classic = short_spans(scene_cuts(video, threshold), duration, minimum=minimum)
+    inserts = [
+        {"start": start, "end": end, "seconds": round(end - start, 3), "kind": "insert"}
+        for start, end in find_insert_spans(video)
+        if end - start < float(minimum)
+    ]
+    return classic + inserts
 
 
 def check(timeline_path, words_path=None, project=None):
@@ -74,8 +239,8 @@ def check(timeline_path, words_path=None, project=None):
         length = float(shot["end"]) - float(shot["start"])
         if length > 5.5 + tolerance:
             errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is longer than 5.5s")
-        elif length < 0.4:
-            errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is shorter than 0.4s")
+        elif length < 0.5 - tolerance:
+            errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is shorter than 0.5s")
         elif float(shot["start"]) >= 3.2 and index != len(shots) - 1 and not 1.15 <= length <= 5.05:
             warnings.append(f"shots:{shot.get('id', index)}: body shot is {length:.2f}s; expected about 2-5s")
         if index and abs(float(shot["start"]) - float(shots[index - 1]["end"])) > tolerance:
@@ -108,12 +273,10 @@ def check(timeline_path, words_path=None, project=None):
     if phrases:
         for phrase in phrases:
             count = phrase["word_range"][1] - phrase["word_range"][0]
-            if count > 4:
+            if count > 3:
                 errors.append(f"captions: a group has {count} words")
-            elif count > 2:
-                warnings.append(f"captions: a group has {count} words; the style is 1-2")
-    elif int(captions.get("max_words", 2)) > 2:
-        warnings.append("captions: max_words is above 2 and no explicit phrases were checked")
+    elif int(captions.get("max_words", 1)) > 3:
+        warnings.append("captions: max_words is above 3 and no explicit phrases were checked")
     if captions.get("uppercase") is True:
         errors.append("captions: Kallaway captions stay lowercase")
 
@@ -188,6 +351,47 @@ def check(timeline_path, words_path=None, project=None):
                     break
     if shots and not sfx:
         errors.append("sfx: no sound effects were scheduled")
+    from kallaway_plan import gap_at, word_gaps
+    gaps = word_gaps(words or [])
+    played = [cue for cue in sfx if not cue.get("mute")]
+    logged = data.get("sfx_log")
+    if played and not isinstance(logged, list):
+        errors.append("sfx: placement log is missing; gate G9 needs time, pack file, and what it lands on")
+    for cue in played:
+        label = cue.get("label") or cue.get("kind") or "sfx"
+        landing = str(cue.get("lands_on") or "").strip()
+        heard = float(cue.get("sound_at", cue.get("at", 0)))
+        if not landing:
+            errors.append(f"sfx: {label} at {heard:.3f}s has no visual to land on")
+        covered = gap_at(heard, gaps) if words else None
+        visual = float(cue.get("at", heard))
+        lead = visual - heard
+        whoosh_lead = (
+            cue.get("kind") in {"whoosh", "riser"}
+            and 0.05 <= lead <= 0.16
+            and (gap_at(visual, gaps) is None if words else True)
+        )
+        if covered is not None and not whoosh_lead:
+            errors.append(
+                f"sfx: {label} at {heard:.3f}s covers the pause after {covered.get('word')}; "
+                "pauses come from word alignment and stay clear of SFX")
+        if isinstance(logged, list):
+            hit = any(
+                abs(float(row.get("time", -99)) - heard) <= 0.001
+                and str(row.get("lands_on") or "") == landing
+                and str(row.get("file") or "")
+                for row in logged
+            )
+            if landing and not hit:
+                errors.append(
+                    f"sfx: placement log has no row for {label} at {heard:.3f}s on {landing}")
+    tighten_ranges = data.get("source_ranges") or []
+    source_words = data.get("source_words") or []
+    if tighten_ranges and source_words:
+        from kallaway_audio import interior_cuts
+        for hit in interior_cuts(tighten_ranges, source_words):
+            errors.append(
+                f"cut: keep range {hit['edge']} at {hit['at']}s falls inside \"{hit['word']}\"")
     for join in data.get("joins") or []:
         if join.get("ok") is False:
             errors.append(
@@ -200,6 +404,99 @@ def check(timeline_path, words_path=None, project=None):
         errors.append("headers: no title header")
     elif float(headers[0].get("start", 1)) > 0.05:
         errors.append("hook: title header does not start on frame 1")
+    frame_h = float(data.get("output", {}).get("height", 1920))
+    frame_w = float(data.get("output", {}).get("width", 1080))
+    title_top = float(theme["layout"]["title_top"]) * frame_h
+    stage_top = float(theme["layout"]["stage_top"]) * frame_h
+    stage_left = float(theme["layout"]["stage_left"]) * frame_w
+    stage_right = stage_left + float(theme["layout"]["stage_width"]) * frame_w
+    for index, header in enumerate(headers):
+        lines = header.get("lines") or ([header.get("text")] if header.get("text") else [])
+        size = float(header.get("size") or theme["layout"].get("title_font_px") or 64)
+        bottom = float(header.get("bottom") or (title_top + max(1, len(lines)) * size * 1.05))
+        if bottom > 240.5:
+            errors.append(f"title: header {index} ends at y {bottom:.0f}, below the y 240 limit")
+        if bottom > stage_top - 4:
+            errors.append(f"title: header {index} overlaps the stage (title bottom {bottom:.0f}, stage top {stage_top:.0f})")
+    for shot in shots:
+        if shot.get("layout") != "split":
+            continue
+        stage = shot.get("stage") or {}
+        chip = stage.get("chip")
+        if isinstance(chip, dict) and chip.get("text") and stage.get("motif") == "phone_frame":
+            if chip.get("place") != "bottom":
+                errors.append(f"collision: phone chip on {shot.get('id')} covers the top of the mock")
+        callout = stage.get("callout") if isinstance(stage.get("callout"), dict) else None
+        highlight = stage.get("highlight") if isinstance(stage.get("highlight"), dict) else None
+        if callout and highlight:
+            ax, ay, aw, ah = (float(callout.get(key, 0)) for key in ("x", "y", "w", "h"))
+            bx, by, bw, bh = (float(highlight.get(key, 0)) for key in ("x", "y", "w", "h"))
+            if ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah:
+                errors.append(f"collision: callout and highlight overlap on {shot.get('id')}")
+    del stage_right
+    layout = theme["layout"]
+    for key in ("wide_scale", "tight_scale", "full_scale", "punch_scale"):
+        if float(layout.get(key, 1)) < 0.999:
+            errors.append(f"fill: {key} is {layout.get(key)}; the face must fill the card or the frame")
+    popout = (data.get("source") or {}).get("popout") or {}
+    placed = bool(popout.get("face_px"))
+    for shot in shots:
+        scale = shot.get("scale")
+        if scale is None or float(scale) >= 0.999:
+            continue
+        if shot.get("layout") == "split" and placed:
+            continue
+        errors.append(
+            f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
+            "full bleed stays at scale 1, and a split shrink needs the blurred plate")
+    if placed:
+        face_px = float(popout["face_px"])
+        pop_px = float(popout.get("pop_px") or popout.get("median_above_px") or 0)
+        if face_px > 230.5:
+            errors.append(f"face: split face is {face_px:.0f}px; the target is 200-230")
+        if pop_px < 49 or pop_px > 101:
+            errors.append(f"face: crown pop is {pop_px:.0f}px; the band is 50-100")
+    from kallaway_motifs import hero_phone_box
+    stage_w = float(layout["stage_width"]) * frame_w
+    stage_h = float(layout["stage_height"]) * frame_h
+    phone = hero_phone_box(stage_w, stage_h)
+    if phone["top"] < 0 or phone["top"] + phone["height"] > stage_h + 1:
+        errors.append(
+            f"phone: the handset is cropped (top {phone['top']}, height {phone['height']}, stage {stage_h:.0f})")
+    if phone["width"] > stage_w + 1:
+        errors.append(f"phone: the handset is wider than the stage ({phone['width']} > {stage_w:.0f})")
+    if phone["width"] < stage_w * 0.65 - 1:
+        errors.append(
+            f"phone: the handset is {phone['width']}px, under 65% of the {stage_w:.0f}px stage")
+    if abs((phone["left"] + phone["width"] / 2.0) - stage_w / 2.0) > 2:
+        errors.append(f"phone: the handset is off center (left {phone['left']})")
+    style_at = (data.get("captions") or {}).get("style_at") or []
+    if words and style_at and len(style_at) == len(words):
+        from kallaway_beats import _sentence_spans
+        for begin, end in _sentence_spans(words):
+            colored = [
+                index for index in range(begin, end)
+                if style_at[index] in {"marker", "green", "amber"}
+            ]
+            if len(colored) > 1:
+                errors.append(
+                    f"emphasis: sentence at {words[begin].get('start')}s has {len(colored)} colored words")
+    if words and len(words) > 4:
+        gaps = []
+        mids = []
+        for prev, word in zip(words, words[1:]):
+            gap = float(word["start"]) - float(prev["end"])
+            gaps.append(gap)
+            text = str(prev.get("word") or prev.get("text") or "").rstrip()
+            if not text.endswith((".", "!", "?")):
+                mids.append((gap, prev))
+        tight = sum(gap <= 0.05 for gap in gaps) / len(gaps) > 0.6
+        if tight:
+            for gap, prev in mids:
+                if gap > 0.045:
+                    errors.append(
+                        f"gap: mid-phrase pause after {prev.get('word')} is {gap * 1000:.0f} ms; "
+                        "the cap is 40 ms")
     keyword = str(cta.get("keyword") or "")
     closing = " ".join(str(header.get("text", "")) for header in headers).lower()
     # A reach reel sets cta.required false and ends on the last word with no comment ask.
@@ -234,6 +531,8 @@ def check(timeline_path, words_path=None, project=None):
         for family in ("Permanent Marker", "Inter", "IBM Plex Mono"):
             if family not in html:
                 errors.append(f"brand: font {family} is not used in the composition")
+        if re.search(r"fromTo\([^;]*\{[^}]*opacity:0[,}]", html):
+            errors.append("entrance: a graphic fades in; use a pop or a slide")
     else:
         warnings.append("brand: no built index.html was scanned for palette and fonts")
 
