@@ -1016,7 +1016,7 @@ class KallawayTests(unittest.TestCase):
         punched = punch_short_jumps(full, [24.27])
         self.assertEqual(punched[0]["layout"], "punch_in")
         self.assertAlmostEqual(punched[0]["scale"], 1.12, places=2)
-        self.assertAlmostEqual(punched[0]["end"], 24.27, places=2)
+        self.assertAlmostEqual(punched[0]["end"], 24.3, places=2)
         self.assertEqual(punched[1]["layout"], "full")
 
     def test_phone_after_a_face_cut_enters_with_the_whoosh(self):

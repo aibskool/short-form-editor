@@ -7,6 +7,7 @@ overflow into a full-screen or punch-in so the same motif is not used twice in
 a row. The closing shot is whatever the last beat says. It is not forced to the
 lead-magnet fan, so a Comment header can sit mid-reel.
 """
+import math
 import re
 
 from kallaway_motifs import resolve_annotations
@@ -367,7 +368,19 @@ def short_picture_runs(path, minimum=0.5, change=28.0, edge=32):
     return short
 
 
-def punch_short_jumps(shots, joins, scale=1.12, short=1.5):
+def next_frame(moment, fps=30):
+    """First frame boundary at or after ``moment``.
+
+    A join at 5.514 is still the old picture on the frame that starts at 5.500.
+    The new picture is the next frame. The layout has to change there too, or
+    one frame shows the new scale on the old take.
+    """
+    step = 1.0 / float(fps)
+    index = int(math.ceil(float(moment) / step - 1e-6))
+    return round(index * step, 3)
+
+
+def punch_short_jumps(shots, joins, scale=1.12, short=1.5, fps=30):
     """A picture join inside a full-face shot that leaves a piece under 1.5 s becomes a punch.
 
     The jump stays in the take. The short side scales up, at most 15 percent,
@@ -386,7 +399,10 @@ def punch_short_jumps(shots, joins, scale=1.12, short=1.5):
         if not inside:
             built.append(shot)
             continue
-        cut = min(inside, key=lambda moment: min(moment - start, end - moment))
+        cut = next_frame(min(inside, key=lambda moment: min(moment - start, end - moment)), fps)
+        if not start + 0.2 < cut < end - 0.2:
+            built.append(shot)
+            continue
         left, right = cut - start, end - cut
         if min(left, right) >= short or min(left, right) < 0.5:
             built.append(shot)
