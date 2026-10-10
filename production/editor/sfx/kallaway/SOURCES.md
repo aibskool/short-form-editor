@@ -1,11 +1,18 @@
 # Kallaway sound library
 
-Two recorded takes per cue, 48 kHz mono 16-bit, peak-normalized to about -3 dBFS. `kind-1.wav` is the primary match and `kind-2.wav` is the alternate. The editor rotates them. Nothing in this folder is copied from a Kallaway reel.
+Two recorded takes per cue, 48 kHz mono 16-bit, peak-normalized to about -3 dBFS. `kind-1.wav` is the primary and `kind-2.wav` is the alternate. The editor rotates them. Nothing in this folder is copied from a Kallaway reel, and nothing here is a Kenney interface sound, a Mixkit tone, or a synth beep.
 
-## Licenses
+## License
 
-- Mixkit files: [Mixkit Sound Effects Free License](https://mixkit.co/license/#sfxFree). Commercial use is allowed. Attribution is not required. Download page: `https://mixkit.co/free-sound-effects/download/{id}/`. File: `https://assets.mixkit.co/active_storage/sfx/{id}/{id}.wav`.
-- Kenney files: Interface Sounds, [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Credit is optional. https://kenney.nl/assets/interface-sounds
+Every file is from a [Sonniss GDC Game Audio Bundle](https://sonniss.com/gameaudiogdc/). The [bundle license](https://sonniss.com/gdc-bundle-license/) is royalty-free and allows commercial use in a finished application, film, or video (YouTube and TikTok included). Attribution is not required. Editing is allowed. The files may not be resold or redistributed as a standalone sound library, and they may not be used to train machine-learning models. They are vendored here so this editor can mix them into a reel, not as a sample pack.
+
+The recordings were taken from the Internet Archive copies of the bundles:
+
+- 2015 sample: https://archive.org/details/SonnissGameAudioGDC
+- 2023: https://archive.org/details/sonniss-gdc-2023-game-audio-bundle-normalized
+- 2024: https://archive.org/details/sonniss-gdc-2024-game-audio-bundle-normalized
+
+InspectorJ clock ticks are the copies inside the 2023 Sonniss bundle, so they are used under the Sonniss license.
 
 ## Levels
 
@@ -29,76 +36,52 @@ Default mix level is how many dB the cue's momentary loudness sits under the voi
 | typing | 19 dB | estimated | No separable clip. Set between click and paste |
 | paper | 16 dB | estimated | No separable clip. Set next to the whoosh |
 
-## How close they are
+## Processing
 
-Cosine is 24 log-frequency bands from 70 Hz to 12 kHz, comparing the take's peak-window spectrum with the reference difference spectrum (the flux peak minus the bed about 80 ms earlier). Centroid is energy-weighted in that window, so a thin harmonic tail does not pretend to be the body. Pitch is the peak FFT bin. Attack is 10–90% of the envelope. Duration is the time above -28 dB of the envelope peak.
+Trim, a short fade (about 4–30 ms), and one peak normalize to -3 dBFS. No pitch shift, no EQ, no highpass, no lowpass, no time-stretch. The mixer does not low-pass these files either, so a bright swish keeps its air.
 
-Swoosh cosines stay low because the reference stems are bed-heavy; those takes were chosen to hit the written brightness (about 1–8 kHz, and a thinner 8–9 kHz alternate). Vacuum cosine is the peak window, which is the pop at the end of the suck; the swell row is the rising body on its own.
+Realism is judged before similarity to the Kallaway reference. Spectral flatness is the geometric mean over the arithmetic mean of 24 log-frequency bands from 80 Hz to 12 kHz, on the loudest 120 ms. A naked sine scores about 0. Broadband air and paper score about 0.3–0.6. A real bell scores near 0 because it is a harmonic instrument; that is the bell, not a UI tone. Sub hits are judged by the share of energy under 120 Hz. Harmonicity is the autocorrelation peak. None of these files were time-stretched, so there is no grain to measure.
 
-| File | Cosine | Centroid | Pitch | Duration | Attack | Decay to -20 dB |
-| --- | --- | --- | --- | --- | --- | --- |
-| pop-1 | 0.993 | 739 Hz | 785 Hz | 0.064 s | 3.8 ms | 31 ms |
-| pop-2 | 0.730 | 739 Hz | 715 Hz | 0.058 s | 3.0 ms | 38 ms |
-| whoosh-1 | 0.523 | 274 Hz | 82 Hz | 0.594 s | 308 ms | 175 ms |
-| whoosh-2 | 0.398 | 951 Hz | 434 Hz | 0.516 s | 195 ms | 146 ms |
-| riser-1 | 0.108 | 4010 Hz | 844 Hz | 0.240 s | 155 ms | 47 ms |
-| riser-2 | 0.044 | 7820 Hz | 4137 Hz | 0.173 s | 40 ms | 84 ms |
-| bass-1 | 0.941 | 68 Hz | 70 Hz | 0.729 s | 169 ms | 236 ms |
-| bass-2 | 0.948 | 61 Hz | 59 Hz | 0.887 s | 36 ms | 103 ms |
-| click-1 | 0.601 | 2069 Hz | 481 Hz | 0.015 s | 1.1 ms | 11 ms |
-| click-2 | 0.123 | 2830 Hz | 1957 Hz | 0.034 s | 1.9 ms | 21 ms |
-| paste-1 | 0.368 | 582 Hz | 551 Hz | 0.083 s | 2.3 ms | 60 ms |
-| paste-2 | 0.269 | 1073 Hz | 668 Hz | 0.030 s | 3.8 ms | 9 ms |
-| ticking-1 | 0.927 | 4536 Hz | 4547 Hz | 0.025 s | 15.3 ms | 6 ms |
-| ticking-2 | 0.929 | 4802 Hz | 4852 Hz | 0.018 s | 1.6 ms | 12 ms |
-| ding-1 | 0.871 | 4828 Hz | 3938 Hz | 0.466 s | 64 ms | 338 ms |
-| ding-2 | 0.992 | 694 Hz | 656 Hz | 0.313 s | 3.5 ms | 285 ms |
-| cash-1 | 0.937 | 4923 Hz | 4969 Hz | 0.260 s | 3.2 ms | 233 ms |
-| cash-2 | 0.822 | 3848 Hz | 4863 Hz | 0.303 s | 93 ms | 196 ms |
-| marker-1 | 0.868 | 14253 Hz | 11883 Hz | 0.265 s | 8.6 ms | 247 ms |
-| marker-2 | 0.816 | 14764 Hz | 1617 Hz | 0.123 s | 4.2 ms | 41 ms |
-| error-1 | 0.737 | 856 Hz | 1043 Hz | 0.329 s | 128 ms | 181 ms |
-| error-2 | 0.053 | 1237 Hz | 1172 Hz | 0.371 s | 3.3 ms | 285 ms |
-| vacuum-1 | 0.919 | 226 Hz | 106 Hz | 0.501 s | 209 ms | 82 ms |
-| vacuum-1 swell | 0.653 | 157 Hz | 47 Hz | 0.343 s | 132 ms | |
-| vacuum-2 | 0.704 | 314 Hz | 117 Hz | 0.389 s | 14 ms | 145 ms |
-| vacuum-2 swell | 0.263 | 234 Hz | 164 Hz | 0.290 s | 88 ms | |
+## What is not in the free bundles
 
-Bass energy under 120 Hz is 0.99 on both takes. Ding-2 is the rounder ~0.65 kHz chime, scored against that reference, not the 4 kHz bell. Error-2 matches the ~1.1 kHz pitch and loses the stem cosine; error-1 is the cosine winner. Paste is the closest woody hit found (cosine about 0.37). Typing and paper have no reference, so they have no cosine.
+No mouse-click recording and no cash-register drawer were in the 2015, 2023, or 2024 Sonniss bundles that were searched. Freesound downloads require a login, and Pixabay was behind a bot check, so those were not used. The shipped click is a real small mechanism plus a real pen click. The shipped cash cue is a real handbell plus real coins. If the exact object is required:
 
-A grid roll is not its own file. The editor fires single pops. The preview roll is seven pops at 0, 0.08, 0.16, 0.25, 0.34, 0.44 and 0.54 s, with small pitch offsets. That gesture lasts about 0.60 s. A ticker run of sixteen single ticks lasts about 0.87 s and scores 0.93 against the ticker reference.
+- Mouse: Pro Sound Effects, "Computer Mouse Click 01" (Soundrangers), 24-bit 48 kHz, $5. https://www.prosoundeffects.com/sound-effects/PSE_SR-COM/k2D19/computer-mouse-click-01
+- Register: Pro Sound Effects, "Cash Register Bell Drawer Open Close" (Colin Lechner, Gen Collection Vol. 3), 24-bit 192 kHz, $5. https://www.prosoundeffects.com/sound-effects/PSE_GEN3/rXksL/cash-register-bell-drawer-open-close
 
 ## Files
 
-| Files | Source | Processing |
-| --- | --- | --- |
-| pop-1.wav | Mixkit 2364, Hard pop click | Pitch -4 st, highpass 160 Hz, lowpass 2200 Hz, trimmed to 0.20 s |
-| pop-2.wav | Kenney `drop_002` | Pitch -2 st, highpass 140 Hz, lowpass 2000 Hz, trimmed to 0.18 s |
-| whoosh-1.wav | Mixkit 1465, Vacuum swoosh transition | Highpass 120 Hz, lowpass 2000 Hz, 0.22 s fade in, fade out over the last 0.22 s, 0.72 s |
-| whoosh-2.wav | Mixkit 164, Fast sweeping transition swoosh | Lowpass 2600 Hz, 0.18 s fade in, fade out from 0.46 s, 0.72 s |
-| riser-1.wav | Mixkit 1469, Flying fast swoosh | Highpass 1400 Hz, lowpass 12 kHz, short fade in, fade out from 0.26 s, 0.42 s |
-| riser-2.wav | Mixkit 3115, Fast transitions swoosh | Highpass 1800 Hz, slowed to 0.85×, 0.36 s. The thin ~8 kHz hiss |
-| bass-1.wav | Mixkit 2302, Spring metal hit | Highpass 28 Hz, lowpass 110 Hz, 40 ms fade in, fade out from 0.70 s, 1.02 s. Chosen for the slow bloom |
-| bass-2.wav | Mixkit 2300, Knocking sub bass | Highpass 30 Hz, lowpass 100 Hz, slowed to 0.75×, 1.00 s. Slightly higher cosine, faster attack |
-| click-1.wav | Kenney `click_001` | Highpass 350 Hz, lowpass 14 kHz, 0.04 s |
-| click-2.wav | Mixkit 2568, Cool interface click tone | Highpass 400 Hz, lowpass 14 kHz, 0.05 s |
-| typing-1.wav | Mixkit 2533, Single key type | Highpass 120 Hz, lowpass 3800 Hz, 0.07 s |
-| typing-2.wav | Mixkit 2541, Single key press in a laptop | Highpass 140 Hz, lowpass 4200 Hz, 0.07 s |
-| paste-1.wav | Mixkit 2182, Wood hard hit | Pitch +4 st, highpass 180 Hz, lowpass 4500 Hz, 0.11 s |
-| paste-2.wav | Mixkit 2542, Hard single key press in a laptop | Highpass 150 Hz, lowpass 3800 Hz, onset-trimmed to 0.09 s |
-| ticking-1.wav | Kenney `tick_004` | Pitch +4 st, highpass 2 kHz, lowpass 10 kHz, 0.04 s |
-| ticking-2.wav | Kenney `switch_001` | Highpass 1800 Hz, lowpass 9 kHz, 0.04 s |
-| ding-1.wav | Mixkit 3109, Relaxing bell chime | Pitch +5 st, highpass 700 Hz, fade out from 0.40 s, 0.64 s. The 4 kHz bell |
-| ding-2.wav | Kenney `confirmation_002` | Pitch -10 st, highpass 180 Hz, lowpass 2800 Hz, fade out from 0.24 s, 0.42 s |
-| cash-1.wav | Mixkit 588, Service bell double ding | Pitch -4 st, highpass 1400 Hz, fade out from 0.20 s, 0.40 s |
-| cash-2.wav | Mixkit 1981, Casino bells reward | Highpass 1 kHz, 15 ms fade in, fade out from 0.28 s, 0.46 s |
-| marker-1.wav | Mixkit 2998, Pen marker line | Highpass 2200 Hz, short fade in, fade out from 0.20 s, 0.32 s |
-| marker-2.wav | Kenney `scratch_003` | Highpass 1800 Hz, 0.18 s |
-| error-1.wav | Mixkit 2866, Digital quick tone, plus a 20 ms hit from Mixkit 2568 | Tone pitched -12 st, highpass 200 Hz, lowpass 3500 Hz, 0.52 s. The hit is highpassed at 2 kHz and mixed at 0.4 |
-| error-2.wav | Kenney `confirmation_002`, plus a 25 ms hit from Kenney `click_001` | Tone highpassed at 250 Hz and lowpassed at 4 kHz, 0.58 s. The click hit is highpassed at 1500 Hz and mixed at 0.5 |
-| vacuum-1.wav | Mixkit 1465 reversed, plus pop-1 | Lowpass 800 Hz, highpass 70 Hz, slowed to 0.65×, forced rising envelope, pop at 0.58 s, 0.95 s |
-| vacuum-2.wav | Mixkit 168, Fast air sweep transition, reversed, plus pop-2 | Lowpass 1100 Hz, highpass 90 Hz, slowed to 0.70×, same rising envelope, pop at 0.55 s, 0.95 s |
-| paper-1.wav | Mixkit 1530, Paper slide | Highpass 200 Hz, lowpass 7 kHz, fade out from 0.18 s, 0.32 s |
-| paper-2.wav | Mixkit 2380, Paper quick movement | Highpass 250 Hz, lowpass 8 kHz, 0.18 s |
+| File | Source | Cut | Flatness | Centroid | Duration | Attack |
+| --- | --- | --- | --- | --- | --- | --- |
+| pop-1.wav | Soundopolis, Foley Plus, `Champagne_Cork_Pop_Fienup_001.wav` (2015) | whole cork pop, 0.15 s | 0.04 | 555 Hz | 0.10 s | 8 ms |
+| pop-2.wav | Membrans, Pops Sound Pack 01, `Pop 31.wav` (2015) | first 0.12 s | 0.11 | 409 Hz | 0.03 s | 3 ms |
+| whoosh-1.wav | Coll Anderson, Sliding Whoosh By, `EFX SD Sliding Whoosh By 06.wav` (2015) | 1.75–2.55 s | 0.31 | 436 Hz | 0.80 s | swell |
+| whoosh-2.wav | Rogue Waves, Druid Magic, `SWSH_Dry Bamboo Leaf Swishes 1` (2023) | 1.98–2.52 s | 0.19 | 9.1 kHz | 0.34 s | 71 ms |
+| riser-1.wav | Mechanical Wave, Hits Whoosh, `Fast Action Swish_HW 05.wav` (2015) | 0.58–0.82 s | 0.26 | 5.6 kHz | 0.08 s | 26 ms |
+| riser-2.wav | Justsoundeffects, Transition Whooshes Vol. 1, `SWSH_Woodstick Swish 03` (2023) | 1.96–2.20 s | 0.51 | 1.1 kHz | 0.08 s | 20 ms |
+| bass-1.wav | 344 Audio, Epic Impacts Vol. 1, `Impact 045.wav` (2023) | 0.00–1.05 s | sub 0.97 | 74 Hz | 1.00 s | 34 ms |
+| bass-2.wav | 344 Audio, Epic Impacts Vol. 1, `Impact 038.wav` (2023) | 0.00–1.05 s | sub 0.93 | 134 Hz | 1.02 s | 99 ms |
+| click-1.wav | Bluezone, Tiny Gears, `tiny_gears_small_mechanism_click_003.wav` (2024) | whole click, 0.05 s | 0.39 | 6.2 kHz | 0.04 s | 1 ms |
+| click-2.wav | Lukas Tvrdon, Design Source 192, `Pen, Click.wav` (2023) | 1.40–1.50 s | 0.06 | 18 kHz | 0.06 s | 0.4 ms |
+| typing-1.wav | Soundopolis, Foley Plus, `Computer_Keyboard_Type_Fienup_002.wav` (2015) | 0.205–0.275 s | 0.12 | 2.4 kHz | 0.02 s | 3 ms |
+| typing-2.wav | same keyboard | 2.000–2.070 s | 0.33 | 2.2 kHz | 0.02 s | 5 ms |
+| paste-1.wav | Dramatic Cat, Olivetti Linea 98, backspace key (2023) | 16.44–16.56 s | 0.35 | 5.9 kHz | 0.03 s | 13 ms |
+| paste-2.wav | same typewriter | 8.41–8.53 s | 0.42 | 5.6 kHz | 0.03 s | 10 ms |
+| ticking-1.wav | InspectorJ, Essentials 02 Clocks, `Clock-07` single tick (2023, via Sonniss) | 0.02–0.12 s | 0.07 | 3.7 kHz | 0.05 s | 12 ms |
+| ticking-2.wav | InspectorJ, `Clock-03` ticking loop (2023, via Sonniss) | first tick, 0.10 s | 0.12 | 0.9 kHz | 0.06 s | 10 ms |
+| ding-1.wav | Soundopolis, Percussion 01, `Bell_Waiter_Fienup_001.wav` (2015) | 0.00–0.70 s | bell | 6.4 kHz | 0.67 s | strike |
+| ding-2.wav | Sonic Bat, Videogame Foley Essentials Vol. II, `SBvfe2_Glass 114.wav` (2024) | 0.00–0.42 s | 0.13 | 9.4 kHz | 0.37 s | 1 ms |
+| cash-1.wav | Mechanical Wave, `BELLHand_Metallic Bell_ 22` (2024) | 0.00–0.65 s | bell | 8.1 kHz | 0.55 s | 3 ms |
+| cash-2.wav | CB Sound Design, Essential Sounds Vol. 01 Coins, `coins_9.wav` (2023) | 0.02–0.55 s | 0.06 | 7.1 kHz | 0.49 s | 8 ms |
+| marker-1.wav | CB Sound Design, Essential Sounds Vol. 02 Pencils, `marker_2.wav` (2023) | 0.02–0.55 s | 0.04 | 4.9 kHz | 0.50 s | 80 ms |
+| marker-2.wav | same pack, `felt-tip_pencil_24.wav` | 0.08–0.36 s | 0.04 | 10.6 kHz | 0.13 s | 43 ms |
+| error-1.wav | Bluezone, Steampunk Mechanical Sounds, metal alarm mechanism (2023) | 0.02–0.24 s | 0.22 | 3.1 kHz | 0.20 s | 6 ms |
+| error-2.wav | same alarm, the closing clank | 2.52–2.84 s | 0.67 | 4.4 kHz | 0.27 s | 3 ms |
+| vacuum-1.wav | Coll Anderson whoosh 15, 0.48–1.08 s, reversed, plus the cork pop | pop peaks at 0.58 s, 0.72 s total | 0.32 | 911 Hz | 0.64 s | 97 ms |
+| vacuum-2.wav | same whoosh, 3.08–3.72 s, reversed, plus Membrans Pop 31 | pop peaks at 0.60 s, 0.73 s total | 0.49 | 610 Hz | 0.62 s | 169 ms |
+| paper-1.wav | Mechanical Wave, Cardboard and Paper, large book page turn (2024) | 0.14–1.00 s | 0.33 | 3.0 kHz | 0.82 s | page |
+| paper-2.wav | same pack, big cardboard box slide | 0.35–1.15 s | 0.34 | 5.1 kHz | 0.80 s | slide |
 
-Whooshes are low-passed again at 8 kHz in the mixer, which does not change these files. Risers are not low-passed, so the bright swoosh stays bright. The lo-fi bed is unchanged: `production/editor/music/kallaway-bed.ogg`.
+Pop-1 is a real champagne cork. Its flatness is low because the bottle rings; that resonance is in the recording. Ding-1 is a real waiter bell (partials near 2.8, 7.6, and 12.3 kHz). Cash-1 is a real handbell, not a register drawer. Bass energy under 120 Hz is 0.97 on Impact 045 and 0.93 on Impact 038; both sit on a 35–60 Hz body with no metal click. Whoosh-2 keeps energy above 8 kHz (about 0.59 of the loud window). Click-2 is almost entirely above 8 kHz, which is the pen mechanism, not a filter. The two error takes are two different hits of one metal alarm, not a sine horn.
+
+A grid roll is not its own file. The editor fires single pops, and thumbnail-grid pops use under_db 19. The preview roll is seven of these pops with no pitch change. A ticker run and a typing burst in the preview are the same single hits sequenced, also with no pitch change. Vacuum is one file: the reversed whoosh rises, then the pop lands. The motif places that file at 0.20 s into the merge so the pop, about 0.58 s into the file, arrives near the old merge point.

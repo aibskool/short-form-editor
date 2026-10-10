@@ -1,8 +1,9 @@
 """Voice tightening, podcast leveling, and recorded sound cues for Kallaway-style edits.
 
 Sound effects live in ``sfx/kallaway`` and the lo-fi bed in ``music/kallaway-bed.ogg``.
-The bed is CC0. The cues are Mixkit Sound Effects Free License recordings plus Kenney
-CC0 interface sounds. Sources and licenses are in THIRD_PARTY_NOTICES.md.
+The bed is CC0. The cues are Sonniss GDC royalty-free foley recordings
+(commercial use inside this editor; not a redistributable sample pack).
+Sources and licenses are in THIRD_PARTY_NOTICES.md.
 This module keeps each word through its decay, removes only the gap between
 phrases, crossfades each join, and copies the library into a composition.
 It does not synthesize the cues.
@@ -556,8 +557,9 @@ UNDER_DB = {
     "whoosh": 16.0, "riser": 14.0, "ding": 13.0, "bass": 12.0,
     "paste": 13.0, "cash": 7.0, "vacuum": 6.0,
 }
-# Whoosh files are already dull. Risers stay bright so the swoosh-up is not dulled.
-_LOWPASS_KINDS = {"whoosh"}
+# Recorded cues keep their full bandwidth. An 8 kHz lowpass dulled real air
+# and cloth, so nothing is band-limited here.
+_LOWPASS_KINDS = set()
 _MOMENTARY_S = 0.400
 _SHORTTERM_S = 3.0
 # ITU-R BS.1770-4 pre-filter and RLB weighting, 48 kHz.
@@ -639,8 +641,7 @@ def mix_cues(voice, rate, cues, library=None):
     """Place each cue so its momentary loudness sits under the voice at that moment.
 
     The offset is SFX momentary LUFS minus voice short-term LUFS, not a peak
-    ratio. Whooshes are low-passed at 8 kHz before the measurement and before
-    they are added. Risers are left bright.
+    ratio. Cues keep the bandwidth of the recording.
     """
     voice = _resample(voice, rate, RATE)
     weighted_voice = _k_weight(voice, RATE)
