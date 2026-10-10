@@ -252,7 +252,8 @@ def stage_events(motif, start, end, stage=None):
         raise ValueError(f"unknown stage motif: {motif}")
     if motif == "thumbnail_grid":
         count = max(4, min(8, int(stage.get("count", 8))))
-        return [{"at": t, "kind": "pop"} for t in _times(start, end, count, 1.35)]
+        # Grid rolls sit much quieter than a single scale-in pop.
+        return [{"at": t, "kind": "pop", "under_db": 19.0} for t in _times(start, end, count, 1.35)]
     if motif in {"phone_frame", "broll_card"}:
         events = [{"at": round(start, 3), "kind": "whoosh"}]
         if stage.get("callout"):
@@ -288,7 +289,7 @@ def stage_events(motif, start, end, stage=None):
     if motif == "counter":
         ticks = _times(start, min(end, start + 0.9), 6, 0.8)
         events = [{"at": t, "kind": "ticking"} for t in ticks]
-        events.append({"at": round(min(end - 0.08, start + 0.95), 3), "kind": "ding"})
+        events.append({"at": round(min(end - 0.08, start + 0.95), 3), "kind": "cash"})
         return events
     if motif == "highlight_box":
         # The line waits until the card slide has finished.
@@ -330,8 +331,8 @@ def stage_events(motif, start, end, stage=None):
         items = stage.get("items") or ["One", "Two", "Three", "Four"]
         count = max(2, min(6, len(items)))
         events = [{"at": t, "kind": "pop"} for t in _times(start, end, count, 0.28)]
-        events.append({"at": _clamp(start + 0.55, start, end), "kind": "whoosh"})
-        events.append({"at": _clamp(start + 0.78, start, end), "kind": "ding"})
+        # The suck is baked into the cue. Its pop lands about 0.58 s later.
+        events.append({"at": _clamp(start + 0.20, start, end), "kind": "vacuum"})
         return events
     if motif == "state_swap":
         return [{"at": round(start, 3), "kind": "pop"},

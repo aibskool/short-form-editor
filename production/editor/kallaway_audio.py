@@ -1,7 +1,8 @@
 """Voice tightening, podcast leveling, and recorded sound cues for Kallaway-style edits.
 
 Sound effects live in ``sfx/kallaway`` and the lo-fi bed in ``music/kallaway-bed.ogg``.
-Both are CC0 recordings. Sources and licenses are in THIRD_PARTY_NOTICES.md.
+The bed is CC0. The cues are Mixkit Sound Effects Free License recordings plus Kenney
+CC0 interface sounds. Sources and licenses are in THIRD_PARTY_NOTICES.md.
 This module keeps each word through its decay, removes only the gap between
 phrases, crossfades each join, and copies the library into a composition.
 It does not synthesize the cues.
@@ -22,6 +23,7 @@ BED_FILE = HERE / "music" / "kallaway-bed.ogg"
 BED_NATIVE_BPM = 105.5
 SFX_KINDS = (
     "pop", "whoosh", "click", "typing", "ticking", "ding", "bass", "riser", "error", "marker", "paper",
+    "paste", "cash", "vacuum",
 )
 
 
@@ -54,7 +56,7 @@ def sfx_variants(kind, directory=None):
 
 
 def write_sfx_library(directory):
-    """Copy the committed CC0 library into a composition. Variants stay kind-N.wav."""
+    """Copy the committed library into a composition. Variants stay kind-N.wav."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     if not SFX_LIBRARY.is_dir():
@@ -545,13 +547,17 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
 
 
 # Momentary SFX loudness sits this far under the voice's short-term loudness.
-# Midpoints of the phone-speaker bands: transients 10–12, whooshes 12–14, bass 6–8.
+# Each value is Kallaway's measured average vs voice, made 2 dB louder because
+# these reels have no music bed. Typing and paper had no separable clip, so
+# those two are estimates. Thumbnail grids override pop with a quieter cue.
 UNDER_DB = {
-    "pop": 11.0, "click": 11.0, "typing": 11.0, "ticking": 11.0,
-    "marker": 11.0, "paper": 11.0, "error": 11.0,
-    "whoosh": 13.0, "riser": 13.0, "ding": 11.0, "bass": 7.0,
+    "pop": 7.0, "click": 21.0, "typing": 19.0, "ticking": 20.0,
+    "marker": 23.0, "paper": 16.0, "error": 24.0,
+    "whoosh": 16.0, "riser": 14.0, "ding": 13.0, "bass": 12.0,
+    "paste": 13.0, "cash": 7.0, "vacuum": 6.0,
 }
-_LOWPASS_KINDS = {"whoosh", "riser"}
+# Whoosh files are already dull. Risers stay bright so the swoosh-up is not dulled.
+_LOWPASS_KINDS = {"whoosh"}
 _MOMENTARY_S = 0.400
 _SHORTTERM_S = 3.0
 # ITU-R BS.1770-4 pre-filter and RLB weighting, 48 kHz.
@@ -633,8 +639,8 @@ def mix_cues(voice, rate, cues, library=None):
     """Place each cue so its momentary loudness sits under the voice at that moment.
 
     The offset is SFX momentary LUFS minus voice short-term LUFS, not a peak
-    ratio. Whooshes and risers are low-passed at 8 kHz before the measurement
-    and before they are added.
+    ratio. Whooshes are low-passed at 8 kHz before the measurement and before
+    they are added. Risers are left bright.
     """
     voice = _resample(voice, rate, RATE)
     weighted_voice = _k_weight(voice, RATE)

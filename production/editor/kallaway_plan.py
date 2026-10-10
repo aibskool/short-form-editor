@@ -290,7 +290,12 @@ def _cover_sfx(shots, words, styles, unders=None):
                 continue
         if at < 0:
             continue
-        under = float(unders.get(kind, UNDER_DB.get(kind, 11.0)))
+        # A per-event level (the quieter grid roll) survives only when the kind
+        # was not rewritten. A stacked whoosh that becomes a pop uses the pop level.
+        if event.get("under_db") is not None and kind == event["kind"]:
+            under = float(event["under_db"])
+        else:
+            under = float(unders.get(kind, UNDER_DB.get(kind, 11.0)))
         sfx.append({"kind": kind, "at": round(at, 3), "under_db": under})
     return sfx
 
