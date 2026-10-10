@@ -158,10 +158,12 @@ _WORD_BRIDGE_SECONDS = 0.14
 
 
 # Keep the decay, including a quiet fricative the broadband meter would miss.
-_HEAD_PAD = 0.030
-_TAIL_PAD = 0.040
-_TAIL_SEARCH = 0.350
+_HEAD_PAD = 0.012
+_TAIL_PAD = 0.020
+_TAIL_SEARCH = 0.500
 _TAIL_MARGIN_DB = 3.0
+# A closure inside one whisper word can be this long. A gap after the word cannot.
+_TAIL_BRIDGE_SECONDS = 0.045
 _FRICATIVE_LOW = 3000.0
 _FRICATIVE_HIGH = 10000.0
 
@@ -200,6 +202,45 @@ def _fricative_band(samples, rate):
     return _rbj(band, rate, _FRICATIVE_HIGH, "lowpass")
 
 
+def _speech_band(samples, rate):
+    """450 Hz–3.4 kHz, twice highpassed. A 120–200 Hz hum falls out; a vowel's formants stay."""
+    band = _rbj(np.asarray(samples, dtype=np.float64), rate, 450.0, "highpass")
+    band = _rbj(band, rate, 450.0, "highpass")
+    return _rbj(band, rate, 3400.0, "lowpass")
+
+
+def _hot_runs(times, hot):
+    runs = []
+    cursor = 0
+    hot = np.asarray(hot, dtype=bool)
+    while cursor < len(hot):
+        if not hot[cursor]:
+            cursor += 1
+            continue
+        stop = cursor
+        while stop < len(hot) and hot[stop]:
+            stop += 1
+        runs.append((float(times[cursor]), float(times[min(stop - 1, len(times) - 1)])))
+        cursor = stop
+    return runs
+
+
+def _bridge_runs(runs, gap):
+    if not runs:
+        return []
+    bridged = [[runs[0][0], runs[0][1]]]
+    for start, end in runs[1:]:
+        if start - bridged[-1][1] <= gap:
+            bridged[-1][1] = max(bridged[-1][1], end)
+        else:
+            bridged.append([start, end])
+    return [(item[0], item[1]) for item in bridged]
+
+
+def _overlap(run, start, end):
+    return max(0.0, min(run[1], end) - max(run[0], start))
+
+
 def _decay_time(times, frames, thresh, whisper_end, limit):
     """Where the word settles at the floor, ignoring a single mouth-noise blip.
 
@@ -230,27 +271,28 @@ def _decay_time(times, frames, thresh, whisper_end, limit):
 
 
 def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD):
-    """Keep each word through its decay, including a high-band fricative, then add 40 ms.
+    """Align each word to speech, including its decay, and leave the pauses out.
 
-    The onset is the speech burst that overlaps the whisper span (a stop closure
-    stays inside; a separated breath does not), pulled back 30 ms. The end is where
-    BOTH broadband RMS and the 3–10 kHz band have fallen to their own noise floor
-    + 3 dB, searched from the whisper end out to +350 ms, plus a 40 ms safety tail.
+    Whisper folds silence into a word and smears the next onset. The onset is the
+    loudest speech burst that overlaps the whisper span, so a separated breath
+    loses to the vowel and a stop closure inside the span stays. The end follows
+    that burst through a fricative or a vowel that is still up, and stops before
+    the silence that belongs to the next word. A low hum is not speech.
     ``fricative_tail`` is how long the high band stayed up past the whisper mark.
     """
     samples = np.asarray(samples, dtype=np.float64)
     ordered = sorted(words, key=lambda word: float(word["start"]))
     times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
     _high_times, high_frames = _frame_rms(_fricative_band(samples, rate), rate, win_s=0.01, hop_s=0.005)
+    _speech_times, speech_frames = _frame_rms(_speech_band(samples, rate), rate, win_s=0.01, hop_s=0.005)
     if len(frames) == 0:
         return [dict(word) for word in ordered]
     floor = max(float(np.percentile(frames, 20)), 1e-5)
-    thresh = floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
     # The 20th percentile of the high band is often digital silence, which makes
     # every vowel look like a fricative. Use the high band during broadband quiet
     # instead, so the floor is the booth, not a zero sample.
     if len(high_frames) == len(frames):
-        quiet = frames <= thresh
+        quiet = frames <= floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
         if int(np.count_nonzero(quiet)) > 8:
             high_floor = float(np.percentile(high_frames[quiet], 90))
         else:
@@ -258,91 +300,91 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
     else:
         high_floor = float(np.percentile(high_frames, 50)) if len(high_frames) else 1e-5
     high_floor = max(high_floor, 1e-6)
-    high_thresh = high_floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
+    # A numerical whisper in the high band is not an "s". A real fricative sits well above this.
+    high_thresh = max(high_floor * (10 ** (_TAIL_MARGIN_DB / 20.0)), 10 ** (-46.0 / 20.0))
+    if len(speech_frames):
+        speech_floor = max(float(np.percentile(speech_frames, 20)), 1e-6)
+    else:
+        speech_floor = 1e-4
+    # Absolute floor keeps a loud bass hum from counting after the highpass.
+    speech_thresh = max(speech_floor * (10 ** (_TAIL_MARGIN_DB / 20.0)), 10 ** (-42.0 / 20.0))
+    count = min(len(times), len(speech_frames) or 0, len(high_frames) or len(times))
+    if len(speech_frames) and len(high_frames):
+        hot = (speech_frames[:count] >= speech_thresh) | (high_frames[:count] >= high_thresh)
+    elif len(speech_frames):
+        hot = speech_frames[:count] >= speech_thresh
+    else:
+        hot = frames[:count] >= floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
+    runs = _hot_runs(times[:count], hot)
     duration = len(samples) / float(rate)
+
+    def peak(run):
+        if not len(speech_frames):
+            return 0.0
+        grid = times[:len(speech_frames)]
+        mask = (grid >= run[0]) & (grid <= run[1] + 0.012)
+        if not np.any(mask):
+            return 0.0
+        return float(np.max(speech_frames[mask]))
+
     refined = []
     for index, word in enumerate(ordered):
         start = float(word["start"])
         end = float(word["end"])
-        next_start = float(ordered[index + 1]["start"]) if index + 1 < len(ordered) else duration
+        nxt = ordered[index + 1] if index + 1 < len(ordered) else None
+        next_start = float(nxt["start"]) if nxt else duration
+        next_end = float(nxt["end"]) if nxt else duration
         chosen = dict(word)
-        lo = max(0.0, start - 0.08)
-        hi = min(max(next_start, end), max(end, start) + 0.02)
-        mask = (times >= lo) & (times <= max(hi, lo + 0.02))
-        local_t = times[mask]
-        local = frames[mask]
-        onset = start
-        if len(local):
-            # Floor + 3 dB, not a fraction of the vowel, so a quiet "s" or plosive still counts.
-            hot = local >= thresh
-            runs = []
-            cursor = 0
-            while cursor < len(hot):
-                if not hot[cursor]:
-                    cursor += 1
-                    continue
-                stop = cursor
-                while stop < len(hot) and hot[stop]:
-                    stop += 1
-                runs.append((cursor, stop))
-                cursor = stop
-            belonging = []
+        inside = [run for run in runs if _overlap(run, start, max(end, start + 0.02)) > 0.012]
+        bridged = _bridge_runs(inside, _WORD_BRIDGE_SECONDS)
+        if not bridged:
+            floor_start = float(refined[-1]["end"]) if refined else 0.0
+            chosen["start"] = round(max(start, floor_start), 4)
+            chosen["end"] = round(max(end, chosen["start"] + 0.041), 4)
+            chosen["fricative_tail"] = 0.0
+            refined.append(chosen)
+            continue
+        cluster = max(bridged, key=lambda run: (peak(run), _overlap(run, start, end), run[1] - run[0]))
+        speech_end = cluster[1]
+        later = [
+            run for run in runs
+            if run[0] >= cluster[0] + 0.05 and _overlap(run, next_start, max(next_end, next_start + 0.02)) > 0.012
+        ]
+        next_onset = min((run[0] for run in later), default=None)
+        guard = 0
+        while guard < 8 and speech_end < min(duration, end + 0.70):
+            guard += 1
+            follower = None
             for run in runs:
-                run_start = float(local_t[run[0]])
-                run_end = float(local_t[min(run[1] - 1, len(local_t) - 1)])
-                if min(run_end, end) - max(run_start, start) > 0.012:
-                    belonging.append((run_start, run_end))
-            if belonging:
-                belonging.sort()
-                clusters = [[belonging[0][0], belonging[0][1]]]
-                for run_start, run_end in belonging[1:]:
-                    if run_start - clusters[-1][1] <= _WORD_BRIDGE_SECONDS:
-                        clusters[-1][1] = max(clusters[-1][1], run_end)
-                    else:
-                        clusters.append([run_start, run_end])
-
-                def cluster_overlap(cluster):
-                    return min(cluster[1], end) - max(cluster[0], start)
-
-                onset = max(clusters, key=cluster_overlap)[0]
-        # Overlapping tails stay in spoken order. The previous word's end may
-        # run into this one; clamping the start to that end would reorder them.
-        onset = max(0.0, onset - pad_in)
+                if run[1] <= speech_end + 0.01:
+                    continue
+                if run[0] > speech_end + _TAIL_BRIDGE_SECONDS:
+                    continue
+                if next_onset is not None and run[0] >= next_onset - 0.008:
+                    continue
+                follower = run
+                break
+            if follower is None:
+                break
+            speech_end = max(speech_end, follower[1])
+        hiss_end = speech_end
+        if len(high_frames):
+            hiss_end = max(hiss_end, _decay_time(
+                _high_times, high_frames, high_thresh, min(end, speech_end),
+                min(duration, max(speech_end, end) + _TAIL_SEARCH)))
+            if next_onset is not None:
+                hiss_end = min(hiss_end, max(speech_end, next_onset - 0.004))
+        decay = max(speech_end, hiss_end)
+        onset = max(0.0, cluster[0] - pad_in)
         if refined:
             onset = max(onset, float(refined[-1]["start"]) + 0.02)
-        # A following word that starts while the fricative is still up does not
-        # cut it. The ranges overlap and the pause cutter keeps them as one piece.
-        limit = min(end + _TAIL_SEARCH, duration)
-        broad_end = _decay_time(times, frames, thresh, end, max(end, limit))
-        hiss_end = (
-            _decay_time(_high_times, high_frames, high_thresh, end, max(end, limit))
-            if len(high_frames) else broad_end)
-        # A fricative that has already fallen stays inside the 350 ms window.
-        # A vowel that is still up there is followed to the floor, at most +700 ms.
-        if broad_end >= limit - 0.015:
-            far = min(end + 0.700, duration)
-            if next_start > end + 0.03:
-                far = min(far, max(limit, next_start - 0.004))
-            if far > limit + 0.01:
-                broad_end = _decay_time(times, frames, thresh, end, far)
-                if len(high_frames):
-                    hiss_end = max(
-                        hiss_end,
-                        _decay_time(_high_times, high_frames, high_thresh, end, far))
-        decay = max(broad_end, hiss_end)
         offset = min(duration, decay + pad_out)
-        # The safety tail is silence after the word. A mouth noise inside those
-        # 40 ms is the next event, so the tail stops at the rise.
-        rise = thresh * (10 ** (6.0 / 20.0))
-        hot = np.where((times > decay + 0.008) & (times <= offset) & (frames > rise))[0]
-        if len(hot):
-            offset = max(decay, min(offset, float(times[hot[0]]) - 0.004))
-        if next_start > end + 0.03 and next_start - 0.004 >= decay:
-            offset = min(offset, next_start - 0.004)
+        if next_onset is not None and next_onset - 0.004 >= decay:
+            offset = min(offset, next_onset - 0.004)
         if offset <= onset + 0.04:
             floor_start = float(refined[-1]["start"]) + 0.02 if refined else 0.0
-            chosen["start"] = round(max(float(word["start"]), floor_start), 4)
-            chosen["end"] = round(max(float(word["end"]), chosen["start"] + 0.041), 4)
+            chosen["start"] = round(max(start, floor_start), 4)
+            chosen["end"] = round(max(end, chosen["start"] + 0.041), 4)
             chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
             refined.append(chosen)
             continue
@@ -350,6 +392,12 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         chosen["end"] = round(offset, 4)
         chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
         refined.append(chosen)
+    for index in range(len(refined) - 1):
+        nxt = float(refined[index + 1]["start"])
+        if float(refined[index]["end"]) > nxt - 0.004:
+            refined[index]["end"] = round(max(float(refined[index]["start"]) + 0.02, nxt - 0.004), 4)
+            if refined[index]["end"] > nxt - 0.004:
+                refined[index]["end"] = round(nxt - 0.004, 4)
     return refined
 
 

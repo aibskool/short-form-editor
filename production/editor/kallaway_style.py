@@ -69,26 +69,27 @@ def card_state(layout, crop, width, height, layout_spec, colors):
             "boxShadow": colors["card_shadow"], "scale": scale,
         }
     if layout == "punch_in":
-        scale = float(layout_spec.get("punch_scale", 1.27))
+        scale = float(layout_spec.get("punch_scale", 0.99))
     else:
-        scale = float(layout_spec.get("full_scale", 1.13))
+        scale = float(layout_spec.get("full_scale", 0.90))
     return {"left": 0, "top": 0, "width": width, "height": height,
             "borderRadius": 0, "boxShadow": "none", "scale": scale}
 
 
 def _caption_text(word, omit_punct=True, keep_case=()):
-    """On-screen caption. `display` is the authored spelling. `keep_case` preserves PAID, AI, ADA."""
-    if word.get("display"):
-        return str(word["display"])
-    text = str(word.get("word", word.get("text", ""))).strip()
-    bare = text.strip(".,!?:;\"'").lower()
+    """On-screen caption. Prices keep their spelling. Everything else is lowercase."""
+    text = str(word.get("display") or word.get("word") or word.get("text") or "").strip()
+    bare = text.strip(".,!?:;\"'")
     kept = {item.lower(): item for item in keep_case}
-    if bare in kept:
-        return kept[bare]
-    if bare == "i":
+    if bare.lower() in kept:
+        return kept[bare.lower()]
+    if bare.lower() == "i":
         return "I"
+    if any(ch.isdigit() for ch in bare) or bare.startswith("$"):
+        shown = bare if omit_punct else text
+        return shown
     if omit_punct:
-        text = text.strip(".,!?:;\"'")
+        text = bare
     return text.lower()
 
 
@@ -302,28 +303,32 @@ def build_kallaway(spec, spec_path, project):
         if end <= start:
             continue
         kind = header.get("variant", "headline")
-        emphasis = {word.lower() for word in header.get("emphasis") or []}
+        payoff = str(header.get("payoff") or "").strip(".,!?:;\"'")
+        if not payoff and header.get("emphasis"):
+            payoff = str(header["emphasis"][-1]).strip(".,!?:;\"'")
+        payoff_style = header.get("payoff_style") or "marker"
         size_style = f' style="font-size:{float(header["size"]) * scale:.1f}px"' if header.get("size") else ""
         lines = header.get("lines") or []
+
+        def _payoff_html(token):
+            bare = token.strip(".,!?:;\"'")
+            if payoff and bare.lower() == payoff.lower():
+                css = "payoff box" if payoff_style == "box" else "payoff"
+                return f'<span class="{css}">{escape(token)}</span>'
+            return escape(token)
+
         if lines:
-            green = {int(line_no) for line_no in header.get("green_lines") or []}
             blocks = []
-            for line_index, line in enumerate(lines):
-                css_class = "header-line key" if line_index in green else "header-line"
-                blocks.append(f'<div class="{css_class}">{escape(line)}</div>')
+            for line in lines:
+                words_html = " ".join(_payoff_html(token) for token in str(line).split(" "))
+                blocks.append(f'<div class="header-line">{words_html}</div>')
             inner = f'<div class="header-text"{size_style}>{"".join(blocks)}</div>'
         elif kind == "label":
             inner = f'<div class="header-label"{size_style}>{escape(header.get("text", ""))}</div>'
         else:
-            pieces = []
-            for token in str(header.get("text", "")).split(" "):
-                bare = token.strip(".,!?:;\"'").lower()
-                if bare in emphasis:
-                    pieces.append(f'<span class="key">{escape(token)}</span>')
-                else:
-                    pieces.append(escape(token))
+            pieces = [_payoff_html(token) for token in str(header.get("text", "")).split(" ") if token]
             sub = f'<div class="header-sub">{escape(header["sub"])}</div>' if header.get("sub") else ""
-            inner = f'<div class="header-text">{" ".join(pieces)}</div>{sub}'
+            inner = f'<div class="header-text"{size_style}>{" ".join(pieces)}</div>{sub}'
         parts.append(
             f'<div id="hdr-{index}" class="header clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
             f'data-track-index="4">{inner}</div>')
@@ -434,8 +439,10 @@ def build_kallaway(spec, spec_path, project):
     .cap.green{{color:{colors['accent']}}}
     .cap.amber{{color:{colors['warning_text']}}}
     .header{{position:absolute;top:{layout_spec['title_top']*100:.2f}%;left:7%;width:86%;z-index:8;text-align:center}}
-    .header-text{{font-family:'{display}',cursive;font-weight:400;font-size:{title_px:.1f}px;line-height:0.98;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
+    .header-text{{font-family:'{caption}',sans-serif;font-weight:800;font-size:{title_px:.1f}px;line-height:1.05;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .header-line{{display:block}}
+    .header-text .payoff{{font-family:'{display}',cursive;font-weight:400;font-size:1.05em}}
+    .header-text .payoff.box{{font-family:'{caption}',sans-serif;font-weight:800;background:{colors['accent']};color:{colors['on_accent']};padding:0.02em 0.16em;border-radius:8px}}
     .header-text .key,.header-line.key{{color:{colors['accent']}}}
     .header-sub{{margin-top:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.08em;text-transform:uppercase;color:{colors['muted']}}}
     .header-label{{display:inline-block;background:{colors['accent']};color:{colors['on_accent']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{title_px*0.62:.1f}px;line-height:1;padding:0.22em 0.45em;border-radius:8px}}
@@ -475,7 +482,7 @@ def build_kallaway(spec, spec_path, project):
     .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:8px}}
     .counter.range{{position:relative;justify-content:flex-start;gap:{10*scale:.0f}px;padding-top:1%}}
     .counter.range .count-num{{font-size:{168*scale:.0f}px;margin-top:2%}}
-    .range-old{{position:absolute;left:0;right:0;top:8%;z-index:5;text-align:center;font-family:'{display}',cursive;font-size:{112*scale:.0f}px;line-height:0.9;color:{colors['text']};text-shadow:0 12px 28px rgba(0,0,0,0.45)}}
+    .range-old{{position:relative;z-index:5;text-align:center;font-family:'{display}',cursive;font-size:{72*scale:.0f}px;line-height:0.9;color:{colors['warning_text']};margin-bottom:4%}}
     .range-old .quote-strike{{top:54%}}
     .range-row{{display:flex;gap:{12*scale:.0f}px;width:100%;flex:1;min-height:0}}
     .range-card{{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{8*scale:.0f}px;padding:4% 3%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05;text-align:center}}
@@ -503,7 +510,7 @@ def build_kallaway(spec, spec_path, project):
     .page-title{{font-family:'{display}',cursive;font-size:{36*scale:.0f}px;line-height:1.05;margin-top:10px}}
     .fan.stack .page-rot{{width:74%;height:90%;top:4%}}
     .fan.stack .page-title{{font-size:{56*scale:.0f}px}}
-    .fan-tint{{position:absolute;inset:0;background:{colors['negative']};opacity:0;pointer-events:none;border-radius:12px}}
+    .fan-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none;border-radius:12px}}
     .window{{height:86%;border-radius:{18*scale:.0f}px;overflow:hidden;border:1px solid {colors['border']};background:{colors['contrast']};box-shadow:{colors['card_shadow']}}}
     .window.terminal{{height:100%;box-shadow:0 28px 64px rgba(0,0,0,0.5), 0 0 42px {colors['accent']}55, inset 0 1px 0 rgba(255,255,255,0.12)}}
     .window.terminal .win-body{{font-size:{36*scale:.0f}px;line-height:1.28}}
@@ -520,11 +527,16 @@ def build_kallaway(spec, spec_path, project):
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
     .phone.hero{{position:absolute;margin:0;box-shadow:0 28px 64px rgba(0,0,0,0.55),0 0 48px {colors['accent']}44}}
-    .phone.hero .phone-screen img,.phone.hero .phone-screen video{{object-fit:cover}}
+    .phone.hero .phone-screen img,.phone.hero .phone-screen video{{object-fit:contain;background:{colors['contrast']}}}
     .phone-pan{{position:absolute;left:0;top:0;width:100%}}
     .callout-draw{{position:absolute;overflow:visible;pointer-events:none;z-index:4;opacity:0}}
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
-    .phone-hl{{position:absolute;left:4%;right:4%;z-index:3}}
+    .phone-hl{{position:absolute;left:8%;right:8%;z-index:3;height:0;padding:0;background:transparent;border:none;border-bottom:4px solid {colors['accent']};overflow:visible}}
+    .bal-row{{display:flex;align-items:flex-end;justify-content:center;gap:28px;height:58%}}
+    .bal-col{{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;font-family:'{caption}',sans-serif;font-size:{28*scale:.0f}px;color:{colors['text']}}}
+    .bal-bar{{width:72px;height:180px;background:{colors['accent']};border-radius:10px 10px 4px 4px;transform:scaleY(0);transform-origin:50% 100%}}
+    .bal-bar.short{{height:64px;background:{colors['warning']}}}
+    .bal-ne{{font-family:'{display}',cursive;font-size:{72*scale:.0f}px;color:{colors['text']};align-self:center}}
     .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
     .stage-chip.bottom{{top:auto;bottom:{10*scale:.0f}px;left:{10*scale:.0f}px;right:{10*scale:.0f}px;text-align:center;white-space:normal;line-height:1.2;font-size:{mono_px*0.72:.1f}px;letter-spacing:0.03em}}
     .cursor-ui{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
@@ -539,7 +551,7 @@ def build_kallaway(spec, spec_path, project):
     .swap.side .swap-card{{position:relative;width:auto;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6% 4%;font-size:{40*scale:.0f}px;line-height:0.95;overflow:hidden}}
     .swap-card.bad{{background:{colors['surface']};border:2px solid {colors['warning']};box-shadow:{colors['card_shadow']},0 0 36px {colors['warning']}55}}
     .swap-card.good{{background:{colors['surface']};border:2px solid {colors['accent']};box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
-    .bad-tint{{position:absolute;inset:0;background:{colors['negative']};opacity:0;pointer-events:none}}
+    .bad-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none}}
     .rev{{width:92%;height:{78*scale:.0f}px;margin-top:{10*scale:.0f}px}}
     .rev-label{{margin-top:4px;color:{colors['accent']};font-size:{mono_px*0.72:.1f}px}}
     .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
@@ -555,7 +567,7 @@ def build_kallaway(spec, spec_path, project):
     .cal span{{flex:1;text-align:center;padding:{8*scale:.0f}px 0;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px*0.7:.1f}px}}
     .cal-on{{background:{colors['accent']};color:{colors['on_accent']}}}
     .cal-off{{background:{colors['contrast']};color:{colors['muted']};border:1px solid {colors['border']}}}
-    .paid-stamp{{position:absolute;right:8%;top:18%;padding:{6*scale:.0f}px {14*scale:.0f}px;border:4px solid {colors['negative']};color:{colors['negative']};font-family:'{display}',cursive;font-size:{54*scale:.0f}px;letter-spacing:0.04em;border-radius:8px;opacity:0;box-shadow:0 12px 28px rgba(0,0,0,0.35)}}
+    .paid-stamp{{position:absolute;right:8%;top:18%;padding:{6*scale:.0f}px {14*scale:.0f}px;border:4px solid {colors['accent']};color:{colors['accent']};font-family:'{display}',cursive;font-size:{54*scale:.0f}px;letter-spacing:0.04em;border-radius:8px;opacity:0;box-shadow:0 12px 28px rgba(0,0,0,0.35)}}
     .browser{{position:relative;height:100%;display:flex;flex-direction:column;border-radius:{20*scale:.0f}px;overflow:hidden;background:{colors['contrast']};border:1px solid rgba(255,255,255,0.14);box-shadow:0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)}}
     .browser .chrome{{flex:0 0 auto}}
     .browser-live{{flex:1;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:8%;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{28*scale:.0f}px}}
@@ -566,7 +578,7 @@ def build_kallaway(spec, spec_path, project):
     .offer-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .offer-kicker{{color:{colors['muted']};font-size:{mono_px:.1f}px}}
     .offer-row{{flex:1;display:flex;gap:{12*scale:.0f}px}}
-    .offer-card{{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6% 4%;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);border-radius:18px;color:{colors['text']};font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95;box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)}}
+    .offer-card{{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6% 4%;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);border-radius:18px;color:{colors['text']};font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95;box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);transform:scale(0)}}
     .offer-card.good{{border-color:{colors['accent']};box-shadow:0 24px 48px rgba(0,0,0,0.45),0 0 36px {colors['accent']}66}}
     .offer-note{{text-align:center;color:{colors['muted']};font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.02em}}
     .flow{{height:100%;display:flex;align-items:center;justify-content:space-between;gap:{10*scale:.0f}px;padding:0 2%}}

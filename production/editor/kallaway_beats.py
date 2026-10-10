@@ -25,9 +25,9 @@ STAGE_KEYS = (
     "variant", "uncropped",
 )
 
-# Full-screen sits 13% tighter than a wide split. Each punch stacks another 12%.
-FULL_SCALE = 1.13
-PUNCH_STEP = 1.12
+# Full-screen is zoomed out so the face is about a third of the frame. A punch is +10%.
+FULL_SCALE = 0.90
+PUNCH_STEP = 1.10
 CONTRAST_WORDS = {"but", "so", "now", "most", "never", "stop", "you"}
 
 
@@ -158,6 +158,96 @@ def _cut_points(start, end, words):
     return points
 
 
+_SMALL_WORDS = {"a", "an", "the", "for", "to", "of", "and", "or", "in", "on", "at", "by", "vs"}
+
+
+def _title_word(token, first):
+    bare = token.strip(".,!?:;\"'")
+    if not bare:
+        return token
+    if any(ch.isdigit() for ch in bare) or bare.startswith("$"):
+        return token
+    if not first and bare.lower() in _SMALL_WORDS:
+        return bare.lower() + token[len(bare):]
+    return bare[:1].upper() + bare[1:].lower() + token[len(bare):]
+
+
+def _title_case(text):
+    words = str(text).split()
+    return " ".join(_title_word(word, index == 0) for index, word in enumerate(words))
+
+
+def _fit_header(header, width, height, layout):
+    """Title Case Inter, one payoff word, kept inside y 100–240."""
+    lines = [_title_case(line) for line in (header.get("lines") or [])]
+    text = _title_case(header.get("text") or " ".join(lines))
+    if not lines:
+        lines = [text] if text else []
+    green = {int(index) for index in header.get("green_lines") or []}
+    emphasis = [_title_case(word) if not any(ch.isdigit() for ch in word) else word
+                for word in header.get("emphasis") or []]
+    payoff = ""
+    payoff_style = "marker"
+    if emphasis:
+        payoff = emphasis[-1].strip(".,!?:;\"'")
+    elif green and lines:
+        source = lines[min(max(green), len(lines) - 1)]
+        payoff = source.split()[-1].strip(".,!?:;\"'") if source.split() else ""
+    if payoff and (payoff[:1] == "$" or any(ch.isdigit() for ch in payoff)):
+        payoff_style = "box"
+    title_top = float(layout.get("title_top", 0.0520833333)) * height
+    max_bottom = min(240.0, float(layout["stage_top"]) * height - 8)
+    room = max(48.0, max_bottom - title_top)
+    line_count = max(1, len(lines))
+    size = min(72.0, room / (line_count * 1.05))
+    # Shrink until the longest line fits the title width.
+    usable = width * 0.86
+    longest = max((len(line) for line in lines), default=1)
+    while size > 36 and longest * size * 0.52 > usable:
+        size -= 2
+    bottom = round(title_top + line_count * size * 1.05, 1)
+    entry = {
+        "text": text,
+        "emphasis": [payoff] if payoff else [],
+        "payoff": payoff,
+        "payoff_style": payoff_style,
+        "variant": header.get("variant") or "headline",
+        "size": round(size, 1),
+        "bottom": bottom,
+    }
+    if lines:
+        entry["lines"] = lines
+    if header.get("sub"):
+        entry["sub"] = _clean(header["sub"])
+    return entry
+
+
+def _cap_emphasis(words, styles, spans):
+    """At most one marker or green word in each beat. Amber prices stay."""
+    rank = {"marker": 0, "green": 1}
+    winners = set()
+    losers = set()
+    for begin, end in spans:
+        best = None
+        seen = []
+        for index in range(begin, end):
+            token = _token(words[index])
+            style = styles.get(token)
+            if style not in rank:
+                continue
+            seen.append(token)
+            if best is None or rank[style] < best[0] or (rank[style] == best[0] and index >= best[2]):
+                best = (rank[style], token, index)
+        if best:
+            winners.add(best[1])
+            for token in seen:
+                if token != best[1]:
+                    losers.add(token)
+    for token in losers - winners:
+        styles[token] = "normal"
+    return styles
+
+
 def _clean(value):
     if isinstance(value, str):
         return plain_text(value)
@@ -264,7 +354,10 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                 "end": round(end, 3),
                 "layout": layout,
             }
-            position = beat.get("object_position") or stage_plan.get("object_position")
+            if layout == "split":
+                position = beat.get("object_position") or stage_plan.get("object_position")
+            else:
+                position = beat.get("object_position") or stage_plan.get("full_object_position") or theme["layout"].get("full_object_position")
             if position:
                 shot["object_position"] = position
             if layout == "punch_in":
@@ -331,6 +424,12 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         if right["end"] - right["start"] > 5.5:
             raise ValueError(f"{right['id']} is longer than 5.5s")
 
+    spans = []
+    for index, (item, nxt) in enumerate(zip(resolved, resolved[1:] + [None])):
+        begin = 0 if index == 0 else item["index"]
+        stop = nxt["index"] if nxt else len(ordered)
+        spans.append((begin, stop))
+    _cap_emphasis(ordered, styles, spans)
     full_scale = float(stage_plan.get("full_scale") or theme["layout"].get("full_scale") or FULL_SCALE)
     step = float(stage_plan.get("punch_step") or PUNCH_STEP)
     shots = apply_emphasis_punches(shots, ordered, styles, full_scale, step)
@@ -341,22 +440,9 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         beat = item["beat"]
         header = beat.get("header")
         if header:
-            lines = [_clean(line) for line in header.get("lines") or []]
-            text = _clean(header.get("text") or " ".join(lines))
-            entry = {
-                "start": item["start"],
-                "end": item["end"],
-                "text": text,
-                "emphasis": [_clean(word) for word in header.get("emphasis") or []],
-                "variant": header.get("variant") or "headline",
-            }
-            if lines:
-                entry["lines"] = lines
-                entry["green_lines"] = [int(index) for index in header.get("green_lines") or []]
-            if header.get("sub"):
-                entry["sub"] = _clean(header["sub"])
-            if header.get("size"):
-                entry["size"] = float(header["size"])
+            entry = _fit_header(header, width, height, theme["layout"])
+            entry["start"] = item["start"]
+            entry["end"] = item["end"]
             headers.append(entry)
         if beat.get("disclaimer"):
             notices.append({

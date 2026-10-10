@@ -324,10 +324,16 @@ def decorate_events(motif, events, stage, start, end):
             "band": "low",
         })
     elif motif == "bar_chart":
+        seen_pop = False
         for event in events:
             if event["kind"] == "pop":
-                event.setdefault("combo", "19")
-                event.setdefault("label", "Word Pop")
+                if not seen_pop:
+                    event["combo"] = "20"
+                    event["label"] = "Chart entrance"
+                    seen_pop = True
+                else:
+                    event.setdefault("combo", "19")
+                    event.setdefault("label", "Word Pop")
                 event["sound_at"] = _land(event["at"], end, 0.22)
             elif event["kind"] == "error":
                 event.update({
@@ -574,6 +580,8 @@ def _density_rank(cue):
         return 1
     if cue.get("label") == "Chapter header":
         return 2
+    if cue.get("label") == "Chart entrance":
+        return 2
     if combo == "8":
         return 3
     if combo in {"23", "25", "36"}:
@@ -606,7 +614,7 @@ def _limit_density(flat):
     ]
     if len(audible) <= budget:
         return
-    caps = {"2": 1, "42": 2, "8": 1, "chapter": 1, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "47": 0, "callout": 0}
+    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
     ranked = sorted(audible, key=lambda index: (
         _density_rank(flat[index]),
         float(flat[index].get("sound_at", flat[index]["at"])),

@@ -21,6 +21,12 @@ from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, v
 from kallaway_style import _caption_text, card_state, load_theme
 
 
+def _voiced(t, freq, amp, mask):
+    """A vowel plus a formant, so the speech band hears it and a bass hum would not."""
+    mask = np.asarray(mask, dtype=np.float64)
+    return mask * amp * (np.sin(2 * np.pi * freq * t) + 0.65 * np.sin(2 * np.pi * freq * 4 * t))
+
+
 def words_for(duration=16, step=0.34):
     tokens = ("This one change makes a talking head feel edited The old way no longer works "
               "Start on the split and pop the grid Then cut closer on the secret "
@@ -48,7 +54,7 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(theme["fonts"]["display"]["family"], "Permanent Marker")
         self.assertEqual(theme["fonts"]["caption"]["family"], "Inter")
         self.assertEqual(theme["fonts"]["mono"]["family"], "IBM Plex Mono")
-        self.assertAlmostEqual(theme["layout"]["tight_scale"], 1.08)
+        self.assertAlmostEqual(theme["layout"]["tight_scale"], 0.72)
         _theme, light, light_mode, _path = load_theme("light")
         self.assertEqual(light_mode, "light")
         self.assertEqual(light["background"], "#FBF8F1")
@@ -84,20 +90,33 @@ class KallawayTests(unittest.TestCase):
     def test_energy_trim_drops_a_separated_breath(self):
         rate = 16000
         t = np.arange(rate) / rate
-        tone = ((t >= 0.28) & (t < 0.42)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 220 * t)
+        tone = _voiced(t, 220, 0.4, (t >= 0.28) & (t < 0.42))
         breath = ((t >= 0.05) & (t < 0.12)).astype(np.float64) * 0.05 * np.random.default_rng(1).standard_normal(rate)
         refined = refine_word_bounds(tone + breath, rate, [{"word": "hey", "start": 0.05, "end": 0.50}])
         self.assertGreater(refined[0]["start"], 0.2)
         self.assertLess(refined[0]["start"], 0.30)
-        # The whisper mark already sits past the tone, so the safety tail stays on it.
-        self.assertGreater(refined[0]["end"], 0.50)
-        self.assertLess(refined[0]["end"], 0.56)
+        # Silence after the vowel, still inside the whisper span, is a pause.
+        self.assertGreater(refined[0]["end"], 0.42)
+        self.assertLess(refined[0]["end"], 0.50)
+
+    def test_pause_folded_into_a_whisper_word_is_not_kept(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        first = _voiced(t, 180, 0.4, (t >= 0.20) & (t < 0.40))
+        second = _voiced(t, 180, 0.4, (t >= 1.05) & (t < 1.30))
+        hum = ((t >= 0.45) & (t < 1.00)).astype(np.float64) * 0.08 * np.sin(2 * np.pi * 140 * t)
+        refined = refine_word_bounds(first + second + hum, rate, [
+            {"word": "websites", "start": 0.18, "end": 1.02},
+            {"word": "and", "start": 1.04, "end": 1.32},
+        ])
+        self.assertLess(refined[0]["end"], 0.55)
+        self.assertGreater(refined[1]["start"], 0.95)
 
     def test_energy_trim_keeps_a_stop_closure_inside_the_word(self):
         rate = 16000
         t = np.arange(rate) / rate
-        first = ((t >= 0.20) & (t < 0.46)).astype(np.float64) * 0.25 * np.sin(2 * np.pi * 180 * t)
-        second = ((t >= 0.56) & (t < 0.90)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 180 * t)
+        first = _voiced(t, 180, 0.25, (t >= 0.20) & (t < 0.46))
+        second = _voiced(t, 180, 0.4, (t >= 0.56) & (t < 0.90))
         refined = refine_word_bounds(first + second, rate, [{"word": "reactivation", "start": 0.22, "end": 0.92}])
         self.assertLess(refined[0]["start"], 0.24)
         self.assertGreater(refined[0]["end"], 0.85)
@@ -105,7 +124,7 @@ class KallawayTests(unittest.TestCase):
     def test_word_end_follows_energy_past_an_early_whisper_mark(self):
         rate = 16000
         t = np.arange(rate) / rate
-        tone = ((t >= 0.20) & (t < 0.62)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
+        tone = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.62))
         refined = refine_word_bounds(tone, rate, [{"word": "most", "start": 0.22, "end": 0.40}])
         self.assertLess(refined[0]["start"], 0.22)
         self.assertGreater(refined[0]["end"], 0.62)
@@ -114,7 +133,7 @@ class KallawayTests(unittest.TestCase):
     def test_word_end_follows_a_vowel_that_is_still_up_at_350ms(self):
         rate = 16000
         t = np.arange(int(rate * 1.4)) / rate
-        tone = ((t >= 0.20) & (t < 0.95)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
+        tone = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.95))
         refined = refine_word_bounds(tone, rate, [{"word": "leverage", "start": 0.22, "end": 0.40}])
         self.assertGreater(refined[0]["end"], 0.95)
         self.assertLess(refined[0]["end"], 1.05)
@@ -122,7 +141,7 @@ class KallawayTests(unittest.TestCase):
     def test_fricative_tail_keeps_a_quiet_hiss(self):
         rate = 16000
         t = np.arange(rate) / rate
-        vowel = ((t >= 0.20) & (t < 0.45)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 180 * t)
+        vowel = _voiced(t, 180, 0.4, (t >= 0.20) & (t < 0.45))
         hiss = ((t >= 0.45) & (t < 0.68)).astype(np.float64) * 0.02 * np.sin(2 * np.pi * 6000 * t)
         refined = refine_word_bounds(vowel + hiss, rate, [{"word": "once", "start": 0.22, "end": 0.45}])
         self.assertGreater(refined[0]["fricative_tail"], 0.15)
@@ -155,11 +174,11 @@ class KallawayTests(unittest.TestCase):
         splits = [shot for shot in timeline["shots"] if shot["layout"] == "split"]
         self.assertTrue(splits)
         self.assertTrue(all(shot.get("crop") == "wide" for shot in splits))
-        self.assertEqual(layout["wide_scale"], 1.0)
-        self.assertAlmostEqual(layout["tight_scale"], 1.08)
-        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.02)
+        self.assertEqual(layout["wide_scale"], 0.66)
+        self.assertAlmostEqual(layout["tight_scale"], 0.72)
+        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.012)
         self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.012)
-        self.assertAlmostEqual(theme["layout"]["full_scale"], 1.13)
+        self.assertAlmostEqual(theme["layout"]["full_scale"], 0.90)
         self.assertIn("paper", SFX_KINDS)
         from kallaway_pack import pack_ready
         if pack_ready():
@@ -676,8 +695,8 @@ class KallawayTests(unittest.TestCase):
         self.assertNotIn('class="stage clip"', section)
         self.assertIn("stage-chip bottom", section)
         script = "".join(animations)
-        self.assertIn('tl.set("#stage-9",{autoAlpha:1},1.200);', script)
-        self.assertIn('tl.set("#stage-9",{autoAlpha:0},3.000);', script)
+        self.assertIn('tl.set("#stage-9",{visibility:"visible",opacity:1},1.200);', script)
+        self.assertIn('tl.set("#stage-9",{visibility:"hidden"},3.000);', script)
 
     def test_phone_screen_fills_the_panel_and_pushes_before_the_circle(self):
         from kallaway_motifs import hero_phone_box
@@ -693,17 +712,14 @@ class KallawayTests(unittest.TestCase):
         section, animations, _events = motif_markup(
             "phone_frame", stage, 0.0, 3.0, box, colors, "stage-4", "clip.mp4")
         geo = hero_phone_box(box["width"], box["height"])
-        screen_w = geo["screen"][0]
-        self.assertGreaterEqual(screen_w / box["width"], 0.80)
-        self.assertLessEqual(screen_w / box["width"], 0.90)
-        self.assertGreater(geo["height"], box["height"])
-        self.assertLess(geo["top"], 0)
+        self.assertGreaterEqual(geo["top"], 0)
+        self.assertLessEqual(geo["left"] + geo["width"], box["width"] + 1)
+        self.assertLessEqual(geo["top"] + geo["height"], box["height"] + 1)
         self.assertIn(f'width:{geo["width"]}px', section)
-        self.assertIn("object-fit:cover", section)
-        self.assertNotIn("object-fit:contain", section)
+        self.assertIn("object-fit:contain", section)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
-        self.assertIn("scale:1.06", script)
+        self.assertIn("scale:1,", script)
         self.assertLess(stage["motion"]["push_end"], stage["callout"]["at"] + 0.001)
 
     def test_state_swap_exit_is_hard_killed_on_a_clip_boundary(self):
@@ -751,7 +767,8 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(timeline["cta"]["keyword"], "")
         punches = [shot for shot in timeline["shots"] if shot["layout"] == "punch_in"]
         self.assertTrue(punches)
-        self.assertGreater(punches[0]["scale"], timeline["shots"][0].get("scale", 1))
+        full = next(shot["scale"] for shot in timeline["shots"] if shot["layout"] == "full")
+        self.assertGreater(punches[0]["scale"], full)
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "timeline.json"
             spec.write_text(json.dumps(timeline))
@@ -763,7 +780,7 @@ class KallawayTests(unittest.TestCase):
         rate = 16000
         t = np.arange(int(rate * 1.4)) / rate
         tone = (((t >= 0.10) & (t < 0.40)) | ((t >= 0.90) & (t < 1.20))).astype(np.float64)
-        samples = tone * 0.3 * np.sin(2 * np.pi * 200 * t)
+        samples = _voiced(t, 200, 0.3, tone > 0)
         words = [
             {"word": "costs", "start": 0.12, "end": 0.38},
             {"word": "stop", "start": 0.92, "end": 1.18},
@@ -802,7 +819,8 @@ class KallawayTests(unittest.TestCase):
             }
             frame_popout(timeline, head, theme)
             _x, pos_y = parse_position(timeline["shots"][0]["object_position"])
-            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y)
+            scale = float(layout["wide_scale"])
+            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y, scale=scale)
             self.assertNotIn("object_position", timeline["shots"][1])
             self.assertNotIn("object_position", timeline["shots"][2])
             self.assertNotIn("caption_y", timeline["shots"][0])
@@ -816,7 +834,7 @@ class KallawayTests(unittest.TestCase):
 
         raised = dict(base, hands=[{"at": 1.0, "top": 160.0}])
         crown, pos_y, timeline = place(raised)
-        hand = source_y_on_card(160.0, 1080, 1920, card_w, card_h, pos_y)
+        hand = source_y_on_card(160.0, 1080, 1920, card_w, card_h, pos_y, scale=float(layout["wide_scale"]))
         self.assertLess(hand, -8)
         self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)
         self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
@@ -825,11 +843,13 @@ class KallawayTests(unittest.TestCase):
 
         # A hand that the crown crop leaves just inside the card breaks out.
         fit = cover_fit(1080, 1920, card_w, card_h)
+        scale = float(layout["wide_scale"])
         offset = pos0 * (card_h - 1920 * fit)
-        edge_top = (20 - offset) / fit
+        origin = 0.3 * card_h
+        edge_top = ((20 - origin) / scale + origin - offset) / fit
         edge = dict(base, hands=[{"at": 1.2, "top": edge_top}])
         crown, pos_y, _timeline = place(edge)
-        hand = source_y_on_card(edge_top, 1080, 1920, card_w, card_h, pos_y)
+        hand = source_y_on_card(edge_top, 1080, 1920, card_w, card_h, pos_y, scale=scale)
         self.assertLessEqual(hand, -12)
         self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
         self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)

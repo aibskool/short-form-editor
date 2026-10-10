@@ -666,11 +666,11 @@ def _shot_scale(shot, layout):
     if shot.get("scale"):
         return float(shot["scale"])
     if shot.get("layout") == "punch_in":
-        return float(layout.get("punch_scale", 1.27))
+        return float(layout.get("punch_scale", 0.99))
     if shot.get("layout") == "full":
-        return float(layout.get("full_scale", 1.13))
+        return float(layout.get("full_scale", 0.90))
     if shot.get("crop") == "tight":
-        return float(layout.get("tight_scale", 1.08))
+        return float(layout.get("tight_scale", 0.72))
     return float(layout.get("wide_scale", 1))
 
 

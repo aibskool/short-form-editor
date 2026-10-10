@@ -30,6 +30,12 @@ def _walk_strings(value, found):
             _walk_strings(item, found)
 
 
+def _boxes_hit(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
 def _colors_in(html):
     return {f"#{match.group(1).lower()}" for match in re.finditer(r"#([0-9A-Fa-f]{6})(?![0-9A-Fa-fA-Z_])", html)}
 
@@ -198,6 +204,36 @@ def check(timeline_path, words_path=None, project=None):
         errors.append("headers: no title header")
     elif float(headers[0].get("start", 1)) > 0.05:
         errors.append("hook: title header does not start on frame 1")
+    frame_h = float(data.get("output", {}).get("height", 1920))
+    frame_w = float(data.get("output", {}).get("width", 1080))
+    title_top = float(theme["layout"]["title_top"]) * frame_h
+    stage_top = float(theme["layout"]["stage_top"]) * frame_h
+    stage_left = float(theme["layout"]["stage_left"]) * frame_w
+    stage_right = stage_left + float(theme["layout"]["stage_width"]) * frame_w
+    for index, header in enumerate(headers):
+        lines = header.get("lines") or ([header.get("text")] if header.get("text") else [])
+        size = float(header.get("size") or theme["layout"].get("title_font_px") or 64)
+        bottom = float(header.get("bottom") or (title_top + max(1, len(lines)) * size * 1.05))
+        if bottom > 240.5:
+            errors.append(f"title: header {index} ends at y {bottom:.0f}, below the y 240 limit")
+        if bottom > stage_top - 4:
+            errors.append(f"title: header {index} overlaps the stage (title bottom {bottom:.0f}, stage top {stage_top:.0f})")
+    for shot in shots:
+        if shot.get("layout") != "split":
+            continue
+        stage = shot.get("stage") or {}
+        chip = stage.get("chip")
+        if isinstance(chip, dict) and chip.get("text") and stage.get("motif") == "phone_frame":
+            if chip.get("place") != "bottom":
+                errors.append(f"collision: phone chip on {shot.get('id')} covers the top of the mock")
+        callout = stage.get("callout") if isinstance(stage.get("callout"), dict) else None
+        highlight = stage.get("highlight") if isinstance(stage.get("highlight"), dict) else None
+        if callout and highlight:
+            ax, ay, aw, ah = (float(callout.get(key, 0)) for key in ("x", "y", "w", "h"))
+            bx, by, bw, bh = (float(highlight.get(key, 0)) for key in ("x", "y", "w", "h"))
+            if ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah:
+                errors.append(f"collision: callout and highlight overlap on {shot.get('id')}")
+    del stage_right
     keyword = str(cta.get("keyword") or "")
     closing = " ".join(str(header.get("text", "")) for header in headers).lower()
     # A reach reel sets cta.required false and ends on the last word with no comment ask.

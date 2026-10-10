@@ -84,25 +84,25 @@ def _cue_time(block):
 
 
 def hero_phone_box(stage_w, stage_h):
-    """Size a phone so its screen fills the panel and the bezel runs off the edge.
+    """Fit the whole phone, bezel included, inside the panel.
 
-    The screen is about 82% of the panel width. The top bezel sits above the
-    panel and the bottom bezel below it, so the stage crops the frame. The
-    screenshot is fit to that screen's width, which keeps its text uncropped
-    left to right.
+    The device is contained, not cropped. A 9:19.5 handset leaves room on
+    both sides so a status bar and the bottom of a document stay on screen.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
-    phone_w = round(stage_w * 0.86)
-    pad = max(10, round(phone_w * 0.022))
-    screen_w = phone_w - 2 * pad
-    screen_h = round(stage_h)
-    phone_h = screen_h + pad + round(stage_h * 0.22)
+    aspect = 9 / 19.5
+    phone_h = stage_h * 0.92
+    phone_w = phone_h * aspect
+    if phone_w > stage_w * 0.62:
+        phone_w = stage_w * 0.62
+        phone_h = phone_w / aspect
+    pad = max(8, round(phone_w * 0.045))
     return {
-        "screen": (float(screen_w), float(screen_h)),
-        "width": phone_w,
-        "height": phone_h,
+        "screen": (float(phone_w - 2 * pad), float(phone_h - 2 * pad)),
+        "width": round(phone_w),
+        "height": round(phone_h),
         "left": round((stage_w - phone_w) / 2),
-        "top": -pad,
+        "top": round((stage_h - phone_h) / 2),
         "pad": pad,
     }
 
@@ -307,7 +307,8 @@ def _stage_events(motif, start, end, stage=None):
         draw = round(min(end - 0.05, start + ENTRANCE_SECONDS), 3)
         return [{"at": round(start, 3), "kind": "whoosh"}, {"at": draw, "kind": "pop"}]
     if motif == "hand_circle":
-        return [{"at": round(start + 0.05, 3), "kind": "marker"}]
+        return [{"at": round(start, 3), "kind": "whoosh"},
+                {"at": round(start + 0.05, 3), "kind": "marker"}]
     if motif == "doc_fan":
         count = int(stage.get("count", 5))
         if stage.get("strike"):
@@ -324,7 +325,7 @@ def _stage_events(motif, start, end, stage=None):
         return [{"at": t, "kind": "pop"} for t in _times(start, end, 3, 0.7)] + [
             {"at": round(min(end - 0.05, start + 0.2), 3), "kind": "whoosh"}]
     if motif == "quote_card":
-        events = [{"at": round(start, 3), "kind": "pop"}]
+        events = [{"at": round(start, 3), "kind": "whoosh"}, {"at": round(start, 3), "kind": "pop"}]
         if stage.get("variant") == "receipt":
             count = len(stage.get("items") or ["JAN", "FEB", "MAR", "APR", "MAY"])
             for moment in _times(start + 0.08, min(end, start + 0.62), max(1, count), 0.5):
@@ -351,16 +352,18 @@ def _stage_events(motif, start, end, stage=None):
         events.append({"at": _clamp(start + 0.78, start, end), "kind": "ding"})
         return events
     if motif == "state_swap":
-        return [{"at": round(start, 3), "kind": "pop"},
+        return [{"at": round(start, 3), "kind": "whoosh"},
+                {"at": round(start, 3), "kind": "pop"},
                 {"at": _clamp(start + 0.42, start, end), "kind": "error"},
                 {"at": _clamp(start + 0.62, start, end), "kind": "ding"}]
     return []
 
 
 def _pop(selector, at):
-    # 0 to about 110% and back to 100% in a quarter second. back.out overshoots.
-    return (f'tl.fromTo("{selector}",{{scale:0}},{{scale:1,duration:0.26,ease:"back.out(1.7)",'
-            f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
+    # Hidden until the cue, then one rise. immediateRender keeps the first frames at 0
+    # so a card cannot flash full-size and collapse before it enters.
+    return (f'tl.fromTo("{selector}",{{scale:0}},{{scale:1,duration:0.24,ease:"power2.out",'
+            f'transformOrigin:"50% 50%",immediateRender:true}},{at});')
 
 
 def _slide(selector, at):
@@ -410,6 +413,11 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         body = f'<div class="thumb-grid" style="grid-template-columns:repeat({cols},1fr)">{"".join(cards)}</div>'
 
     elif motif == "phone_frame":
+        chip = stage.get("chip")
+        if isinstance(chip, str):
+            stage["chip"] = {"text": chip, "place": "bottom"}
+        elif isinstance(chip, dict) and not chip.get("place"):
+            chip["place"] = "bottom"
         scroll = stage.get("scroll") or {}
         desat = float(stage.get("desaturate") or 0)
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
@@ -420,7 +428,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         scroll_to = float(scroll.get("to", 0)) if scroll else 0
         # Width-fit the recording. A taller pan crops top and bottom only,
         # so a line of text is never cut off at the left or right edge.
-        fit = "cover"
+        fit = "contain"
         if media_url:
             picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:
@@ -440,7 +448,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             mapped = highlight if highlight.get("space") == "image" else {
                 "x": 0, "y": highlight.get("y", 0.4), "w": 1, "h": 0.08}
             _left, top, _width, _height = screenshot_box(mapped, img_h, scroll_to)
-            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top:.2f}%">'
+            # An underline under the price, not a bar painted on top of the glyphs.
+            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top + _height:.2f}%">'
                        f'{_esc(highlight.get("label") or "")}</div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
         # A filling bar reads as a stray underline. It is off unless the beat asks.
@@ -449,7 +458,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             bar = f'<div class="phone-bar"><div id="{ident}-prog"></div></div>'
         phone_style = (
             f'position:absolute;left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;'
-            f'height:{geo["height"]}px;margin:0;padding:{geo["pad"]}px {geo["pad"]}px 0')
+            f'height:{geo["height"]}px;margin:0;padding:{geo["pad"]}px')
         body = (f'<div id="{ident}-phone" class="phone hero" style="{phone_style}">'
                 f'<div class="phone-screen" style="height:{int(geo["screen"][1])}px">'
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
@@ -468,9 +477,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             origin = f"{ox:.1f}% {oy:.1f}%"
         push_at = float(motion.get("push_start") or (start + 0.42))
         push_end = float(motion.get("push_end") or (push_at + 0.38))
+        # The handset already fits the panel. A push would crop the bezel again.
         animations.append(
-            f'tl.to("#{ident}-phone",{{scale:1.06,duration:{max(0.2, push_end - push_at):.3f},ease:"power2.out",'
-            f'transformOrigin:"{origin}"}},{push_at:.3f});')
+            f'tl.set("#{ident}-phone",{{scale:1,transformOrigin:"{origin}"}},{push_at:.3f});')
         if stage.get("progress"):
             animations.append(
                 f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
@@ -643,8 +652,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 animations.append(
                     f'tl.to("#{ident}-old",{{x:460,rotation:8,opacity:0,duration:0.26,ease:"power2.in"}},'
                     f'{min(end - 0.08, at + 0.28):.3f});')
-            body = (f'<div class="counter range"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
-                    f'{struck}{grid}</div>')
+            body = (f'<div class="counter range">{struck}'
+                    f'<div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
+                    f'{grid}</div>')
         else:
             for index, item in enumerate(list(stage.get("items") or [])[:8]):
                 at = tick_events[index]["at"] if index < len(tick_events) else ding_at
@@ -816,6 +826,21 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 animations.append(
                     f'tl.fromTo("#{ident}-quote",{{x:0}},{{x:7,duration:0.04,yoyo:true,repeat:5,'
                     f'ease:"none"}},{at:.3f});')
+        elif variant == "balance":
+            body = (
+                f'<div id="{ident}-quote" class="quote-card balance">'
+                f'<div class="bal-row"><div class="bal-col"><b>Design</b>'
+                f'<div id="{ident}-hi" class="bal-bar"></div></div>'
+                f'<div class="bal-ne">≠</div>'
+                f'<div class="bal-col"><b>Money</b><div id="{ident}-lo" class="bal-bar short"></div></div></div>'
+                f'<div class="quote-text">{_esc(quote)}</div></div>')
+            animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
+            animations.append(
+                f'tl.fromTo("#{ident}-hi",{{scaleY:0}},{{scaleY:1,duration:0.35,ease:"power2.out",'
+                f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.08:.3f});')
+            animations.append(
+                f'tl.fromTo("#{ident}-lo",{{scaleY:0}},{{scaleY:1,duration:0.35,ease:"power2.out",'
+                f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.16:.3f});')
         else:
             strike = ""
             if stage.get("strike"):
@@ -899,7 +924,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         swipe = next(event["at"] for event in events if event["kind"] == "error")
         good = next(event["at"] for event in events if event["kind"] == "ding")
         # Both cards are on screen together. The losing card tints and swipes
-        # off. The winner picks up a green glow and a rising revenue line.
+        # off. The winner then fills the middle so the panel is not half empty.
+        label = stage.get("label") or ""
+        label_html = f'<div class="mono rev-label">{_esc(label)}</div>' if label else ""
         body = (
             f'<div class="swap side"><div id="{ident}-bad" class="swap-card bad">'
             f'<div id="{ident}-tint" class="bad-tint"></div><b>{_esc(items[0])}</b></div>'
@@ -908,13 +935,15 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             f'd="M8 78 L48 70 L82 58 L120 40 L160 22 L208 8" fill="none" stroke="{accent}" '
             f'stroke-width="6" stroke-linecap="round" stroke-dasharray="320"/>'
             f'<circle id="{ident}-dot" cx="208" cy="8" r="6" fill="{accent}" opacity="0"/></svg>'
-            f'<div class="mono rev-label">Recurring revenue</div></div></div>')
+            f'{label_html}</div></div>')
         animations.append(_pop(f"#{ident}-bad", events[0]["at"]))
         animations.append(_pop(f"#{ident}-good", events[0]["at"] + 0.1))
         animations.append(
             f'tl.to("#{ident}-tint",{{opacity:0.72,duration:0.12,ease:"power1.out"}},{swipe:.3f});')
         animations.append(
             f'tl.to("#{ident}-bad",{{x:280,opacity:0,rotation:8,duration:0.22,ease:"power2.in"}},{swipe:.3f});')
+        animations.append(
+            f'tl.to("#{ident}-good",{{flexBasis:"84%",maxWidth:"84%",duration:0.34,ease:"power2.out"}},{swipe + 0.16:.3f});')
         animations.append(
             f'tl.to("#{ident}-good",{{boxShadow:"0 24px 48px rgba(0,0,0,0.45), 0 0 42px {accent}aa",'
             f'duration:0.28}},{float(good):.3f});')
@@ -943,12 +972,13 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
     # A playing screen recording times itself. Nesting that video in a timed section
     # fails HyperFrames' video_nested_in_timed_element lint, so the chrome shows with GSAP.
     if _is_video_url(media_url):
+        # A hard cut. Opacity stays 1 so the panel cannot fade in over a couple of frames.
         if float(start) > 0.02:
-            animations.append(f'tl.set("#{ident}",{{autoAlpha:0}},0);')
-        animations.append(f'tl.set("#{ident}",{{autoAlpha:1}},{float(start):.3f});')
-        animations.append(f'tl.set("#{ident}",{{autoAlpha:0}},{float(end):.3f});')
+            animations.append(f'tl.set("#{ident}",{{visibility:"hidden"}},{0});')
+        animations.append(f'tl.set("#{ident}",{{visibility:"visible",opacity:1}},{float(start):.3f});')
+        animations.append(f'tl.set("#{ident}",{{visibility:"hidden"}},{float(end):.3f});')
         section = (f'<section id="{ident}" class="stage" data-layout-allow-overflow '
-                   f'style="visibility:hidden;opacity:0;{style}">{body}</section>')
+                   f'style="visibility:hidden;opacity:1;{style}">{body}</section>')
     else:
         section = (
             f'<section id="{ident}" class="stage clip" data-start="{start:.3f}" data-duration="{duration:.3f}" '

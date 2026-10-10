@@ -483,7 +483,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
     from kallaway_beats import apply_emphasis_punches
     shots = apply_emphasis_punches(
         shots, ordered, styles,
-        float(theme["layout"].get("full_scale", 1.13)),
+        float(theme["layout"].get("full_scale", 0.90)),
         float(theme["layout"].get("punch_step", 1.12)))
     return {
         "style": "kallaway",

@@ -84,10 +84,11 @@
     "caption_full_px": 67,
     "title_font_px": 112,
     "mono_font_px": 22,
-    "full_scale": 1.13,
-    "punch_scale": 1.27,
-    "tight_scale": 1.08,
-    "wide_scale": 1.0,
+    "full_scale": 0.9,
+    "punch_scale": 0.99,
+    "tight_scale": 0.72,
+    "wide_scale": 0.66,
+    "full_object_position": "50% 46%",
     "dot_spacing": 36,
     "object_position": "50% 33%"
   },
@@ -96,7 +97,7 @@
     "forbid_characters": ["\u2014", "\u2013"]
   },
   "audio": {
-    "pause_gap_seconds": 0.02,
+    "pause_gap_seconds": 0.012,
     "join_handle_seconds": 0.0,
     "cut_crossfade_seconds": 0.012,
     "voice_lufs": -14,
