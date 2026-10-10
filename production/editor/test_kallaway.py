@@ -839,9 +839,10 @@ class KallawayTests(unittest.TestCase):
         geo = hero_phone_box(box["width"], box["height"])
         self.assertLessEqual(geo["left"] + geo["width"], box["width"] + 1)
         self.assertGreaterEqual(geo["left"], 0)
-        self.assertAlmostEqual(geo["height"] / geo["width"], 19.5 / 9, delta=0.08)
+        self.assertGreaterEqual(geo["width"], box["width"] * 0.65 - 1)
+        self.assertAlmostEqual(geo["left"] + geo["width"] / 2, box["width"] / 2, delta=1.5)
         self.assertIn(f'width:{geo["width"]}px', section)
-        self.assertIn("object-fit:cover", section)
+        self.assertIn("object-fit:contain", section)
         self.assertGreaterEqual(geo["top"], 0)
         self.assertLessEqual(geo["top"] + geo["height"], box["height"] - 40)
         self.assertGreater(geo["width"], 80)
@@ -948,19 +949,23 @@ class KallawayTests(unittest.TestCase):
                 ],
             }
             frame_popout(timeline, head, theme)
-            _x, pos_y = parse_position(timeline["shots"][0]["object_position"])
-            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y, scale=1)
-            chin = source_y_on_card(chin_row(head), 1080, 1920, card_w, card_h, pos_y, scale=1)
+            pop = timeline["source"]["popout"]
+            from kallaway_matte import placed_local_y
+            crown = placed_local_y(head["head_top"], head["head_top"], pop["pop_px"], pop["scale"])
+            chin = placed_local_y(chin_row(head), head["head_top"], pop["pop_px"], pop["scale"])
             self.assertNotIn("object_position", timeline["shots"][1])
             self.assertNotIn("object_position", timeline["shots"][2])
-            self.assertEqual(timeline["source"]["object_position"], timeline["shots"][0]["object_position"])
-            return crown, chin, pos_y, timeline
+            self.assertGreaterEqual(pop["face_px"], 200)
+            self.assertLessEqual(pop["face_px"], 230)
+            return crown, chin, pop["scale"], timeline
 
         crown, chin, pos_y, timeline = place(base)
-        # The high crown is clamped to 100 px. The face stays inside the card.
-        high = source_y_on_card(base["head_high"], 1080, 1920, card_w, card_h, pos_y, scale=1)
+        pop = timeline["source"]["popout"]
+        from kallaway_matte import placed_local_y
+        high = placed_local_y(base["head_high"], base["head_top"], pop["pop_px"], pop["scale"])
         self.assertGreaterEqual(-high, 50)
         self.assertLessEqual(-high, 100.5)
+        self.assertAlmostEqual(-crown, pop["pop_px"], delta=0.6)
         self.assertGreater(chin, 40)
         self.assertAlmostEqual(chin_row(base), 331 + 420 + CHIN_PAD_PX)
         stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
@@ -1020,10 +1025,11 @@ class KallawayTests(unittest.TestCase):
         self.assertNotIn("caption_y", timeline["shots"][2])
         # The one-frame spike at 1.4s does not become the line for the first shot.
         self.assertGreater(highest_crown_source_y(head, 0.0, 2.0), 300)
-        _x, pos_y = parse_position(high_shot["object_position"])
+        pop = timeline["source"]["popout"]
+        from kallaway_matte import placed_local_y
         for shot, begin, finish in ((low_shot, 0.0, 2.0), (high_shot, 2.0, 4.0)):
             source_y = highest_crown_source_y(head, begin, finish)
-            local = source_y_on_card(source_y, 1080, 1920, card_w, card_h, pos_y, scale=1)
+            local = placed_local_y(source_y, head["head_top"], pop["pop_px"], pop["scale"])
             crown_canvas = layout["card_top"] * 1920 + local
             top = shot["caption_y"] / 100 * 1920
             cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
@@ -1216,8 +1222,12 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking"))
         ding = next(event for event in ticks if event["kind"] == "ding")
         self.assertEqual(ding["combo"], "25")
+        self.assertFalse(ding.get("mute"))
         self.assertIn("Bell 5", ding["file"])
         self.assertIn("Ui 30", ding["bed"]["file"])
+        self.assertFalse(ding["bed"].get("mute"))
+        self.assertGreater(float(ding["bed"]["loop"]), 0.4)
+        self.assertTrue(ding["bed"].get("budget_free"))
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
         self.assertIn("Swoosh Fast", pages[0].get("file", ""))

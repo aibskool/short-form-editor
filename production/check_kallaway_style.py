@@ -438,12 +438,24 @@ def check(timeline_path, words_path=None, project=None):
     for key in ("wide_scale", "tight_scale", "full_scale", "punch_scale"):
         if float(layout.get(key, 1)) < 0.999:
             errors.append(f"fill: {key} is {layout.get(key)}; the face must fill the card or the frame")
+    popout = (data.get("source") or {}).get("popout") or {}
+    placed = bool(popout.get("face_px"))
     for shot in shots:
         scale = shot.get("scale")
-        if scale is not None and float(scale) < 0.999:
-            errors.append(
-                f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
-                "full bleed and the card fill use scale 1")
+        if scale is None or float(scale) >= 0.999:
+            continue
+        if shot.get("layout") == "split" and placed:
+            continue
+        errors.append(
+            f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
+            "full bleed stays at scale 1, and a split shrink needs the foliage plate")
+    if placed:
+        face_px = float(popout["face_px"])
+        pop_px = float(popout.get("pop_px") or popout.get("median_above_px") or 0)
+        if face_px > 230.5:
+            errors.append(f"face: split face is {face_px:.0f}px; the target is 200-230")
+        if pop_px < 49 or pop_px > 101:
+            errors.append(f"face: crown pop is {pop_px:.0f}px; the band is 50-100")
     from kallaway_motifs import hero_phone_box
     stage_w = float(layout["stage_width"]) * frame_w
     stage_h = float(layout["stage_height"]) * frame_h
@@ -453,6 +465,11 @@ def check(timeline_path, words_path=None, project=None):
             f"phone: the handset is cropped (top {phone['top']}, height {phone['height']}, stage {stage_h:.0f})")
     if phone["width"] > stage_w + 1:
         errors.append(f"phone: the handset is wider than the stage ({phone['width']} > {stage_w:.0f})")
+    if phone["width"] < stage_w * 0.65 - 1:
+        errors.append(
+            f"phone: the handset is {phone['width']}px, under 65% of the {stage_w:.0f}px stage")
+    if abs((phone["left"] + phone["width"] / 2.0) - stage_w / 2.0) > 2:
+        errors.append(f"phone: the handset is off center (left {phone['left']})")
     style_at = (data.get("captions") or {}).get("style_at") or []
     if words and style_at and len(style_at) == len(words):
         from kallaway_beats import _sentence_spans

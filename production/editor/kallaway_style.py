@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 
 from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
-from kallaway_matte import caption_band_px, pop_geometry
+from kallaway_matte import caption_band_px, placed_pop_geometry, pop_geometry
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -166,7 +166,11 @@ def build_kallaway(spec, spec_path, project):
         if not 0 <= float(segment["start"]) < float(segment["end"]) <= source_duration + 0.05:
             raise ValueError("source segment lies outside the source video")
     duration = sum(float(segment["end"]) - float(segment["start"]) for segment in segments)
-    position = spec["source"].get("object_position", layout_spec["object_position"])
+    position = layout_spec.get("full_object_position") or spec["source"].get(
+        "object_position", layout_spec["object_position"])
+    popout = spec.get("source", {}).get("popout") or {}
+    placed = bool(popout.get("face_px") and popout.get("plate"))
+    plate_src = media(popout["plate"]) if placed else None
     gsap = HERE / "node_modules/gsap/dist/gsap.min.js"
     if not gsap.is_file():
         raise ValueError("run npm ci in production/editor before building")
@@ -215,16 +219,26 @@ def build_kallaway(spec, spec_path, project):
             if banned in shot:
                 raise ValueError(f"shot {index} uses {banned}; kallaway layouts are hard cuts")
         state = card_state(layout, shot.get("crop", "wide"), width, height, layout_spec, colors)
-        # A requested zoom may crop tighter. A scale under 1 leaves a dark border.
-        if shot.get("scale") and float(shot["scale"]) > 1.0:
-            state["scale"] = float(shot["scale"])
+        # A punch may crop tighter. Split scale is the placed face size, not a
+        # CSS shrink of the cover crop, so the camera transform stays at 1.
+        camera_scale = 1.0
+        if layout != "split" and shot.get("scale") and float(shot["scale"]) > 1.0:
+            camera_scale = float(shot["scale"])
+            state["scale"] = camera_scale
         payload = {key: state[key] for key in ("left", "top", "width", "height", "borderRadius", "boxShadow")}
         animations.append(f'tl.set("#speaker-card",{json.dumps(payload)},{start});')
         animations.append(
-            f'tl.set("#presenter-camera",{{scale:{state["scale"]},transformOrigin:"50% 30%"}},{start});')
-        if shot.get("object_position"):
-            animations.append(
-                f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
+            f'tl.set("#presenter-camera",{{scale:{camera_scale},transformOrigin:"50% 30%"}},{start});')
+        if layout == "split" and placed:
+            animations.append(f'tl.set(".aroll",{{autoAlpha:0}},{start});')
+            animations.append(f'tl.set("#speaker-plate",{{autoAlpha:1}},{start});')
+        else:
+            animations.append(f'tl.set(".aroll",{{autoAlpha:1}},{start});')
+            if plate_src:
+                animations.append(f'tl.set("#speaker-plate",{{autoAlpha:0}},{start});')
+            if shot.get("object_position"):
+                animations.append(
+                    f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
         if matte_src:
             # Same timestamp as #speaker-card. HyperFrames sets each [data-start] video
             # to visibility:visible, and a visible child paints through a hidden parent,
@@ -232,9 +246,14 @@ def build_kallaway(spec, spec_path, project):
             # autoAlpha 0 flattens the subtree (opacity) and the closed clip is the
             # second lock. Full and punch stay off; split matches the card on this frame.
             if layout == "split":
-                geo = pop_geometry(
-                    state, video_w, video_h,
-                    shot.get("object_position") or position, height)
+                if placed:
+                    geo = placed_pop_geometry(
+                        state, video_w, video_h,
+                        popout["head_top"], popout["pop_px"], popout["scale"])
+                else:
+                    geo = pop_geometry(
+                        state, video_w, video_h,
+                        shot.get("object_position") or position, height)
                 animations.append(
                     f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{start});')
                 animations.append(
@@ -281,9 +300,14 @@ def build_kallaway(spec, spec_path, project):
             f'borderRadius:{json.dumps(shown["borderRadius"])},boxShadow:{json.dumps(shown["boxShadow"])}}},'
             f'{reveal:.3f});')
         if matte_src and shots[0].get("layout", "split") == "split":
-            geo = pop_geometry(
-                shown, video_w, video_h,
-                shots[0].get("object_position") or position, height)
+            if placed:
+                geo = placed_pop_geometry(
+                    shown, video_w, video_h,
+                    popout["head_top"], popout["pop_px"], popout["scale"])
+            else:
+                geo = pop_geometry(
+                    shown, video_w, video_h,
+                    shots[0].get("object_position") or position, height)
             animations.append(
                 f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{reveal:.3f});')
             animations.append(
@@ -403,16 +427,16 @@ def build_kallaway(spec, spec_path, project):
             if sound.get("file"):
                 from kallaway_audio import write_wav
                 from kallaway_pack import render
-                samples, placed, _info = render(sound)
-                if placed < 0:
-                    drop = int(round(-placed * 48000))
+                samples, cue_at, _info = render(sound)
+                if cue_at < 0:
+                    drop = int(round(-cue_at * 48000))
                     samples = samples[drop:]
-                    placed = 0.0
+                    cue_at = 0.0
                 dest = library / f"cue-{index}.wav"
                 write_wav(dest, samples)
                 path = media(str(dest))
                 length = max(0.04, len(samples) / 48000.0)
-                start_at = placed
+                start_at = cue_at
             elif sound.get("kind"):
                 variants = sfx_variants(sound["kind"], library)
                 if not variants:
@@ -462,14 +486,19 @@ def build_kallaway(spec, spec_path, project):
     title_px = layout_spec["title_font_px"] * scale
     mono_px = layout_spec["mono_font_px"] * scale
     card_radius_css = radius_css(first["borderRadius"])
+    split_open = placed and shots and shots[0].get("layout") == "split"
+    aroll_open = "opacity:0;visibility:hidden;" if split_open else ""
+    plate_open = "" if split_open else "opacity:0;visibility:hidden;"
     css = f'''{font_faces(theme, media)}
     *{{box-sizing:border-box}} body{{margin:0;background:{colors['background']}}}
     #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;{background}}}
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{card_radius_css};box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
-    #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
-    .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
+    #speaker-plate{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:0;{plate_open}}}
+    #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%;z-index:1}}
+    .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position};{aroll_open}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
     #pop-camera{{position:absolute}}
+    #pop-camera.placed-edge{{mask-image:linear-gradient(to right,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);-webkit-mask-image:linear-gradient(to right,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
     #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none;font-size:{caption_px:.1f}px}}
@@ -640,21 +669,31 @@ def build_kallaway(spec, spec_path, project):
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     cover = "visibility:hidden;opacity:0;" if spec.get("speaker_reveal") else ""
-    speaker = f'<div id="speaker-card" style="{cover}"><div id="presenter-camera" data-layout-allow-overflow>{"".join(part for part in parts if part.startswith("<video"))}</div></div>'
+    plate_html = f'<img id="speaker-plate" src="{plate_src}" alt="">' if plate_src else ""
+    speaker = (
+        f'<div id="speaker-card" style="{cover}">{plate_html}'
+        f'<div id="presenter-camera" data-layout-allow-overflow>'
+        f'{"".join(part for part in parts if part.startswith("<video"))}</div></div>')
     if pop_parts:
         opening = shots[0]
         if opening.get("layout") == "split" and not spec.get("speaker_reveal"):
-            geo = pop_geometry(
-                first, video_w, video_h, opening.get("object_position") or position, height)
+            if placed:
+                geo = placed_pop_geometry(
+                    first, video_w, video_h,
+                    popout["head_top"], popout["pop_px"], popout["scale"])
+            else:
+                geo = pop_geometry(
+                    first, video_w, video_h, opening.get("object_position") or position, height)
             pop_style = f'style="opacity:1;visibility:visible;clip-path:{geo["clipPath"]}"'
             cam_style = (
                 f'style="left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;height:{geo["height"]}px"')
         else:
             pop_style = 'style="opacity:0;visibility:hidden;clip-path:inset(100% 0px 0px 0px)"'
             cam_style = ""
+        edge = ' class="placed-edge"' if placed else ""
         speaker += (
             f'<div id="speaker-pop" data-layout-allow-overflow {pop_style}>'
-            f'<div id="pop-camera" {cam_style}>{"".join(pop_parts)}</div></div>')
+            f'<div id="pop-camera"{edge} {cam_style}>{"".join(pop_parts)}</div></div>')
     rest = [part for part in parts if not part.startswith("<video")]
     slide = (
         "function kallawaySlide(t){var x1=0.25,y1=1,x2=0.5,y2=1,cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;"

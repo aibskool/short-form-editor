@@ -27,7 +27,7 @@ def _is_video_url(url):
 
 def _media_tag(ident, media_url, start, end, fit, sat, track_index, stage):
     style = (f"position:absolute;left:0;top:0;width:100%;height:100%;object-fit:{fit};"
-             f"filter:saturate({sat:.3f})")
+             f"object-position:center;filter:saturate({sat:.3f})")
     if not _is_video_url(media_url):
         return f'<img id="{ident}-img" src="{_esc(media_url)}" alt="" style="{style}">'
     # The video carries its own clip timing. The stage section must not, or
@@ -84,22 +84,20 @@ def _cue_time(block):
 
 
 def hero_phone_box(stage_w, stage_h):
-    """Fit the whole 9:19.5 handset inside the stage, top bezel included.
+    """A centered handset at least 65% of the stage width, top bezel inside.
 
-    The chip strip stays under the device. A stage shorter than a wide phone
-    shrinks the handset until nothing is cropped at the top. The recording
-    still fills the screen, so a line of text is not cut on the side.
+    A 9:19.5 phone at that width is taller than the stage. The frame then uses
+    the full stage height so nothing is cropped at the top, and the recording
+    is letterboxed inside the screen instead of being cut on the side.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
     chip_band = 58.0
     margin = 8.0
     usable_h = max(160.0, stage_h - chip_band - margin)
-    phone_h = usable_h
-    phone_w = phone_h * (9.0 / 19.5)
     max_w = max(120.0, stage_w - 2.0 * margin)
-    if phone_w > max_w:
-        phone_w = max_w
-        phone_h = phone_w / (9.0 / 19.5)
+    phone_w = min(max_w, max(120.0, stage_w * 0.65))
+    natural_h = phone_w * (19.5 / 9.0)
+    phone_h = natural_h if natural_h <= usable_h else usable_h
     top = max(0.0, (stage_h - chip_band) - phone_h)
     pad = max(6, round(phone_w * 0.045))
     return {
@@ -440,9 +438,10 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         img_h = image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
         scroll_to = float(scroll.get("to", 0)) if scroll else 0
-        # Width-fit the recording. A taller pan crops top and bottom only,
-        # so a line of text is never cut off at the left or right edge.
-        fit = "cover"
+        # A wide frame letterboxes the 9:16 recording so the price and the
+        # modal stay whole. A tall frame covers, and only crops top and bottom.
+        screen_w, screen_h = geo["screen"]
+        fit = "contain" if screen_h <= 0 or (screen_w / screen_h) > 0.62 else "cover"
         if media_url:
             picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:

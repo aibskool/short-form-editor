@@ -37,6 +37,12 @@ CHIN_PAD_PX = 28
 CROWN_POP_TARGET_PX = 70
 CROWN_POP_MIN_PX = 50
 CROWN_POP_MAX_PX = 100
+# Kallaway's face on the card is about this tall. Brandon films close, so the
+# speaker is scaled down to land here and the empty sides are a foliage plate.
+FACE_TARGET_PX = 215
+FACE_MIN_PX = 200
+FACE_MAX_PX = 230
+PLATE_RECIPE = "foliage-quilt-v2"
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -818,12 +824,67 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out):
 
 
 def _shot_scale(shot, layout):
-    """Split and full-bleed stay at 1. The crop is object-position, not a shrink."""
+    """Full and punch stay at 1. Split may shrink so the face is about 215 px."""
     del layout
-    if shot.get("layout") in {None, "split", "full", "punch_in"}:
+    if shot.get("layout") in {None, "full", "punch_in"}:
         requested = float(shot["scale"]) if shot.get("scale") else 1.0
         return requested if requested > 1.0 else 1.0
+    if shot.get("scale"):
+        return float(shot["scale"])
     return 1.0
+
+
+def solve_split_scale(head, video_h, card_h):
+    """Canvas pixels per source pixel so the face is about 215 px and the crown pops ~70.
+
+    A close take runs out of frame before the card bottom if the face is shrunk
+    too far. The scale then grows, up to a 230 px face, so the source bottom
+    still meets the card and the pop stays inside 50-100 px.
+    """
+    face = max(1.0, float(head["head_height"]))
+    below = max(1.0, float(video_h) - float(head["head_top"]))
+    scale = FACE_TARGET_PX / face
+    pop = float(CROWN_POP_TARGET_PX)
+    need = float(card_h) + pop
+    if below * scale + 1.0 < need:
+        scale = min(FACE_MAX_PX / face, need / below)
+        pop = below * scale - float(card_h)
+        pop = min(float(CROWN_POP_MAX_PX), max(float(CROWN_POP_MIN_PX), pop))
+    face_px = face * scale
+    if face_px > FACE_MAX_PX + 0.05:
+        scale = FACE_MAX_PX / face
+        face_px = FACE_MAX_PX
+        pop = min(float(CROWN_POP_MAX_PX), max(float(CROWN_POP_MIN_PX), below * scale - float(card_h)))
+    return {
+        "scale": float(scale),
+        "pop_px": float(pop),
+        "face_px": float(face_px),
+    }
+
+
+def placed_local_y(source_y, head_top, pop_px, scale):
+    """Card-local Y of a source row. Negative means above the card's top edge."""
+    return -float(pop_px) + (float(source_y) - float(head_top)) * float(scale)
+
+
+def placed_pop_geometry(card, video_w, video_h, head_top, pop_px, scale):
+    """Full-frame alpha placement. The crown sits `pop_px` above the card.
+
+    The video is smaller than the card, so the sides are the foliage plate.
+    The layer is not clipped at the card top: the same matte draws the crown
+    and the chest, and the canvas clips the rest.
+    """
+    width = float(video_w) * float(scale)
+    height = float(video_h) * float(scale)
+    left = float(card["left"]) + (float(card["width"]) - width) / 2.0
+    top = float(card["top"]) - float(pop_px) - float(head_top) * float(scale)
+    return {
+        "left": round(left, 2),
+        "top": round(top, 2),
+        "width": round(width, 2),
+        "height": round(height, 2),
+        "clipPath": "inset(0px)",
+    }
 
 
 def chin_row(head):
@@ -965,12 +1026,11 @@ def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
 
 
 def frame_popout(timeline, head, theme):
-    """Point split shots so the crown clears the card by about 70 px.
+    """Scale the split speaker so the face is about 215 px and the crown pops ~70 px.
 
-    The face stays inside the card. Full and punch stay on the theme crop with
-    the pop hidden. A per-take full-face baseline, when the timeline has one,
-    places that caption. The stage ends on the theme line unless the hair
-    would run into the caption.
+    Head, neck, and shoulders sit in the card. The sides that scaling opens are
+    filled later by the foliage plate. Full and punch stay on the theme crop
+    with the pop hidden. A per-take full-face baseline places that caption.
     """
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
@@ -979,61 +1039,37 @@ def frame_popout(timeline, head, theme):
     card_h = (layout["card_bottom"] - layout["card_top"]) * height
     limits = pop_limits(layout, height)
     video_w, video_h = head["width"], head["height"]
-    groups = {}
-    for shot in timeline.get("shots") or []:
-        if shot.get("layout") != "split":
-            continue
-        scale = round(_shot_scale(shot, layout), 4)
-        groups.setdefault(scale, []).append(shot)
-    if not groups:
+    shots = [shot for shot in timeline.get("shots") or [] if shot.get("layout") == "split"]
+    if not shots:
         return timeline
-    positions = {}
-    for scale, shots in groups.items():
-        pos_y = solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits)
-        positions[scale] = pos_y
-        label = f"50% {pos_y * 100:.2f}%"
-        for shot in shots:
-            shot["object_position"] = label
-    wide_scale = round(float(layout.get("wide_scale", 1)), 4)
-    if wide_scale in positions:
-        measure_scale = wide_scale
-        wide = positions[wide_scale]
-    else:
-        measure_scale, wide = next(iter(positions.items()))
-    label = f"50% {wide * 100:.2f}%"
-    timeline.setdefault("source", {})["object_position"] = label
-    # The stage has to clear the highest crown in the take, not the 20th percentile,
-    # or the caption on that frame would sit inside the graphic.
+    solved = solve_split_scale(head, video_h, card_h)
+    scale = solved["scale"]
+    pop = solved["pop_px"]
+    for shot in shots:
+        shot["scale"] = round(scale, 4)
+    label = f"placed {scale:.3f}"
+    timeline.setdefault("source", {})
     highest = highest_crown_source_y(head)
-    high_y = source_y_on_card(
-        highest, video_w, video_h, card_w, card_h, wide, scale=measure_scale)
-    low_y = source_y_on_card(
-        head.get("head_low", head["head_top"]), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
-    median_y = source_y_on_card(
-        head["head_top"], video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+    high_y = placed_local_y(highest, head["head_top"], pop, scale)
+    low_y = placed_local_y(head.get("head_low", head["head_top"]), head["head_top"], pop, scale)
+    median_y = placed_local_y(head["head_top"], head["head_top"], pop, scale)
     hand_above = None
     hands = head.get("hands") or []
     hand_tops = [item["top"] for item in hands if item.get("top") is not None]
     if hand_tops:
-        hand_y = source_y_on_card(
-            min(hand_tops), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
-        hand_above = round(-hand_y, 1)
-    head_px = head["head_height"] * cover_fit(video_w, video_h, card_w, card_h)
+        hand_above = round(-placed_local_y(min(hand_tops), head["head_top"], pop, scale), 1)
     font_px = float(layout.get("caption_split_px", 54)) * (width / 1080.0)
     card_top_px = float(layout["card_top"]) * height
     caption_pcts = []
-    for scale, shots in groups.items():
-        pos_y = positions[scale]
-        for shot in shots:
-            source_y = highest_crown_source_y(head, shot.get("start"), shot.get("end"))
-            local = source_y_on_card(
-                source_y, video_w, video_h, card_w, card_h, pos_y, scale=scale)
-            if local >= -20:
-                shot["caption_y"] = round(float(layout["caption_split_y"]) * 100, 2)
-            else:
-                top = split_caption_top_px(card_top_px + local, font_px, height)
-                shot["caption_y"] = round(100.0 * top / height, 2)
-            caption_pcts.append(shot["caption_y"])
+    for shot in shots:
+        source_y = highest_crown_source_y(head, shot.get("start"), shot.get("end"))
+        local = placed_local_y(source_y, head["head_top"], pop, scale)
+        if local >= -20:
+            shot["caption_y"] = round(float(layout["caption_split_y"]) * 100, 2)
+        else:
+            top = split_caption_top_px(card_top_px + local, font_px, height)
+            shot["caption_y"] = round(100.0 * top / height, 2)
+        caption_pcts.append(shot["caption_y"])
     full_baseline = (timeline.get("captions") or {}).get("full_baseline_px")
     if full_baseline:
         full_font = float(layout.get("caption_full_px", 67)) * (width / 1080.0)
@@ -1050,17 +1086,169 @@ def frame_popout(timeline, head, theme):
         "head_top": head["head_top"],
         "head_height": head["head_height"],
         "pop_fraction": head["pop_fraction"],
+        "scale": round(scale, 4),
+        "pop_px": round(pop, 2),
+        "face_px": round(solved["face_px"], 1),
+        "video_width": video_w,
+        "video_height": video_h,
+        "card_width": round(card_w, 1),
+        "card_height": round(card_h, 1),
         "median_above_px": round(-median_y, 1),
         "low_above_px": round(-low_y, 1),
         "high_above_px": round(-high_y, 1),
         "hand_above_px": hand_above,
         "hero_clear_px": round(limits["hero_clear"], 1),
         "crown_cap_px": round(limits["crown_cap"], 1),
-        "head_px": round(head_px, 1),
+        "head_px": round(solved["face_px"], 1),
         "samples": head["samples"],
         "hands": hands,
     }
     return timeline
+
+
+def _frame_rgb(path, when, width, height):
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-ss", f"{float(when):.3f}", "-i", str(path),
+         "-frames:v", "1", "-vf", f"scale={width}:{height}:flags=lanczos",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
+        stderr=subprocess.DEVNULL)
+    frame = width * height * 3
+    if len(raw) < frame:
+        raise RuntimeError(f"short frame from {path} at {when}")
+    return np.frombuffer(raw[:frame], dtype=np.uint8).reshape(height, width, 3)
+
+
+def _frame_mask(path, when, width, height):
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-ss", f"{float(when):.3f}", "-i", str(path),
+         "-frames:v", "1", "-vf", f"scale={width}:{height}:flags=bilinear",
+         "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"],
+        stderr=subprocess.DEVNULL)
+    frame = width * height
+    if len(raw) < frame:
+        raise RuntimeError(f"short mask from {path} at {when}")
+    return np.frombuffer(raw[:frame], dtype=np.uint8).reshape(height, width)
+
+
+def _quilt(width, height, atlas, seed=7):
+    """Fill a card with the foliage atlas. Sampling is 1:1, then a soft warp.
+
+    The atlas is already at the speaker's scale, so a leaf is the same size
+    as the leaves that sat beside him. Nothing is stretched.
+    """
+    atlas = np.asarray(atlas, dtype=np.float32)
+    if atlas.ndim != 3 or atlas.shape[0] < 8 or atlas.shape[1] < 8:
+        tone = atlas.reshape(-1, 3).mean(axis=0) if atlas.size else np.array([70, 80, 55], np.float32)
+        return np.broadcast_to(tone, (height, width, 3)).copy()
+    tile = np.concatenate([atlas, atlas[:, ::-1]], axis=1)
+    tile = np.concatenate([tile, tile[::-1]], axis=0)
+    yy, xx = np.mgrid[0:height, 0:width]
+    phase = (int(seed) % 17) * 0.37
+    warp_x = 16.0 * np.sin(yy / 41.0 + phase) + 9.0 * np.sin(xx / 57.0)
+    warp_y = 12.0 * np.sin(xx / 47.0 + phase) + 7.0 * np.cos(yy / 33.0)
+    sx = np.mod(xx + warp_x, tile.shape[1] - 1).astype(np.float32)
+    sy = np.mod(yy + warp_y, tile.shape[0] - 1).astype(np.float32)
+    x0 = np.floor(sx).astype(np.int32)
+    y0 = np.floor(sy).astype(np.int32)
+    x1 = x0 + 1
+    y1 = y0 + 1
+    fx = (sx - x0)[..., None]
+    fy = (sy - y0)[..., None]
+    return (
+        tile[y0, x0] * (1 - fx) * (1 - fy)
+        + tile[y0, x1] * fx * (1 - fy)
+        + tile[y1, x0] * (1 - fx) * fy
+        + tile[y1, x1] * fx * fy
+    )
+
+
+def _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px):
+    """Card-sized plate. Real background where the frame has it, quilted leaves elsewhere."""
+    import cv2
+
+    card_w, card_h = int(round(card_w)), int(round(card_h))
+    facts = _video_facts(source)
+    video_w, video_h = int(facts["width"]), int(facts["height"])
+    duration = min(float(facts["duration"]), float(_video_facts(matte)["duration"]))
+    times = np.linspace(0.4, max(0.5, duration - 0.4), 6)
+    head_top = float(head["head_top"])
+    scale = float(scale)
+    # Uniform downscale. INTER_AREA averages; it does not stretch one axis.
+    atlas_parts = []
+    real = np.zeros((card_h, card_w, 3), dtype=np.float32)
+    weight = np.zeros((card_h, card_w), dtype=np.float32)
+    placed_w = video_w * scale
+    placed_h = video_h * scale
+    origin_x = (card_w - placed_w) / 2.0
+    # Source row at the card's top edge.
+    row0 = head_top + float(pop_px) / scale
+    for when in times:
+        rgb = _frame_rgb(source, when, video_w, video_h)
+        mask = _frame_mask(matte, when, video_w, video_h)
+        bg = mask < 96
+        # Only the clean leaves above the hair. A row that includes the head
+        # would tile as a dark band.
+        clean = 0
+        limit = max(8, int(head_top) - 8)
+        for row in range(limit):
+            if float(bg[row].mean()) < 0.92:
+                break
+            clean = row + 1
+        if clean > 24:
+            strip = rgb[:clean].astype(np.float32)
+            small_w = max(8, int(round(strip.shape[1] * scale)))
+            small_h = max(8, int(round(strip.shape[0] * scale)))
+            atlas_parts.append(cv2.resize(strip, (small_w, small_h), interpolation=cv2.INTER_AREA))
+        # Real background that lands inside the card, accumulated over the take.
+        ys = np.arange(card_h, dtype=np.float32)
+        xs = np.arange(card_w, dtype=np.float32)
+        src_y = row0 + ys / scale
+        src_x = (xs - origin_x) / scale
+        valid_y = (src_y >= 0) & (src_y < video_h - 1)
+        valid_x = (src_x >= 0) & (src_x < video_w - 1)
+        if not valid_y.any() or not valid_x.any():
+            continue
+        y_i = np.clip(src_y.astype(np.int32), 0, video_h - 1)
+        x_i = np.clip(src_x.astype(np.int32), 0, video_w - 1)
+        yy, xx = np.meshgrid(y_i, x_i, indexing="ij")
+        sample = rgb[yy, xx]
+        known = bg[yy, xx] & valid_y[:, None] & valid_x[None, :]
+        real[known] += sample[known]
+        weight[known] += 1.0
+    if atlas_parts:
+        atlas = np.concatenate(atlas_parts, axis=0)
+    else:
+        atlas = np.full((32, 32, 3), (72, 84, 58), np.float32)
+    plate = _quilt(card_w, card_h, atlas, seed=int(head_top))
+    plate = cv2.GaussianBlur(plate, (0, 0), 0.9)
+    known = weight > 0
+    if known.any():
+        real[known] /= weight[known, None]
+        leaf = real[known].mean(axis=0)
+        quilt_mean = plate.mean(axis=(0, 1))
+        plate = np.clip(plate + (leaf - quilt_mean) * 0.45, 0, 255)
+        alpha = ndimage.gaussian_filter(known.astype(np.float32), 16.0)
+        plate = plate * (1.0 - alpha[..., None]) + real * alpha[..., None]
+    return np.clip(plate, 0, 255).astype(np.uint8)
+
+
+def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, dest):
+    """One static foliage plate per source. A re-render reuses it."""
+    import cv2
+
+    dest = Path(dest)
+    recipe = dest.with_suffix(".recipe")
+    token = f"{PLATE_RECIPE}|{float(scale):.4f}|{float(pop_px):.2f}|{int(card_w)}x{int(card_h)}"
+    if dest.is_file() and recipe.is_file() and recipe.read_text().strip() == token:
+        return dest
+    print("extending the foliage plate", flush=True)
+    plate = _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    if not ok:
+        raise RuntimeError(f"could not write the foliage plate to {dest}")
+    recipe.write_text(token + "\n")
+    return dest
 
 
 def attach_popout(timeline, raw_source, ranges, picture, theme):
@@ -1093,8 +1281,14 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     timeline["source"]["matte_mask"] = str(mask.resolve())
     frame_popout(timeline, head, theme)
     popped = timeline["source"]["popout"]
+    plate = picture.with_name("speaker-plate.jpg")
+    ensure_background_plate(
+        raw_source, full, head,
+        popped["card_width"], popped["card_height"],
+        popped["scale"], popped["pop_px"], plate)
+    popped["plate"] = str(plate.resolve())
     print(
-        f"pop-out {popped['object_position']}  median {popped['median_above_px']}px above the card"
-        f"  low {popped['low_above_px']}px  captions at {popped['caption_y']}%",
+        f"pop-out face {popped['face_px']}px  crown {popped['median_above_px']}px"
+        f"  scale {popped['scale']}  captions at {popped['caption_y']}%",
         flush=True)
     return timeline

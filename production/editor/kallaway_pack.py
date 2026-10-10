@@ -308,27 +308,26 @@ def decorate_events(motif, events, stage, start, end):
             event["mute"] = True
             event["combo"] = "25"
             event["label"] = "Counter tick"
-        if ticks:
-            ticks[0]["mute"] = False
-            ticks[0]["kind"] = "pop"
-            ticks[0]["combo"] = "19"
-            ticks[0]["label"] = "Graphic entrance"
+        money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
         for event in events:
             if event["kind"] != "ding":
                 continue
+            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
+            roll = max(0.45, float(event["at"]) - start_at)
             event.update({
-                "file": BELL_5, "combo": "25", "label": "Number Counter",
+                "file": KA_CHING if money else BELL_5,
+                "combo": "25", "label": "Number Counter",
                 "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
-                # The pop already lands on the counter. The bell sits a second later
-                # with nothing new on screen.
-                "mute": True, "mute_reason": "no visual",
             })
+            event.pop("mute", None)
+            event.pop("mute_reason", None)
+            # The loop is the whole roll. It shares the bell's one budget slot.
             event["bed"] = {
-                "kind": "ticking", "at": ticks[0]["at"] if ticks else event["at"],
-                "file": UI_30, "combo": "25", "label": "Number Counter bed",
-                "under_db": 23.0, "loop": 0.9, "fixed_file": True, "band": "bed",
-                "mute": True, "mute_reason": "no visual",
+                "kind": "ticking", "at": start_at,
+                "file": UI_30, "combo": "25", "label": "Number Counter",
+                "under_db": 13.0, "loop": round(roll, 3), "fixed_file": True, "band": "bed",
+                "budget_free": True,
             }
     if motif == "bar_chart" and stage.get("reveal") == "slice":
         riser = next(event for event in events if event["kind"] == "riser")
@@ -677,7 +676,8 @@ def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None):
     labels = {"Graphic entrance", "Chart entrance", "Chapter header"}
     audible = [
         index for index, cue in enumerate(flat)
-        if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
     ]
     muted = [
         index for index, cue in enumerate(flat)
@@ -756,7 +756,8 @@ def _limit_density(flat):
     _thin_close_whooshes(flat, budget)
     audible = [
         index for index, cue in enumerate(flat)
-        if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+        if not cue.get("mute") and not cue.get("budget_free")
+        and float(cue.get("under_db") or 0) < 20
     ]
     if len(audible) <= budget:
         return
