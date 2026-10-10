@@ -328,6 +328,15 @@ def anchor_sfx(cues, words, fps=30):
         if gap_at(visual, gaps) is None and abs(visual - heard) <= 0.35:
             cue["sound_at"] = round(visual, 3)
             continue
+        # A count-up tick starts on the shot edge. That edge can sit in the
+        # 40 ms of air before the next word. The loop still covers the roll,
+        # so it starts when the word does instead of going silent.
+        loop = float(cue.get("loop") or 0)
+        span = next(((start, end) for start, end, _prev in gaps if start < heard < end), None)
+        if loop > 0.2 and span is not None and heard + loop > span[1] + 0.02:
+            cue["sound_at"] = round(span[1], 3)
+            cue["loop"] = round(max(0.12, heard + loop - span[1]), 3)
+            continue
         cue["mute"] = True
         cue["mute_reason"] = "gap"
     return cues

@@ -1489,6 +1489,22 @@ class KallawayTests(unittest.TestCase):
             self.assertAlmostEqual(bed["at"] + bed["loop"], landing["at"], delta=0.02)
             self.assertIn("Bell 5", landing["file"])
 
+    def test_a_count_up_tick_that_starts_in_a_short_gap_still_rolls(self):
+        from kallaway_plan import anchor_sfx
+        words = [
+            {"word": "plus", "start": 48.97, "end": 49.241},
+            {"word": "AI", "start": 49.281, "end": 49.636},
+        ]
+        cues = [{
+            "at": 49.259, "kind": "ticking", "label": "Number Counter",
+            "file": "24 UI Sounds/Ui 30.wav", "loop": 0.9,
+            "lands_on": "counter: AI BUSINESS IDEAS", "budget_free": True,
+        }]
+        anchor_sfx(cues, words)
+        self.assertFalse(cues[0].get("mute"))
+        self.assertGreaterEqual(cues[0]["sound_at"], 49.281)
+        self.assertAlmostEqual(cues[0]["sound_at"] + cues[0]["loop"], 49.259 + 0.9, delta=0.02)
+
     def test_sfx_log_names_the_picture_and_stays_out_of_pauses(self):
         from kallaway_plan import anchor_sfx, gap_at, sfx_placement_rows, word_gaps
         words = [
