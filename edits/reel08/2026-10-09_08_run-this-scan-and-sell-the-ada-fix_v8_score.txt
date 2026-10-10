@@ -1,0 +1,26 @@
+Reel 08 v8, measured on the published file.
+
+File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
+1080x1920, 30 fps, 54.07s, H.264, AAC 257 kbps, 48 kHz, 92 MB.
+SHA-256: 239ad6735dc0d2dd13ca1ab5ed0902201df42e586832973f45bf410472697922
+Loudness: I=-14.1 LUFS, LRA=2.7 LU, true peak=-1.7 dBTP. No music.
+Style check passed. short_picture_runs on the output frames is empty (no shot under 0.5 s).
+
+Framing
+The split crop targets a 215 px face and a 70 px crown above y1408. Output YuNet face boxes on split frames landed about 199–246 px (hook 199, later shots 207–246). The chin lands about 300–340 px above the card bottom (y1920). A 215 px face and a 70 px crown cannot also put the chin 120–160 px above that bottom on this card, so the defaults keep the face size and the crown. Neck, shoulders, and card ground beside the shoulders are visible.
+Crown pop from the matte, placed with the same cover and scale as the render: 32 px at 0.94s and 3.12s, then 52, 59, 61, 57, 86, and 88 px on the later samples. The plan's highest crown sample is 126 px and its low percentile is 49.9 px. Median aim is 70 px. A single crop cannot hold every nod inside 50–100 px.
+Matte edge crops (3x, nearest neighbor) at 0.94, 3.12, 8.24, 15.69, 21.21, 38.65, 47.28, and 50.46s show a soft crown against the charcoal field, with the contact shadow and no green fringe on the sampled tips.
+
+Captions
+Split captions are one Inter Black line at 54 px, z-index 12, above the head. On the hook the ink sits at y1291–1326 against a planned line top of y1277; the line box is 35 px above that segment's highest crown. The lowest split line (shot 16) is planned at y1185, above the highest crown in that segment.
+Full-face captions are Inter Black at 67 px. Ink on the sampled full frames: shot 02 y1055–1097 (plan y1031), shot 11 y954–989, shot 15 y933–968, shot 19 y932–964, shot 23 y968–1015. Those sit below the beard and above the lapel pin. y1498 is not used.
+
+Panel
+Phone-mock pixels on the filled split frames stop at about y1070–1072. The hook phone is still entering and ends higher. The browser chrome is whole; the title sits above it.
+
+Audio
+Whisper base.en on the output hears the full read, including "If you build websites", "browser.", "clean", "builds", "about $6,500", "fees.", "errors.", and the closing "If you want to go deeper". The price is heard as "$6" plus ",500", so the restored "six" is in the mix.
+
+SFX log
+edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
+15 landed cues, about 16.7 per minute. Boom 14 at 0.00 on the phone, Fast Whip at 1.74 on the hero board, Quick Swing B at 6.30 on "The Scan", Pop 5 at 7.61 and Bell 5 at 7.73 on the 56 counter, whooshes on the later phones and chapter headers, Cash Register Ka Ching at 22.11 on the charge card.
