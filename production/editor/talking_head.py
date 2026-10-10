@@ -9,6 +9,7 @@ stay on edit.py with a style object, not the "kallaway" preset.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -251,6 +252,11 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     report["output"] = str(final)
     report["output_short_shots"] = shorts
     report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
+    receipt_src = project / "final-receipt.json"
+    if receipt_src.is_file():
+        receipt_side = Path(final).with_name(Path(final).stem + "-receipt.json")
+        shutil.copy2(receipt_src, receipt_side)
+        report["receipt"] = str(receipt_side)
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 

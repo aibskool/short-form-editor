@@ -222,6 +222,18 @@ def _land(at, end, delay):
     return round(min(float(at) + delay, float(end) - 0.04), 3)
 
 
+def _count_land(start, value, span=0.9):
+    """When a power2.out count first rounds to its target.
+
+    The tween keeps running, but the digits have already landed. The bell or
+    the cash register belongs on that frame, not at the end of the ease.
+    """
+    value = max(1, int(value or 1))
+    need = (value - 0.5) / float(value)
+    frac = 1.0 - math.sqrt(max(0.0, 1.0 - need))
+    return round(float(start) + float(span) * frac, 3)
+
+
 def _money(stage):
     if stage.get("variant") == "receipt":
         return True
@@ -309,16 +321,21 @@ def decorate_events(motif, events, stage, start, end):
             event["combo"] = "25"
             event["label"] = "Counter tick"
         money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
+        land = _count_land(start, stage.get("value") or 30)
+        # Ka Ching has about 90 ms of mechanism noise before the hit. The bell does not.
+        attack = 0.09 if money else 0.0
         for event in events:
             if event["kind"] != "ding":
                 continue
-            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
-            roll = max(0.45, float(event["at"]) - start_at)
+            start_at = float(ticks[0]["at"]) if ticks else float(start)
+            roll = max(0.3, land - start_at)
             event.update({
                 "file": KA_CHING if money else BELL_5,
                 "combo": "25", "label": "Number Counter",
                 "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
+                "at": land,
+                "sound_at": round(max(0.0, land - attack), 3),
             })
             event.pop("mute", None)
             event.pop("mute_reason", None)
@@ -831,6 +848,20 @@ def _limit_density(flat):
             playing.remove(index)
     _separate_whooshes(flat)
     _separate_fixed(flat, "42", MONEY_FILES)
+    _drop_spare_whoosh(flat)
+
+
+def _drop_spare_whoosh(flat):
+    """Drop one graphic whoosh. The tick roll and its bell already count as one."""
+    whooshes = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and cue.get("kind") == "whoosh" and cue.get("label") == "Graphic entrance"
+    ]
+    if len(whooshes) < 2:
+        return
+    latest = max(whooshes, key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])))
+    flat[latest]["mute"] = True
+    flat[latest]["mute_reason"] = "spare"
 
 
 def _separate_fixed(flat, combo, rotation):

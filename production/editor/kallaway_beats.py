@@ -23,7 +23,7 @@ STAGE_KEYS = (
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
     "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
-    "variant", "uncropped",
+    "variant", "uncropped", "result", "notes",
 )
 
 # Full-screen and punch share scale 1 so the face is full bleed with no mid-shot jump.

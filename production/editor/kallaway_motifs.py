@@ -658,12 +658,20 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         ding_at = next((event["at"] for event in events if event["kind"] == "ding"), start)
         if stage.get("strike"):
             glyphs = ["calendar", "sheet", "lock", "doc", "globe", "bolt", "home", "star"]
+            notes = list(stage.get("notes") or [])
             for index, item in enumerate(list(stage.get("items") or [])[:3]):
                 at = tick_events[index]["at"] if index < len(tick_events) else ding_at
+                detail = notes[index] if index < len(notes) else ""
+                detail_html = f'<em>{_esc(detail)}</em>' if detail else ""
                 thumbs.append(
                     f'<div id="{ident}-s{index}" class="range-card">'
-                    f'<div class="range-ico">{icon_svg(glyphs[index])}</div><b>{_esc(item)}</b></div>')
+                    f'<div class="range-ico">{icon_svg(glyphs[index])}</div><b>{_esc(item)}</b>'
+                    f'{detail_html}</div>')
                 animations.append(_pop(f"#{ident}-s{index}", at))
+                breaths = max(2, int(max(0.4, float(end) - at) / 0.7))
+                animations.append(
+                    f'tl.fromTo("#{ident}-s{index}",{{y:0}},{{y:-8,duration:0.7,yoyo:true,repeat:{breaths},'
+                    f'ease:"sine.inOut"}},{at + 0.35:.3f});')
             grid = f'<div class="range-row">{"".join(thumbs)}</div>' if thumbs else ""
             struck = ""
             if label:
@@ -775,7 +783,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             f'ease:"none",onUpdate:()=>{{const el=document.getElementById("{ident}-type");'
             f'if(el) el.textContent={payload}.slice(0,Math.floor({variable}.n));}}}},{type_at});')
         if result:
-            animations.append(_pop(f"#{ident}-result", min(end - 0.4, type_at + type_span + 0.08)))
+            # After the line finishes typing, and late enough that the hold shows it.
+            result_at = min(end - 0.55, max(type_at + type_span + 0.15, start + 1.6))
+            animations.append(_pop(f"#{ident}-result", max(start + 0.4, result_at)))
         animations.append(
             f'tl.to("#{ident}-caret",{{opacity:0,duration:0.12,ease:"none"}},{max(start, end - 0.12):.3f});')
 
@@ -846,10 +856,15 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<span class="mono">client-site.com</span></div>'
                 f'<div id="{ident}-live" class="browser-live"><b>Client site</b>'
                 f'<span>Home</span><span>Work</span><span>Contact</span>'
-                f'<div id="{ident}-rows" class="page-rows"><i></i><i></i><i></i></div></div>'
+                f'<div id="{ident}-lines" class="page-lines"><p>New homepage</p>'
+                f'<p>Three service pages</p><p>Contact form</p></div></div>'
                 f'<div id="{ident}-dead" class="browser-dead"><div id="{ident}-mark" class="offline-mark">!</div>'
                 f'<div>{_esc(quote)}</div><div class="offline-sub">client-site.com</div></div></div>')
             animations.append(_slide(f"#{ident}-quote", events[0]["at"]))
+            drift = max(0.6, float(end) - float(start) - 0.4)
+            animations.append(
+                f'tl.fromTo("#{ident}-lines",{{y:10}},{{y:-22,duration:{drift:.3f},ease:"none"}},'
+                f'{float(start) + 0.25:.3f});')
             if stage.get("strike"):
                 at = next(event["at"] for event in events if event["kind"] == "error")
                 animations.append(
@@ -880,9 +895,14 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'tl.fromTo("#{ident}-lo",{{scaleY:0}},{{scaleY:1,duration:0.4,ease:"power2.out",'
                 f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.2:.3f});')
             animations.append(_pop(f"#{ident}-ne", events[0]["at"] + 0.34))
+            hold = max(0.8, float(end) - float(events[0]["at"]) - 0.7)
+            breaths = max(3, int(hold / 0.8))
             animations.append(
-                f'tl.fromTo("#{ident}-hi",{{scaleY:1}},{{scaleY:0.9,duration:0.4,yoyo:true,repeat:3,'
+                f'tl.fromTo("#{ident}-hi",{{scaleY:1}},{{scaleY:0.86,duration:0.45,yoyo:true,repeat:{breaths},'
                 f'ease:"sine.inOut",transformOrigin:"50% 100%"}},{events[0]["at"] + 0.7:.3f});')
+            animations.append(
+                f'tl.fromTo("#{ident}-lo",{{scaleY:1}},{{scaleY:1.15,duration:0.55,yoyo:true,repeat:{breaths},'
+                f'ease:"sine.inOut",transformOrigin:"50% 100%"}},{events[0]["at"] + 0.85:.3f});')
         else:
             strike = ""
             if stage.get("strike"):

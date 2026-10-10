@@ -288,6 +288,8 @@ def _caption_block(words, styles, stage_plan=None, style_at=None, keep_case=None
         block["keep_case"] = keep_case
     if isinstance(stage_plan, dict) and stage_plan.get("caption_full_baseline_px") is not None:
         block["full_baseline_px"] = float(stage_plan["caption_full_baseline_px"])
+    if isinstance(stage_plan, dict) and stage_plan.get("caption_full_px") is not None:
+        block["full_px"] = float(stage_plan["caption_full_px"])
     return block
 
 
@@ -425,8 +427,40 @@ def reanchor_led_sfx(timeline, original_starts, fps=30, attack_of=None):
             continue
         cue["at"] = round(new_visual, 3)
         cue["sound_at"] = round(max(0.0, new_visual - lead - attack), 3)
+    _shift_counters(timeline, originals, starts)
+    # Fast Whip was landing about 7 frames early. Three frames later puts the
+    # audible onset about 4 frames ahead of the cut.
+    shift = 3.0 / float(fps or 30)
+    for cue in timeline.get("sfx") or []:
+        if cue.get("mute"):
+            continue
+        if "Fast Whip" not in str(cue.get("file") or ""):
+            continue
+        cue["sound_at"] = round(float(cue.get("sound_at", cue.get("at", 0))) + shift, 3)
     timeline["sfx_log"] = sfx_placement_rows(timeline.get("sfx"))
     return timeline
+
+
+def _shift_counters(timeline, originals, starts):
+    """Keep the count-up bell on the snapped shot, with the digits."""
+    for cue in timeline.get("sfx") or []:
+        if cue.get("mute") or cue.get("label") != "Number Counter":
+            continue
+        visual = float(cue.get("at", cue.get("sound_at", 0)))
+        index = None
+        for item, origin in enumerate(originals):
+            end = originals[item + 1] if item + 1 < len(originals) else origin + 6.0
+            if origin - 0.08 <= visual < end:
+                index = item
+                break
+        if index is None or index >= len(starts):
+            continue
+        delta = starts[index] - originals[index]
+        if abs(delta) < 0.0005:
+            continue
+        cue["at"] = round(float(cue.get("at", visual)) + delta, 3)
+        if cue.get("sound_at") is not None:
+            cue["sound_at"] = round(float(cue["sound_at"]) + delta, 3)
 
 
 def sfx_placement_rows(cues):

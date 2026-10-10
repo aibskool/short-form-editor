@@ -285,7 +285,8 @@ def build_kallaway(spec, spec_path, project):
                     f'tl.set("#speaker-pop",{json.dumps({"autoAlpha": 0, "clipPath": "inset(100% 0px 0px 0px)"})},{start});')
         caption_y = layout_spec["caption_split_y"] if layout == "split" else layout_spec["caption_full_y"]
         split_px = float(layout_spec.get("caption_split_px", layout_spec["caption_font_px"]))
-        full_px = float(layout_spec.get("caption_full_px", split_px))
+        take_full = (spec.get("captions") or {}).get("full_px")
+        full_px = float(take_full if take_full else layout_spec.get("caption_full_px", split_px))
         caption_px_shot = (split_px if layout == "split" else full_px) * scale
         animations.append(
             f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%",'
@@ -583,6 +584,7 @@ def build_kallaway(spec, spec_path, project):
     .range-card{{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{8*scale:.0f}px;padding:4% 3%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05;text-align:center}}
     .range-ico{{width:{64*scale:.0f}px;height:{64*scale:.0f}px;color:{colors['accent']}}}
     .range-ico svg{{width:100%;height:100%}}
+    .range-card em{{font-style:normal;font-family:'{mono}',monospace;font-weight:500;font-size:{18*scale:.0f}px;line-height:1.15;color:{colors['muted']}}}
     .feat-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .feat-card{{flex:1;display:flex;align-items:center;gap:{18*scale:.0f}px;padding:0 6%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:2px solid {colors['border']};box-shadow:0 18px 36px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95}}
     .feat-ico{{width:{72*scale:.0f}px;height:{72*scale:.0f}px;flex:0 0 {72*scale:.0f}px;color:{colors['accent']}}}
@@ -628,10 +630,10 @@ def build_kallaway(spec, spec_path, project):
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
     .phone-hl{{position:absolute;left:8%;right:8%;z-index:3;height:0;padding:0;background:transparent;border:none;border-bottom:4px solid {colors['accent']};overflow:visible}}
     .quote-card.balance{{flex-direction:column;align-items:stretch;justify-content:flex-end;height:100%;padding:4% 6% 8%}}
-    .bal-row{{display:flex;align-items:flex-end;justify-content:center;gap:6%;height:78%;width:100%}}
-    .bal-col{{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:12px;width:34%;font-family:'{caption}',sans-serif;font-size:{36*scale:.0f}px;color:{colors['text']}}}
-    .bal-bar{{width:100%;height:88%;background:{colors['accent']};border-radius:16px 16px 6px 6px;transform:scaleY(0);transform-origin:50% 100%}}
-    .bal-bar.short{{height:32%;background:{colors['warning']}}}
+    .bal-row{{display:flex;align-items:stretch;justify-content:center;gap:6%;height:62%;width:100%}}
+    .bal-col{{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:12px;width:34%;height:100%;font-family:'{caption}',sans-serif;font-size:{36*scale:.0f}px;color:{colors['text']}}}
+    .bal-bar{{width:100%;flex:1 1 auto;min-height:{180*scale:.0f}px;background:{colors['accent']};border-radius:16px 16px 6px 6px;transform:scaleY(0);transform-origin:50% 100%}}
+    .bal-bar.short{{flex:0.42 1 auto;min-height:{72*scale:.0f}px;background:{colors['warning']}}}
     .bal-ne{{font-family:'{display}',cursive;font-size:{72*scale:.0f}px;color:{colors['text']};align-self:center}}
     .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
     .stage-chip.bottom{{top:auto;bottom:{10*scale:.0f}px;left:{10*scale:.0f}px;right:{10*scale:.0f}px;text-align:center;white-space:normal;line-height:1.2;font-size:{mono_px*0.72:.1f}px;letter-spacing:0.03em}}
@@ -670,9 +672,9 @@ def build_kallaway(spec, spec_path, project):
     .browser-live b{{font-family:'{display}',cursive;font-weight:400;font-size:{64*scale:.0f}px}}
     .browser-live span{{display:inline-block;margin-right:{10*scale:.0f}px;padding:0.2em 0.5em;border-radius:999px;background:{colors['surface']};border:1px solid {colors['border']};font-size:{18*scale:.0f}px}}
     .browser-dead{{position:absolute;left:0;right:0;top:{54*scale:.0f}px;bottom:0;padding:8% 6%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{12*scale:.0f}px;font-family:'{display}',cursive;font-size:{48*scale:.0f}px;line-height:0.95;color:{colors['text']};text-align:center;opacity:0}}
-    .page-rows{{display:flex;flex-direction:column;gap:{8*scale:.0f}px;margin-top:{12*scale:.0f}px}}
-    .page-rows i{{display:block;height:{14*scale:.0f}px;border-radius:7px;background:{colors['surface']};border:1px solid {colors['border']}}}
-    .page-rows i:nth-child(2){{width:72%}} .page-rows i:nth-child(3){{width:48%}}
+    .page-lines{{display:flex;flex-direction:column;gap:{14*scale:.0f}px;margin-top:{18*scale:.0f}px}}
+    .page-lines p{{margin:0;padding:{8*scale:.0f}px {14*scale:.0f}px;border-radius:12px;background:{colors['surface']};border:1px solid {colors['border']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05;color:{colors['text']}}}
+    .page-lines p:nth-child(2){{width:92%}} .page-lines p:nth-child(3){{width:78%}}
     .offline-mark{{width:{92*scale:.0f}px;height:{92*scale:.0f}px;border-radius:50%;border:{6*scale:.0f}px solid {colors['warning']};color:{colors['warning']};display:flex;align-items:center;justify-content:center;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1}}
     .offline-sub{{font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;color:{colors['muted']}}}
     .term-result{{display:inline-block;margin-top:{18*scale:.0f}px;padding:{10*scale:.0f}px {16*scale:.0f}px;border-radius:12px;background:{colors['accent']};color:{colors['on_accent']};font-family:'{display}',cursive;font-size:{36*scale:.0f}px;transform:scale(0)}}
@@ -694,7 +696,12 @@ def build_kallaway(spec, spec_path, project):
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     cover = "visibility:hidden;opacity:0;" if spec.get("speaker_reveal") else ""
-    plate_html = f'<img id="speaker-plate" src="{plate_src}" alt="">' if plate_src else ""
+    if plate_src and plate_src.lower().endswith((".mp4", ".mov", ".webm")):
+        plate_html = (
+            f'<video id="speaker-plate" class="clip" src="{plate_src}" '
+            f'data-start="0" data-duration="{duration:.6f}" data-media-start="0" muted playsinline></video>')
+    else:
+        plate_html = f'<img id="speaker-plate" src="{plate_src}" alt="">' if plate_src else ""
     speaker = (
         f'<div id="speaker-card" style="{cover}">{plate_html}'
         f'<div id="presenter-camera" data-layout-allow-overflow>'
