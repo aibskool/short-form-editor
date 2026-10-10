@@ -313,6 +313,12 @@ def decorate_events(motif, events, stage, start, end):
             ticks[0]["kind"] = "pop"
             ticks[0]["combo"] = "19"
             ticks[0]["label"] = "Graphic entrance"
+        origin = int(stage.get("from") or 0)
+        try:
+            target = int(stage.get("value", origin))
+        except (TypeError, ValueError):
+            target = origin
+        rolls = origin != target
         for event in events:
             if event["kind"] != "ding":
                 continue
@@ -321,19 +327,23 @@ def decorate_events(motif, events, stage, start, end):
                 "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
             })
-            if stage.get("lock_at") is None:
-                # The pop already lands on the counter. The bell sits a second later
-                # with nothing new on screen.
+            start_at = float(ticks[0]["at"]) if ticks else float(event["at"])
+            span = max(0.12, round(float(event["at"]) - start_at, 3))
+            # Ui 30 loops under the whole roll. Bell 5 hits as the final digit lands.
+            event["bed"] = {
+                "kind": "ticking", "at": round(start_at, 3),
+                "sound_at": round(start_at, 3),
+                "file": UI_30, "combo": "25", "label": "Number Counter bed",
+                "under_db": 13.0, "loop": span, "fade_frames": 2,
+                "fixed_file": True, "fixed_lead": True, "band": "bed",
+            }
+            if not rolls:
                 event["mute"] = True
                 event["mute_reason"] = "no visual"
+                event["bed"]["mute"] = True
+                event["bed"]["mute_reason"] = "no visual"
             else:
                 event["lands_on"] = event.get("lands_on") or "counter lock"
-            event["bed"] = {
-                "kind": "ticking", "at": ticks[0]["at"] if ticks else event["at"],
-                "file": UI_30, "combo": "25", "label": "Number Counter bed",
-                "under_db": 23.0, "loop": 0.9, "fixed_file": True, "band": "bed",
-                "mute": True, "mute_reason": "no visual",
-            }
     if motif == "bar_chart" and stage.get("reveal") == "slice":
         riser = next(event for event in events if event["kind"] == "riser")
         riser.update({
@@ -624,6 +634,9 @@ def _collapse_repeats(flat, window=0.45):
         cue = flat[index]
         key = str(cue.get("label") or cue.get("combo") or cue.get("kind"))
         moment = float(cue.get("sound_at", cue["at"]))
+        if _count_roll(cue):
+            last[key] = moment
+            continue
         if key in last and moment - last[key] < window:
             cue["mute"] = True
             continue
@@ -746,6 +759,11 @@ def _thin_close_whooshes(flat, budget, gap=2.5):
             break
 
 
+def _count_roll(cue):
+    """A looping tick under a count, or the bell on its final number."""
+    return cue.get("label") in {"Number Counter", "Number Counter bed"}
+
+
 def _limit_density(flat):
     """Stay at or under 20 SFX per minute. Beds under 20 dB do not spend the budget.
 
@@ -766,6 +784,8 @@ def _limit_density(flat):
     ]
     if len(audible) <= budget:
         return
+    # Every count-up keeps its tick loop and its landing bell.
+    reserved = [index for index in audible if _count_roll(flat[index])]
     caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "graphic": 6, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
     ranked = sorted(audible, key=lambda index: (
         _density_rank(flat[index]),
@@ -789,10 +809,13 @@ def _limit_density(flat):
                 len(rest))
             rest.insert(slot, nearest)
             ranked = rest
-    kept = []
+    kept = list(reserved)
     used = {}
+    limit = max(budget, len(reserved))
     for index in ranked:
-        if len(kept) >= budget:
+        if index in kept:
+            continue
+        if len(kept) >= limit:
             break
         cue = flat[index]
         if cue.get("label") == "Chapter header":
@@ -917,6 +940,10 @@ def finish_sfx(cues, fps, unders, under_db):
         if cue.get("mute"):
             continue
         if cue.get("band") == "bed" or float(cue.get("under_db") or 0) >= 20:
+            continue
+        if _count_roll(cue):
+            start = float(cue.get("sound_at", cue["at"]))
+            active.append((start + _occupy(cue), cue["band"], cue["priority"], index))
             continue
         start = float(cue.get("sound_at", cue["at"]))
         if cue.get("align") == "end":

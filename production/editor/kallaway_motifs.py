@@ -739,7 +739,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         origin = int(stage.get("from") or 0)
         lock = float(stage.get("lock_at") or min(end - 0.08, start + 0.9))
         lock = min(max(lock, start + 0.12), end - 0.04)
-        roll = max(0.12, lock - start - 0.08)
+        # The digits land on the bell. The tick loop uses this same span.
+        roll = max(0.12, lock - start)
         shown = json.dumps(f"{target:,}")
         animations.append(
             f'const {variable}={{v:{origin}}};'

@@ -1344,8 +1344,15 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking"))
         ding = next(event for event in ticks if event["kind"] == "ding")
         self.assertEqual(ding["combo"], "25")
+        self.assertFalse(ding.get("mute"))
         self.assertIn("Bell 5", ding["file"])
         self.assertIn("Ui 30", ding["bed"]["file"])
+        self.assertFalse(ding["bed"].get("mute"))
+        self.assertAlmostEqual(ding["bed"]["at"] + ding["bed"]["loop"], ding["at"], places=2)
+        held = stage_events("counter", 1.0, 2.4, {"from": 7, "value": 7})
+        held_ding = next(event for event in held if event["kind"] == "ding")
+        self.assertTrue(held_ding.get("mute"))
+        self.assertTrue(held_ding["bed"].get("mute"))
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
         self.assertIn("Swoosh Fast", pages[0].get("file", ""))
@@ -1378,6 +1385,28 @@ class KallawayTests(unittest.TestCase):
         raw, _raw_info = load(resolve("03 Whooshes/Fast Whip.wav"))
         self.assertEqual(whoosh_info["clip_gain_db"], 0.0)
         self.assertLess(float(np.max(np.abs(whoosh - raw))), 1e-4)
+
+    def test_every_count_up_keeps_the_tick_and_the_bell(self):
+        from kallaway_pack import finish_sfx
+        cues = []
+        for start in (1.0, 8.0, 16.0):
+            cues.extend(stage_events("counter", start, start + 1.4, {"from": 0, "value": 12, "label": "COUNT"}))
+        for index in range(24):
+            cues.append({
+                "at": round(0.4 + index * 0.7, 3), "kind": "pop", "combo": "19",
+                "label": "Word Pop", "under_db": 13, "lands_on": "extra",
+            })
+        flat = finish_sfx(cues, 30, {}, UNDER_DB)
+        beds = [cue for cue in flat if cue.get("label") == "Number Counter bed" and not cue.get("mute")]
+        bells = [cue for cue in flat if cue.get("label") == "Number Counter" and not cue.get("mute")]
+        self.assertEqual(len(beds), 3)
+        self.assertEqual(len(bells), 3)
+        for bed in beds:
+            self.assertIn("Ui 30", bed["file"])
+            self.assertGreaterEqual(bed["loop"], 0.12)
+            landing = min(bells, key=lambda bell: abs(bell["at"] - (bed["at"] + bed["loop"])))
+            self.assertAlmostEqual(bed["at"] + bed["loop"], landing["at"], delta=0.02)
+            self.assertIn("Bell 5", landing["file"])
 
     def test_sfx_log_names_the_picture_and_stays_out_of_pauses(self):
         from kallaway_plan import anchor_sfx, gap_at, sfx_placement_rows, word_gaps
