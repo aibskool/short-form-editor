@@ -679,8 +679,11 @@ def ensure_source_matte(source, cache_dir=None):
     folder = root / source_digest(source)
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / "matte.mp4"
-    if target.is_file() and target.stat().st_size > 0:
+    # yuv420 blurs the 1 px edge. An older cache in that format is rebuilt.
+    if target.is_file() and target.stat().st_size > 0 and _video_facts(target).get("pix_fmt") == "yuv444p":
         return target
+    if target.is_file():
+        target.unlink()
     partial = folder / "matte.partial.mp4"
     _segment_gray(source, partial)
     partial.replace(target)
