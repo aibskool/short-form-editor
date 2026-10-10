@@ -1672,6 +1672,46 @@ class KallawayTests(unittest.TestCase):
         capped = extend_closing_hold([(0.0, 9.95)], 10.0, hold=0.10)
         self.assertEqual(capped[-1], (0.0, 10.0))
 
+    def test_opening_foliage_outside_the_body_is_cleared(self):
+        from kallaway_matte import _clear_opening_foliage, _segment_open_holds
+        body = np.zeros((400, 160), dtype=np.float32)
+        body[20:380, 80:140] = 1
+        early = body.copy()
+        early[20:380, 48:56] = 1
+        rgb = np.zeros((400, 160, 3), dtype=np.uint8)
+        rgb[:, :] = (210, 160, 140)
+        rgb[20:380, 48:56] = (40, 170, 36)
+        straight = np.zeros_like(rgb)
+        refined = [
+            (early, straight, early.copy(), None),
+            (body, straight, body.copy(), None),
+            (body, straight, body.copy(), None),
+            (body.copy(), straight, body.copy(), None),
+        ]
+        frames = [(rgb, None)] * 4
+        _clear_opening_foliage(refined, frames, 3)
+        self.assertEqual(float(refined[0][0][20:380, 48:56].max()), 0.0)
+        self.assertEqual(float(refined[0][0][40, 100]), 1.0)
+        _segment_open_holds([item[0] for item in refined], 3, colors=[rgb] * 4)
+
+    def test_an_opening_hand_is_not_a_foliage_blob(self):
+        from kallaway_matte import _segment_open_holds
+        body = np.zeros((400, 160), dtype=np.float32)
+        body[20:380, 80:140] = 1
+        hand = body.copy()
+        hand[100:180, 48:56] = 1
+        _segment_open_holds([hand, body, body, body], 3)
+        floating = body.copy()
+        floating[20:120, 0:30] = 1
+        with self.assertRaises(RuntimeError):
+            _segment_open_holds([floating, body, body, body], 3)
+        fringe = body.copy()
+        fringe[20:380, 48:56] = 1
+        green = np.zeros((400, 160, 3), dtype=np.uint8)
+        green[:, :] = (40, 180, 40)
+        with self.assertRaises(RuntimeError):
+            _segment_open_holds([fringe, body, body, body], 3, colors=[green, green, green, green])
+
     def test_specks_under_200px_leave_the_matte(self):
         from kallaway_matte import _drop_specks
         mask = np.zeros((80, 80), dtype=bool)

@@ -104,7 +104,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-feather2.5-despill6-speck200"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage-feather2.5-despill6-speck200"
 
 
 def _run(args):
@@ -794,12 +794,13 @@ def tightened_cut_frames(ranges, fps):
     return cuts
 
 
-def _segment_open_holds(persons, seed_index):
+def _segment_open_holds(persons, seed_index, colors=None):
     """Fail when an opening frame grows a blob the stable frame does not have.
 
     The first frames of a cut used to inherit the previous shot through the
-    flow stabilizer. A foliage oval or a fringe shows up as matte that the
-    stable frame, a few frames later, does not contain.
+    flow stabilizer. A foliage oval shows up as matte that does not touch this
+    segment's silhouette. A hand that moves in those frames stays attached to
+    the body and is not a failure. A green fringe on the extra pixels is.
     """
     if seed_index <= 0 or seed_index >= len(persons):
         return
@@ -807,10 +808,32 @@ def _segment_open_holds(persons, seed_index):
     stable_near = ndimage.binary_dilation(stable, iterations=24)
     for index, person in enumerate(persons[:seed_index]):
         early = np.asarray(person) >= 0.5
-        extra = int(np.count_nonzero(early & ~stable_near))
-        if extra > SEGMENT_OPEN_BLOB_PX:
+        extra = early & ~stable_near
+        if not np.any(extra):
+            continue
+        labeled, count = ndimage.label(extra)
+        floating = 0
+        for label in range(1, count + 1):
+            component = labeled == label
+            attached = np.any(ndimage.binary_dilation(component, iterations=2) & stable_near)
+            if not attached:
+                floating += int(component.sum())
+        if floating > SEGMENT_OPEN_BLOB_PX:
             raise RuntimeError(
-                f"matte on segment frame {index} has {extra}px off the stable silhouette "
+                f"matte on segment frame {index} has {floating}px off the stable silhouette "
+                f"(limit {SEGMENT_OPEN_BLOB_PX})")
+        if colors is None or index >= len(colors):
+            continue
+        pix = np.asarray(colors[index])[extra]
+        if pix.size == 0:
+            continue
+        red = pix[:, 0].astype(np.int16)
+        green = pix[:, 1].astype(np.int16)
+        blue = pix[:, 2].astype(np.int16)
+        foliage = int(np.count_nonzero((green > red + 12) & (green > blue + 12)))
+        if foliage > SEGMENT_OPEN_BLOB_PX:
+            raise RuntimeError(
+                f"matte on segment frame {index} has {foliage}px of foliage off the silhouette "
                 f"(limit {SEGMENT_OPEN_BLOB_PX})")
 
 
@@ -822,6 +845,31 @@ def _write_refined(person, straight, out_a, gray_proc, alpha_proc):
     argb[:, :, 1:] = straight
     gray_proc.stdin.write(np.ascontiguousarray(gray).tobytes())
     alpha_proc.stdin.write(np.ascontiguousarray(argb).tobytes())
+
+
+def _clear_opening_foliage(refined, frames, seed_index):
+    """Drop green matte the stable frame does not have.
+
+    A cut's first frames can still hold a foliage fringe in the raw matte.
+    A hand that moved is skin-colored and stays. The green pixels outside
+    this segment's silhouette do not.
+    """
+    stable = np.asarray(refined[seed_index][0]) >= 0.5
+    near = ndimage.binary_dilation(stable, iterations=24)
+    for index in range(seed_index):
+        person, straight, out_a, state = refined[index]
+        rgb = np.asarray(frames[index][0])
+        red = rgb[:, :, 0].astype(np.int16)
+        green = rgb[:, :, 1].astype(np.int16)
+        blue = rgb[:, :, 2].astype(np.int16)
+        foliage = (np.asarray(person) > 0.08) & ~near & (green > red + 12) & (green > blue + 12)
+        if not np.any(foliage):
+            continue
+        person = np.array(person, dtype=np.float32, copy=True)
+        out_a = np.array(out_a, dtype=np.float32, copy=True)
+        person[foliage] = 0
+        out_a[foliage] = 0
+        refined[index] = (person, straight, out_a, state)
 
 
 def _refine_opening(frames):
@@ -841,7 +889,10 @@ def _refine_opening(frames):
         rgb, coarse = frames[index]
         refined[index] = refine_frame(rgb, coarse, state)
         state = refined[index][3]
-    _segment_open_holds([item[0] for item in refined[:seed_index + 1]], seed_index)
+    _clear_opening_foliage(refined, frames, seed_index)
+    _segment_open_holds(
+        [item[0] for item in refined[:seed_index + 1]], seed_index,
+        colors=[rgb for rgb, _coarse in frames[:seed_index + 1]])
     return refined, seed[3]
 
 
