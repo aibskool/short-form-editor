@@ -629,13 +629,14 @@ def _density_rank(cue):
         return 0
     if combo == "42":
         return 1
-    if cue.get("label") in {"Chapter header", "Chart entrance", "Graphic entrance"}:
+    # The count-up bell and the typing line are the sound of those cards.
+    # They sort with the entrances so a later graphic does not take their slot.
+    if cue.get("label") in {
+        "Chapter header", "Chart entrance", "Graphic entrance",
+        "Typewriter Line", "Number Counter",
+    } or combo == "21":
         return 2
-    # The terminal's typing line is the sound for that card. It stays ahead of
-    # a strike buzzer and a highlight pop when the reel is on the density line.
-    if cue.get("label") == "Typewriter Line" or combo == "21":
-        return 3
-    if combo == "8" or cue.get("label") == "Number Counter":
+    if combo == "8":
         return 3
     if combo in {"23", "25", "36"}:
         return 4

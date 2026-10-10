@@ -1250,6 +1250,35 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(len(phones), 3)
         self.assertTrue(any(abs(cue["at"] - 12.5) < 0.01 for cue in phones))
 
+    def test_the_typing_line_keeps_its_slot_beside_the_count_up(self):
+        from kallaway_pack import _limit_density
+        cues = []
+
+        def add(at, combo, label, kind):
+            cues.append({
+                "at": at, "sound_at": at, "combo": combo, "label": label,
+                "kind": kind, "under_db": 10,
+            })
+
+        # 24.4s reel, hard cap 8. A later card must not replace the typing line
+        # or the count-up bell.
+        add(0.0, "2", "Cold Slam", "bass")
+        add(5.2, "8", "Graphic entrance", "whoosh")
+        add(7.0, "25", "Number Counter", "ding")
+        add(9.6, "21", "Typewriter Line", "click")
+        add(12.2, "8", "Graphic entrance", "whoosh")
+        add(17.7, "19", "Graphic entrance", "pop")
+        add(18.7, "19", "Graphic entrance", "pop")
+        add(19.8, "19", "Graphic entrance", "pop")
+        add(20.6, "19", "Graphic entrance", "pop")
+        add(21.4, "8", "Graphic entrance", "whoosh")
+        add(24.4, "47", "Loop Close", "whoosh")
+        _limit_density(cues)
+        heard = [cue["label"] for cue in cues if not cue.get("mute")]
+        self.assertIn("Typewriter Line", heard)
+        self.assertIn("Number Counter", heard)
+        self.assertLessEqual(len(heard) * 60.0 / 24.4, 20.6)
+
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
