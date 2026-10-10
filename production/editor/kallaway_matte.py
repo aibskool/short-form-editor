@@ -20,9 +20,13 @@ from scipy import ndimage
 
 MODEL = "mediapipe-selfie-0.10.14-general-edge-v2"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
-# Kept for the anchor record. The split crop no longer uses a fraction of the
-# head: the chin sits on the card top and the whole head is above it.
+# Kept for the anchor record. The split crop aims a measured crown, not this fraction.
 POP_FRACTION = 0.32
+# Only the crown clears the card. The face itself stays inside it.
+CROWN_POP_PX = 70.0
+FACE_TARGET_PX = 215.0
+FACE_MIN_PX = 200.0
+FACE_MAX_PX = 230.0
 POP_FLOOR = 0.22
 POP_CAP = 0.42
 # Source pixels added under the estimated jaw so the chin stays above the card.
@@ -669,26 +673,31 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out):
 
 
 def _shot_scale(shot, layout):
-    """Split and full-bleed stay at 1. The crop is object-position, not a shrink."""
+    """Full and punch stay at least 1. Split may scale down to the face target."""
     del layout
-    if shot.get("layout") in {None, "split", "full", "punch_in"}:
-        requested = float(shot["scale"]) if shot.get("scale") else 1.0
-        return requested if requested > 1.0 else 1.0
+    if shot.get("scale"):
+        return float(shot["scale"])
     return 1.0
 
 
 def chin_row(head):
-    """Source row placed on the card's top edge, just under the jaw."""
+    """Source row of the chin. A measured jaw wins; otherwise the head box plus a pad."""
     if head.get("chin") is not None:
         return float(head["chin"])
     return float(head["head_top"]) + float(head["head_height"]) + CHIN_PAD_PX
 
 
+def face_source_px(head):
+    if head.get("face_height"):
+        return max(float(head["face_height"]), 1.0)
+    return max(float(head["head_height"]), 1.0)
+
+
 def pop_limits(layout, height):
     """Stage and caption lines, in canvas pixels.
 
-    The split crop does not stop at these lines. The chin goes on the card
-    top, and the stage is raised so panels stay above the hair.
+    Graphics stop at the stage bottom. The crown clears the card by about 70 px,
+    and the caption sits above that crown.
     """
     scale_y = height / 1920.0
     card_top = layout["card_top"] * height
@@ -705,24 +714,51 @@ def pop_limits(layout, height):
     }
 
 
-def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
-    """object-position Y that sets the chin on the card top.
+def solve_split_framing(head, video_w, video_h, card_w, card_h):
+    """Scale and object-position so the face is inside the card and the crown pops 70 px.
 
-    Scale stays at 1. The full source width fills the card, and the rows under
-    the chin are the neck, shoulders, and chest. The whole head is above the
-    card. A raised hand does not pull the chin back down into the card.
+    Face height targets 215 px, in the 200–230 band. The crown targets 70 px
+    above the card, in the 50–100 band. A close-up source scales down to get
+    there. The chin stays on the card, with neck and shoulders below it. A
+    raised hand does not move this crop.
     """
+    fit = cover_fit(video_w, video_h, card_w, card_h)
+    face = face_source_px(head)
+    crown_src = float(head["head_top"])
+    span = max(chin_row(head) - crown_src, 1.0)
+    cover_scale = card_h / max(video_h * fit, 1.0)
+    scale = FACE_TARGET_PX / max(face * fit, 1.0)
+    # Face band, and never a zoom-in past the full-bleed frame.
+    lo = max(cover_scale, FACE_MIN_PX / max(face * fit, 1.0))
+    hi = min(1.0, FACE_MAX_PX / max(face * fit, 1.0))
+    if lo <= hi:
+        scale = float(np.clip(scale, lo, hi))
+    else:
+        scale = float(np.clip(scale, cover_scale, 1.0))
+    # Do not push the chin off the bottom of the card.
+    chin_limit = card_h - 120.0
+    max_for_chin = (chin_limit + CROWN_POP_PX) / max(span * fit, 1.0)
+    if scale > max_for_chin:
+        scale = float(max(cover_scale, max_for_chin))
+    pos_y = position_for_row(
+        crown_src, CROWN_POP_PX, video_w, video_h, card_w, card_h, scale=scale)
+    return scale, pos_y
+
+
+def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
+    """object-position Y that sets the crown CROWN_POP_PX above the card."""
     del limits
     return position_for_row(
-        chin_row(head), 0.0, video_w, video_h, card_w, card_h, scale=scale)
+        float(head["head_top"]), CROWN_POP_PX, video_w, video_h, card_w, card_h, scale=scale)
 
 
 def frame_popout(timeline, head, theme):
-    """Point split shots so the chin rests on the card and the head pops out.
+    """Put the face inside the card and leave about 70 px of crown above it.
 
-    Full and punch stay on the theme crop with the pop hidden. The stage is
-    raised from this measurement so panel graphics clear the hair.
+    Full and punch stay on the theme crop with the pop hidden. Split captions
+    are one line, fixed for the segment, 35 px above the high crown.
     """
+    from kallaway_style import split_caption_top
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
     height = int(timeline.get("output", {}).get("height", 1920))
@@ -730,62 +766,143 @@ def frame_popout(timeline, head, theme):
     card_h = (layout["card_bottom"] - layout["card_top"]) * height
     limits = pop_limits(layout, height)
     video_w, video_h = head["width"], head["height"]
-    groups = {}
-    for shot in timeline.get("shots") or []:
-        if shot.get("layout") != "split":
-            continue
-        scale = round(_shot_scale(shot, layout), 4)
-        groups.setdefault(scale, []).append(shot)
-    if not groups:
+    shots = [shot for shot in (timeline.get("shots") or []) if shot.get("layout") == "split"]
+    if not shots:
         return timeline
-    positions = {}
-    for scale, shots in groups.items():
-        pos_y = solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits)
-        positions[scale] = pos_y
-        label = f"50% {pos_y * 100:.2f}%"
-        for shot in shots:
-            shot["object_position"] = label
-    wide_scale = round(float(layout.get("wide_scale", 1)), 4)
-    if wide_scale in positions:
-        measure_scale = wide_scale
-        wide = positions[wide_scale]
-    else:
-        measure_scale, wide = next(iter(positions.items()))
-    label = f"50% {wide * 100:.2f}%"
-    timeline.setdefault("source", {})["object_position"] = label
+    scale, pos_y = solve_split_framing(head, video_w, video_h, card_w, card_h)
+    scale = round(scale, 4)
+    label = f"50% {pos_y * 100:.2f}%"
     high_y = source_y_on_card(
-        head.get("head_high", head["head_top"]), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+        head.get("head_high", head["head_top"]), video_w, video_h, card_w, card_h, pos_y, scale=scale)
     low_y = source_y_on_card(
-        head.get("head_low", head["head_top"]), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+        head.get("head_low", head["head_top"]), video_w, video_h, card_w, card_h, pos_y, scale=scale)
     median_y = source_y_on_card(
-        head["head_top"], video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+        head["head_top"], video_w, video_h, card_w, card_h, pos_y, scale=scale)
+    chin_y = source_y_on_card(
+        chin_row(head), video_w, video_h, card_w, card_h, pos_y, scale=scale)
+    crown_canvas = limits["card_top"] + high_y
+    font = float(layout.get("caption_split_px", layout.get("caption_font_px", 54)))
+    gap = float(layout.get("caption_crown_gap_px", 35))
+    top_px = split_caption_top(crown_canvas, font, gap)
+    # Keep the line under the graphic panel.
+    top_px = max(top_px, limits["stage_bottom"] + 12)
+    caption_pct = round(top_px / height * 100, 3)
+    for shot in shots:
+        shot["scale"] = scale
+        shot["object_position"] = label
+        shot["caption_y"] = caption_pct
+    timeline.setdefault("source", {})["object_position"] = label
     hand_above = None
     hands = head.get("hands") or []
     hand_tops = [item["top"] for item in hands if item.get("top") is not None]
     if hand_tops:
-        hand_y = source_y_on_card(
-            min(hand_tops), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
-        hand_above = round(-hand_y, 1)
-    head_px = head["head_height"] * cover_fit(video_w, video_h, card_w, card_h)
-    caption_pct = round(float(layout["caption_split_y"]) * 100, 2)
+        hand_local = source_y_on_card(
+            min(hand_tops), video_w, video_h, card_w, card_h, pos_y, scale=scale)
+        hand_above = round(-hand_local, 1)
+    fit = cover_fit(video_w, video_h, card_w, card_h)
+    face_px = face_source_px(head) * fit * scale
     timeline["source"]["popout"] = {
         "object_position": label,
+        "scale": scale,
         "caption_y": caption_pct,
         "chin_y": round(chin_row(head), 1),
         "head_top": head["head_top"],
         "head_height": head["head_height"],
-        "pop_fraction": head["pop_fraction"],
+        "face_height": round(face_source_px(head), 1),
+        "pop_fraction": head.get("pop_fraction", POP_FRACTION),
         "median_above_px": round(-median_y, 1),
         "low_above_px": round(-low_y, 1),
         "high_above_px": round(-high_y, 1),
+        "chin_above_bottom_px": round(card_h - chin_y, 1),
+        "face_px": round(face_px, 1),
         "hand_above_px": hand_above,
         "hero_clear_px": round(limits["hero_clear"], 1),
         "crown_cap_px": round(limits["crown_cap"], 1),
-        "head_px": round(head_px, 1),
-        "samples": head["samples"],
+        "head_px": round(float(head["head_height"]) * fit * scale, 1),
+        "samples": head.get("samples", 0),
         "hands": hands,
     }
     return timeline
+
+
+def _yunet():
+    model = Path(__file__).resolve().parents[2] / "editing-qa" / "measure" / "data" / "yunet.onnx"
+    if not model.is_file():
+        return None
+    try:
+        import cv2
+    except ImportError:
+        return None
+    return cv2, model
+
+
+def _largest_face(detector, frame):
+    _score, found = detector.detect(frame)
+    if found is None or len(found) == 0:
+        return None
+    return max(found, key=lambda row: float(row[2]) * float(row[3]))
+
+
+def _read_frame(path, moment, width, height):
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-ss", f"{float(moment):.3f}", "-i", str(path),
+         "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+        stderr=subprocess.DEVNULL)
+    need = width * height * 3
+    if len(raw) < need:
+        return None
+    return np.frombuffer(raw[:need], dtype=np.uint8).reshape(height, width, 3)
+
+
+def measure_face_stats(video_path, samples=6):
+    """Median face height and chin row, in the picture's own pixels."""
+    loaded = _yunet()
+    if loaded is None:
+        return None
+    cv2, model = loaded
+    facts = _video_facts(video_path)
+    if facts["duration"] <= 0:
+        return None
+    times = np.linspace(0.15, max(0.3, facts["duration"] - 0.15), samples)
+    detector = cv2.FaceDetectorYN.create(
+        str(model), "", (facts["width"], facts["height"]), 0.6, 0.3, 5000)
+    heights, chins = [], []
+    for moment in times:
+        frame = _read_frame(video_path, moment, facts["width"], facts["height"])
+        if frame is None:
+            continue
+        box = _largest_face(detector, frame)
+        if box is None:
+            continue
+        heights.append(float(box[3]))
+        chins.append(float(box[1] + box[3]))
+    if not heights:
+        return None
+    return {"face_height": float(np.median(heights)), "chin": float(np.median(chins))}
+
+
+def sample_shot_chins(video_path, shots):
+    """One chin row per full-face or punch shot, measured on that shot's picture."""
+    loaded = _yunet()
+    if loaded is None:
+        return {}
+    cv2, model = loaded
+    facts = _video_facts(video_path)
+    detector = cv2.FaceDetectorYN.create(
+        str(model), "", (facts["width"], facts["height"]), 0.6, 0.3, 5000)
+    found = {}
+    for shot in shots or []:
+        if shot.get("layout") not in {"full", "punch_in"}:
+            continue
+        moment = (float(shot["start"]) + float(shot["end"])) / 2
+        frame = _read_frame(video_path, moment, facts["width"], facts["height"])
+        if frame is None:
+            continue
+        box = _largest_face(detector, frame)
+        if box is None:
+            continue
+        found[shot.get("id")] = float(box[1] + box[3])
+    return found
 
 
 def attach_popout(timeline, raw_source, ranges, picture, theme):
@@ -814,6 +931,10 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
         alpha = refine_and_pack(picture, coarse, mask, alpha)
         recipe.write_text(EDGE_RECIPE + "\n")
     head = measure_head(mask)
+    face = measure_face_stats(picture)
+    if face:
+        head["face_height"] = face["face_height"]
+        head["chin"] = face["chin"]
     timeline["source"]["matte"] = str(alpha.resolve())
     timeline["source"]["matte_mask"] = str(mask.resolve())
     frame_popout(timeline, head, theme)

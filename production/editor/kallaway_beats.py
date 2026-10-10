@@ -287,6 +287,73 @@ def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5, joins=None):
     return shots
 
 
+def close_short_picture_gaps(shots, joins, minimum=0.5):
+    """Move a layout edge onto a picture join that would leave a flash under 0.5 s.
+
+    The plan can call a shot 2 s long while the picture changes 0.4 s after the
+    layout cut. On the output frames that 0.4 s is its own shot. Pull the edge
+    onto the join when both neighbors still hold `minimum`.
+    """
+    if len(shots) < 2 or not joins:
+        return shots
+    edges = [float(shots[0]["start"])] + [float(shot["end"]) for shot in shots]
+    for join in sorted(float(moment) for moment in joins):
+        nearest = min(range(1, len(edges) - 1), key=lambda index: abs(edges[index] - join))
+        if abs(edges[nearest] - join) < 1.0 / 30.0 or abs(edges[nearest] - join) >= minimum:
+            continue
+        if join - edges[nearest - 1] + 1e-3 < minimum or edges[nearest + 1] - join + 1e-3 < minimum:
+            continue
+        edges[nearest] = join
+    for shot, start, end in zip(shots, edges, edges[1:]):
+        shot["start"] = round(start, 3)
+        shot["end"] = round(end, 3)
+    return shots
+
+
+def short_picture_runs(path, minimum=0.5, change=28.0, edge=32):
+    """Shots under `minimum` seconds, measured from output-frame changes.
+
+    A hard cut moves the whole downscaled frame. A caption or a small graphic
+    does not clear `change`, so those are not extra shots.
+    """
+    import subprocess
+    import numpy as np
+    probe = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", str(path)],
+        text=True).strip()
+    num, den = (probe.split("/") + ["1"])[:2]
+    fps = float(num) / float(den or 1)
+    if fps <= 0:
+        fps = 30.0
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(path),
+         "-vf", f"scale={edge}:{edge}:flags=area",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        stderr=subprocess.DEVNULL)
+    frame = edge * edge * 3
+    count = len(raw) // frame
+    if count < 2:
+        return []
+    frames = np.frombuffer(raw[:count * frame], dtype=np.uint8).reshape(count, edge, edge, 3).astype(np.int16)
+    diffs = np.abs(frames[1:].astype(np.int16) - frames[:-1]).mean(axis=(1, 2, 3))
+    cuts = [0]
+    for index, diff in enumerate(diffs, start=1):
+        if float(diff) >= change:
+            cuts.append(index)
+    cuts.append(count)
+    short = []
+    for begin, end in zip(cuts, cuts[1:]):
+        seconds = (end - begin) / fps
+        if seconds + 1e-6 < minimum:
+            short.append({
+                "start": round(begin / fps, 3),
+                "end": round(end / fps, 3),
+                "seconds": round(seconds, 3),
+            })
+    return short
+
+
 def punch_short_jumps(shots, joins, scale=1.12, short=1.5):
     """A picture join inside a full-face shot that leaves a piece under 1.5 s becomes a punch.
 

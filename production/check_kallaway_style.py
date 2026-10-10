@@ -281,17 +281,26 @@ def check(timeline_path, words_path=None, project=None):
             errors.append(f"fill: {key} is {layout.get(key)}; the face must fill the card or the frame")
     for shot in shots:
         scale = shot.get("scale")
-        if scale is not None and float(scale) < 0.999:
+        if scale is None:
+            continue
+        if shot.get("layout") == "split":
+            if float(scale) < 0.30:
+                errors.append(
+                    f"fill: {shot.get('id')} split scale {scale} shrinks the face below the card")
+            continue
+        if float(scale) < 0.999:
             errors.append(
                 f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
-                "full bleed and the card fill use scale 1")
+                "full bleed uses scale 1")
     from kallaway_motifs import hero_phone_box
     stage_w = float(layout["stage_width"]) * frame_w
     stage_h = float(layout["stage_height"]) * frame_h
     phone = hero_phone_box(stage_w, stage_h)
-    if stage_w and phone["width"] / stage_w < 0.60:
+    if phone["top"] < -1:
         errors.append(
-            f"phone: mock width is {phone['width'] / stage_w:.0%} of the panel; it needs at least 60%")
+            f"phone: the mock starts at {phone['top']} px and is cropped at the top of the panel")
+    if phone["top"] + phone["height"] > stage_h - 40:
+        errors.append("phone: the mock runs out of the panel")
     style_at = (data.get("captions") or {}).get("style_at") or []
     if words and style_at and len(style_at) == len(words):
         from kallaway_beats import _sentence_spans

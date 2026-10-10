@@ -54,6 +54,45 @@ def radius_css(value):
     return f"{number}px"
 
 
+CAPTION_LINE = 1.02
+
+
+def split_caption_top(crown_y, font_px, gap=35.0, line=CAPTION_LINE):
+    """Canvas y of a split caption whose bottom is `gap` px above the crown."""
+    return float(crown_y) - float(gap) - float(font_px) * line
+
+
+def full_caption_top(beard_bottom, pin_top, font_px, below_beard=25.0, above_pin=30.0, line=CAPTION_LINE):
+    """Canvas y of a full-face caption between the beard and the lapel pin.
+
+    Letter tops stay `below_beard` px under the beard. Descenders stay
+    `above_pin` px above the pin. The line moves up when the gap is tight.
+    """
+    box = float(font_px) * line
+    top = float(beard_bottom) + float(below_beard)
+    if float(pin_top) - (top + box) < float(above_pin):
+        top = float(pin_top) - float(above_pin) - box
+    return top
+
+
+def assign_full_captions(shots, chins, layout, height=1920):
+    """Place each full-face caption from that shot's chin, between beard and pin."""
+    font = float(layout.get("caption_full_px", 67))
+    beard_pad = float(layout.get("full_beard_below_chin_px", 48))
+    pin_pad = float(layout.get("full_pin_below_chin_px", 200))
+    below = float(layout.get("caption_beard_gap_px", 25))
+    above = float(layout.get("caption_pin_gap_px", 30))
+    for shot in shots or []:
+        if shot.get("layout") not in {"full", "punch_in"}:
+            continue
+        chin = chins.get(shot.get("id"))
+        if chin is None:
+            continue
+        top = full_caption_top(float(chin) + beard_pad, float(chin) + pin_pad, font, below, above)
+        shot["caption_y"] = round(top / float(height) * 100, 3)
+    return shots
+
+
 def graphic_stage_bottom(layout_spec, height, popout=None):
     """Canvas y where panel graphics stop, above the popped hair.
 
@@ -214,9 +253,10 @@ def build_kallaway(spec, spec_path, project):
             if banned in shot:
                 raise ValueError(f"shot {index} uses {banned}; kallaway layouts are hard cuts")
         state = card_state(layout, shot.get("crop", "wide"), width, height, layout_spec, colors)
-        # A requested zoom may crop tighter. A scale under 1 leaves a dark border.
-        if shot.get("scale") and float(shot["scale"]) > 1.0:
-            state["scale"] = float(shot["scale"])
+        # Full and punch only zoom in. Split may scale down so the face is ~215 px.
+        requested = float(shot["scale"]) if shot.get("scale") else 1.0
+        if layout == "split" or requested > 1.0:
+            state["scale"] = requested
         payload = {key: state[key] for key in ("left", "top", "width", "height", "borderRadius", "boxShadow")}
         animations.append(f'tl.set("#speaker-card",{json.dumps(payload)},{start});')
         animations.append(
@@ -481,7 +521,7 @@ def build_kallaway(spec, spec_path, project):
     #pop-camera{{position:absolute}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
-    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none;font-size:{caption_px:.1f}px}}
+    #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:12;pointer-events:none;font-size:{caption_px:.1f}px}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
     .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:1em;line-height:1.02;letter-spacing:-0.04em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .cap.marker{{font-family:'{display}',cursive;font-weight:400;font-size:1.12em;letter-spacing:0}}

@@ -152,10 +152,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         seed_path=str(source))
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
-    from kallaway_beats import lengthen_closing_face, output_join_times, punch_short_jumps, snap_shot_edges
+    from kallaway_beats import (
+        close_short_picture_gaps, lengthen_closing_face, output_join_times,
+        punch_short_jumps, snap_shot_edges,
+    )
     joins = output_join_times(tightened.get("ranges") or [])
     timeline["shots"] = snap_shot_edges(
         timeline.get("shots") or [], _scene_times(leveled["output"]), joins=joins)
+    timeline["shots"] = close_short_picture_gaps(timeline["shots"], joins)
     timeline["shots"] = punch_short_jumps(timeline["shots"], joins)
     # Scene snap can pull the last face back under a second and a half.
     timeline["shots"] = lengthen_closing_face(
@@ -193,6 +197,13 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     attach_popout(
         timeline, source, tightened.get("ranges") or [],
         timeline["source"]["path"], theme)
+    from kallaway_matte import sample_shot_chins
+    from kallaway_style import assign_full_captions
+    assign_full_captions(
+        timeline.get("shots") or [],
+        sample_shot_chins(timeline["source"]["path"], timeline.get("shots") or []),
+        theme["layout"],
+        int(timeline.get("output", {}).get("height", 1920)))
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)
@@ -233,8 +244,15 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     finalize.extend(["--target-lufs", str(target_lufs), "--true-peak", str(true_peak),
                      "--codec-headroom-db", str(codec_headroom_db)])
     subprocess.run(finalize, check=True, env=env)
+    from kallaway_beats import short_picture_runs
+    shorts = short_picture_runs(final)
+    report["short_picture_runs"] = shorts
     report["output"] = str(final)
     report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
+    if shorts:
+        (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
+        raise SystemExit(
+            "output frames have a shot under 0.5s:\n" + json.dumps(shorts, indent=2))
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
