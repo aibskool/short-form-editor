@@ -425,14 +425,19 @@ def decorate_events(motif, events, stage, start, end):
                 event.update({
                     "file": MONEY_FILES[money_n % len(MONEY_FILES)], "combo": "42",
                     "label": "Money Shot", "fixed_file": True, "under_db": 10.0,
-                    "sound_at": _land(event["at"], end, 0.26), "band": "high",
+                    "sound_at": round(float(event["at"]), 3), "band": "high",
                 })
                 money_n += 1
             else:
                 event.update({
                     "combo": "19", "label": "Word Pop", "band": "high",
-                    "sound_at": _land(event["at"], end, 0.26),
+                    "sound_at": round(float(event["at"]), 3),
                 })
+        # The hook boom already hits this pair. A second money hit, and a hit
+        # delayed off the cards, is what pushed the reel over 20 per minute.
+        if events and float(events[0].get("at", 0)) < 0.5:
+            events[0]["mute"] = True
+            events[0]["mute_reason"] = "stacked"
         if len(events) > 1:
             events[1]["mute"] = True
             events[1]["mute_reason"] = "stacked"
