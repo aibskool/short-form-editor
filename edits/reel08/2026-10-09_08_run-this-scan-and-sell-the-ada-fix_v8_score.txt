@@ -1,4 +1,6 @@
-Reel 08 v8, measured on the published file.
+Reel 08 v8 DRAFT. This file is a candidate, not the ship. Editing QA still has editor fixes in flight (matte on the first frame after a cut, the side fade on the hands, the bottom torso fade, a live plate, and full-face captions with the baseline at least 25 px below the beard, or 60 px text centered in a narrow band). The next render waits on that commit. Measurements below are for this candidate only.
+
+Reel 08 v8 candidate, measured on this file.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
 1080x1920, 30 fps, 53.60s, H.264, AAC 48 kHz, 95,364,527 bytes.
