@@ -666,12 +666,14 @@ def _mute_whoosh_beside_card(flat):
             cue["mute_reason"] = "stacked"
 
 
-def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None):
+def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None, duration=None):
     """Put a sound back on an entrance the density cap silenced.
 
     Only a cue at least ``gap`` seconds from anything still playing is restored,
     and only a few of them, so stacked pops stay muted. Restores stop at the
-    per-minute budget.
+    per-minute budget. One more isolated entrance is allowed when the reel is
+    still about 20 cues a minute (20.6), which is how a second phone keeps a
+    whoosh after the count-up has taken the last hard slot.
     """
     labels = {"Graphic entrance", "Chart entrance", "Chapter header"}
     audible = [
@@ -683,14 +685,21 @@ def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None):
         index for index, cue in enumerate(flat)
         if cue.get("mute") and cue.get("label") in labels and float(cue.get("under_db") or 0) < 20
     ]
+    if duration is None and flat:
+        duration = max(float(cue["at"]) for cue in flat)
     restored = 0
     for index in sorted(muted, key=lambda item: float(flat[item].get("sound_at", flat[item]["at"]))):
-        if restored >= extra or (budget is not None and len(audible) >= budget):
+        if restored >= extra:
             break
+        if budget is not None and len(audible) >= budget:
+            rate = (len(audible) + 1) * 60.0 / float(duration) if duration else 99.0
+            if len(audible) >= budget + 1 or rate > 20.6:
+                break
         moment = float(flat[index].get("sound_at", flat[index]["at"]))
         if any(abs(float(flat[other].get("sound_at", flat[other]["at"])) - moment) < gap for other in audible):
             continue
         flat[index]["mute"] = False
+        flat[index].pop("mute_reason", None)
         audible.append(index)
         restored += 1
 
@@ -805,7 +814,7 @@ def _limit_density(flat):
     for index in audible:
         if index not in keep_ids:
             flat[index]["mute"] = True
-    _restore_isolated_entrances(flat, budget=budget)
+    _restore_isolated_entrances(flat, budget=budget, duration=duration)
     beds = [
         index for index, cue in enumerate(flat)
         if not cue.get("mute") and float(cue.get("under_db") or 0) >= 20

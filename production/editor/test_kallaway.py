@@ -1216,6 +1216,40 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Chapter header", heard)
         self.assertTrue(cues[-1].get("mute"))
 
+    def test_a_second_phone_keeps_its_whoosh_near_20_per_minute(self):
+        from kallaway_pack import _limit_density
+        cues = []
+
+        def add(at, combo, label, kind, **extra):
+            cues.append({
+                "at": at, "sound_at": at, "combo": combo, "label": label,
+                "kind": kind, "under_db": 10, **extra,
+            })
+
+        # 23.5s reel. The hard cap is 7. The second phone is 2.1s after the
+        # first, so the whoosh thinner drops it, and the count-up already
+        # holds the last slot. It still comes back: 8 cues is about 20 a minute.
+        add(0.0, "2", "Cold Slam", "bass")
+        add(5.6, "42", "Money Shot", "pop")
+        add(6.9, "25", "Number Counter", "ding")
+        add(6.9, "25", "Number Counter", "ticking", under_db=13, budget_free=True)
+        add(10.4, "8", "Graphic entrance", "whoosh")
+        add(12.5, "8", "Graphic entrance", "whoosh")
+        add(16.4, "20", "Chart entrance", "pop")
+        add(18.0, "8", "Graphic entrance", "whoosh")
+        add(20.9, "8", "Graphic entrance", "whoosh")
+        add(23.5, "47", "Loop Close", "whoosh")
+        _limit_density(cues)
+        heard = [cue for cue in cues if not cue.get("mute") and not cue.get("budget_free")]
+        self.assertLessEqual(len(heard) * 60.0 / 23.5, 20.6)
+        self.assertIn("Number Counter", [cue["label"] for cue in heard])
+        phones = [
+            cue for cue in cues
+            if cue["label"] == "Graphic entrance" and cue["kind"] == "whoosh" and not cue.get("mute")
+        ]
+        self.assertGreaterEqual(len(phones), 3)
+        self.assertTrue(any(abs(cue["at"] - 12.5) < 0.01 for cue in phones))
+
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
