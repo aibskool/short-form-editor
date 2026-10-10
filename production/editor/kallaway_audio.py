@@ -550,7 +550,8 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 min(duration, max(speech_end, end) + _TAIL_SEARCH)))
             if next_onset is not None:
                 hiss_end = min(hiss_end, max(speech_end, next_onset - 0.004))
-        if _ending_consonant(word) in ("s", "th"):
+        # "once" and "price" end in a silent e. The /s/ is still this word.
+        if _ending_consonant(word) in ("s", "ce", "se", "x", "z", "th"):
             coda_limit = speech_end + 0.26
             for later_run in runs:
                 if later_run[0] <= speech_end + 0.02:
@@ -643,7 +644,7 @@ def _finish_decays(refined, times, frames, duration):
 def _ending_consonant(word):
     import re
     token = re.sub(r"[^a-z]", "", str(word.get("word", word.get("text", ""))).lower())
-    for suffix in ("th", "s", "t", "k", "d"):
+    for suffix in ("ce", "se", "th", "x", "z", "s", "t", "k", "d"):
         if token.endswith(suffix):
             return suffix
     return ""

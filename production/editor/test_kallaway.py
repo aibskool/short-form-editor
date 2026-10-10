@@ -195,6 +195,20 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(refined[0]["fricative_tail"], 0.15)
         self.assertGreater(refined[0]["end"], 0.68)
 
+    def test_once_keeps_the_s_after_a_short_gap(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.40))
+        hiss = ((t >= 0.48) & (t < 0.62)).astype(np.float64) * 0.04 * np.sin(2 * np.pi * 6500 * t)
+        nxt = _voiced(t, 180, 0.35, (t >= 1.10) & (t < 1.30))
+        refined = refine_word_bounds(vowel + hiss + nxt, rate, [
+            {"word": "once", "start": 0.18, "end": 0.46},
+            {"word": "and", "start": 1.08, "end": 1.32},
+        ])
+        self.assertGreater(refined[0]["end"], 0.60)
+        self.assertLess(refined[0]["end"], 0.75)
+        self.assertGreater(refined[1]["start"], 1.00)
+
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
         theme, colors, _, _ = load_theme("dark")
         layout = theme["layout"]
