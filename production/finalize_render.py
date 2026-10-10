@@ -21,7 +21,7 @@ def run(args):
 
 def measure(path, target, peak):
     result = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
-                  f"loudnorm=I={target}:TP={peak}:LRA=7:print_format=json", "-f", "null", "-"])
+                  f"loudnorm=I={target}:TP={peak}:LRA=11:print_format=json", "-f", "null", "-"])
     blocks = re.findall(r'\{\s*"input_i".*?\}', result.stderr, re.S)
     if not blocks:
         raise RuntimeError("FFmpeg returned no loudness measurement")
@@ -49,7 +49,7 @@ def main():
     video_duration = next(float(s['duration']) for s in source_probe['streams'] if s.get('codec_type') == 'video')
     measured = measure(source, args.target_lufs, limiter_ceiling)
     # Second pass uses the actual mixed render, including sound accents.
-    effect = (f"loudnorm=I={args.target_lufs}:TP={limiter_ceiling}:LRA=7:"
+    effect = (f"loudnorm=I={args.target_lufs}:TP={limiter_ceiling}:LRA=11:"
               f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
               f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
               f"offset={measured['target_offset']}:linear=true,"

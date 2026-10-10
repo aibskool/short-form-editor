@@ -54,7 +54,7 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(theme["fonts"]["display"]["family"], "Permanent Marker")
         self.assertEqual(theme["fonts"]["caption"]["family"], "Inter")
         self.assertEqual(theme["fonts"]["mono"]["family"], "IBM Plex Mono")
-        self.assertAlmostEqual(theme["layout"]["tight_scale"], 0.72)
+        self.assertAlmostEqual(theme["layout"]["tight_scale"], 1.0)
         _theme, light, light_mode, _path = load_theme("light")
         self.assertEqual(light_mode, "light")
         self.assertEqual(light["background"], "#FBF8F1")
@@ -151,7 +151,7 @@ class KallawayTests(unittest.TestCase):
         rate = 16000
         t = np.arange(int(rate * 1.2)) / rate
         attack = _voiced(t, 180, 0.3, (t >= 0.30) & (t < 0.38))
-        vowel = _voiced(t, 180, 0.4, (t >= 0.53) & (t < 0.78))
+        vowel = _voiced(t, 180, 0.4, (t >= 0.46) & (t < 0.78))
         refined = refine_word_bounds(attack + vowel, rate, [{"word": "plan", "start": 0.28, "end": 0.80}])
         self.assertLess(refined[0]["start"], 0.32)
         self.assertGreater(refined[0]["end"], 0.75)
@@ -160,7 +160,7 @@ class KallawayTests(unittest.TestCase):
         rate = 16000
         t = np.arange(int(rate * 1.4)) / rate
         vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.34))
-        coda = _voiced(t, 220, 0.22, (t >= 0.56) & (t < 0.68))
+        coda = _voiced(t, 220, 0.22, (t >= 0.42) & (t < 0.68))
         nxt = _voiced(t, 180, 0.35, (t >= 0.90) & (t < 1.10))
         refined = refine_word_bounds(vowel + coda + nxt, rate, [
             {"word": "ends", "start": 0.18, "end": 0.72},
@@ -247,11 +247,12 @@ class KallawayTests(unittest.TestCase):
         splits = [shot for shot in timeline["shots"] if shot["layout"] == "split"]
         self.assertTrue(splits)
         self.assertTrue(all(shot.get("crop") == "wide" for shot in splits))
-        self.assertEqual(layout["wide_scale"], 0.66)
-        self.assertAlmostEqual(layout["tight_scale"], 0.72)
-        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.012)
-        self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.012)
-        self.assertAlmostEqual(theme["layout"]["full_scale"], 0.90)
+        self.assertEqual(layout["wide_scale"], 1.0)
+        self.assertAlmostEqual(layout["tight_scale"], 1.0)
+        self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.04)
+        self.assertAlmostEqual(theme["audio"]["sentence_gap_seconds"], 0.1)
+        self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.016)
+        self.assertAlmostEqual(theme["layout"]["full_scale"], 1.0)
         self.assertIn("paper", SFX_KINDS)
         from kallaway_pack import pack_ready
         if pack_ready():
@@ -789,7 +790,8 @@ class KallawayTests(unittest.TestCase):
         self.assertLessEqual(geo["left"] + geo["width"], box["width"] + 1)
         self.assertLessEqual(geo["top"] + geo["height"], box["height"] + 1)
         self.assertIn(f'width:{geo["width"]}px', section)
-        self.assertIn("object-fit:contain", section)
+        self.assertIn("object-fit:cover", section)
+        self.assertGreaterEqual(geo["width"] / box["width"], 0.60)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
         self.assertIn("scale:1,", script)
@@ -839,9 +841,10 @@ class KallawayTests(unittest.TestCase):
         self.assertFalse(timeline["cta"]["required"])
         self.assertEqual(timeline["cta"]["keyword"], "")
         punches = [shot for shot in timeline["shots"] if shot["layout"] == "punch_in"]
-        self.assertTrue(punches)
-        full = next(shot["scale"] for shot in timeline["shots"] if shot["layout"] == "full")
-        self.assertGreater(punches[0]["scale"], full)
+        self.assertFalse(punches)
+        full = [shot for shot in timeline["shots"] if shot["layout"] == "full"]
+        self.assertTrue(full)
+        self.assertTrue(all(shot["scale"] == 1.0 for shot in full))
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "timeline.json"
             spec.write_text(json.dumps(timeline))

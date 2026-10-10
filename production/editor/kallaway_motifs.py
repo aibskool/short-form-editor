@@ -84,18 +84,14 @@ def _cue_time(block):
 
 
 def hero_phone_box(stage_w, stage_h):
-    """Fit the whole phone, bezel included, inside the panel.
+    """Size the handset to 72% of the panel so the screen is readable.
 
-    The device is contained, not cropped. A 9:19.5 handset leaves room on
-    both sides so a status bar and the bottom of a document stay on screen.
+    A 9:19.5 device at that width is taller than the stage. The stage clips
+    the bezel. The width stays in the 60–85% band.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
-    aspect = 9 / 19.5
-    phone_h = stage_h * 0.92
-    phone_w = phone_h * aspect
-    if phone_w > stage_w * 0.62:
-        phone_w = stage_w * 0.62
-        phone_h = phone_w / aspect
+    phone_w = stage_w * 0.72
+    phone_h = min(stage_h * 0.98, phone_w / (9 / 19.5))
     pad = max(8, round(phone_w * 0.045))
     return {
         "screen": (float(phone_w - 2 * pad), float(phone_h - 2 * pad)),
@@ -428,7 +424,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         scroll_to = float(scroll.get("to", 0)) if scroll else 0
         # Width-fit the recording. A taller pan crops top and bottom only,
         # so a line of text is never cut off at the left or right edge.
-        fit = "contain"
+        fit = "cover"
         if media_url:
             picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:
@@ -449,9 +445,12 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 "x": 0, "y": highlight.get("y", 0.4), "w": 1, "h": 0.08}
             _left, top, _width, _height = screenshot_box(mapped, img_h, scroll_to)
             # An underline under the price, not a bar painted on top of the glyphs.
-            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top + _height:.2f}%">'
-                       f'{_esc(highlight.get("label") or "")}</div>')
+            # The underline marks the row. The label sat on the disclaimer text.
+            extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top + _height:.2f}%"></div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
+        cursor = ""
+        if stage.get("callout"):
+            cursor = f'<div id="{ident}-cursor" class="cursor-ptr"></div>'
         # A filling bar reads as a stray underline. It is off unless the beat asks.
         bar = ""
         if stage.get("progress"):
@@ -462,7 +461,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         body = (f'<div id="{ident}-phone" class="phone hero" style="{phone_style}">'
                 f'<div class="phone-screen" style="height:{int(geo["screen"][1])}px">'
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
-                f'{bar}{thumb}</div></div>')
+                f'{bar}{thumb}{cursor}</div></div>')
         animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         origin = "50% 42%"
         callout = stage.get("callout") or {}
@@ -500,6 +499,13 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         if stage.get("callout"):
             at = float(stage["callout"]["at"])
             draw = float(stage["callout"].get("draw") or DRAW_SECONDS)
+            # A cursor and a pulse so the mock is not frozen until the oval draws.
+            animations.append(
+                f'tl.fromTo("#{ident}-cursor",{{x:140,y:90,opacity:0}},{{x:8,y:4,opacity:1,'
+                f'duration:0.42,ease:"power2.out",immediateRender:false}},{start + 0.32:.3f});')
+            animations.append(
+                f'tl.to("#{ident}-phone",{{scale:1.04,duration:0.42,yoyo:true,repeat:3,'
+                f'ease:"sine.inOut",transformOrigin:"{origin}"}},{start + 0.48:.3f});')
             animations.append(f'tl.set("#{ident}-ring",{{opacity:1}},{at:.3f});')
             animations.append(
                 f'tl.fromTo("#{ident}-stroke",{{strokeDashoffset:{HAND_CIRCLE_LENGTH}}},'
@@ -943,7 +949,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(
             f'tl.to("#{ident}-bad",{{x:280,opacity:0,rotation:8,duration:0.22,ease:"power2.in"}},{swipe:.3f});')
         animations.append(
-            f'tl.to("#{ident}-good",{{flexBasis:"84%",maxWidth:"84%",duration:0.34,ease:"power2.out"}},{swipe + 0.16:.3f});')
+            f'tl.to("#{ident}-good",{{flexBasis:"100%",maxWidth:"100%",duration:0.34,ease:"power2.out"}},{swipe + 0.16:.3f});')
         animations.append(
             f'tl.to("#{ident}-good",{{boxShadow:"0 24px 48px rgba(0,0,0,0.45), 0 0 42px {accent}aa",'
             f'duration:0.28}},{float(good):.3f});')

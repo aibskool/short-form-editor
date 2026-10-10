@@ -55,11 +55,13 @@ def radius_css(value):
 
 
 def card_state(layout, crop, width, height, layout_spec, colors):
+    """Scale 1 fills the card or the frame. A scale under 1 letterboxes the face."""
+    del crop
+    scale = 1.0
     if layout == "split":
         margin = layout_spec["card_margin_x"] * width
         top = layout_spec["card_top"] * height
         bottom = layout_spec["card_bottom"] * height
-        scale = layout_spec["tight_scale"] if crop == "tight" else layout_spec["wide_scale"]
         radius = round(layout_spec["card_radius"] * width / 1080)
         # Flush bottom. Only the top corners are rounded. Full and punch stay square.
         return {
@@ -68,10 +70,6 @@ def card_state(layout, crop, width, height, layout_spec, colors):
             "borderRadius": f"{radius}px {radius}px 0 0",
             "boxShadow": colors["card_shadow"], "scale": scale,
         }
-    if layout == "punch_in":
-        scale = float(layout_spec.get("punch_scale", 0.99))
-    else:
-        scale = float(layout_spec.get("full_scale", 0.90))
     return {"left": 0, "top": 0, "width": width, "height": height,
             "borderRadius": 0, "boxShadow": "none", "scale": scale}
 
@@ -194,7 +192,8 @@ def build_kallaway(spec, spec_path, project):
             if banned in shot:
                 raise ValueError(f"shot {index} uses {banned}; kallaway layouts are hard cuts")
         state = card_state(layout, shot.get("crop", "wide"), width, height, layout_spec, colors)
-        if shot.get("scale"):
+        # A requested zoom may crop tighter. A scale under 1 leaves a dark border.
+        if shot.get("scale") and float(shot["scale"]) > 1.0:
             state["scale"] = float(shot["scale"])
         payload = {key: state[key] for key in ("left", "top", "width", "height", "borderRadius", "boxShadow")}
         animations.append(f'tl.set("#speaker-card",{json.dumps(payload)},{start});')
@@ -273,6 +272,7 @@ def build_kallaway(spec, spec_path, project):
     words = map_words(read_words(resolve(spec["words_path"], spec_path.parent)), segments) if spec.get("words_path") else []
     captions = spec.get("captions", {})
     styles = {str(key).lower(): value for key, value in captions.get("word_styles", {}).items()}
+    style_at = list(captions.get("style_at") or [])
     keep_case = captions.get("keep_case") or []
     phrases = captions.get("phrases") or []
     if phrases:
@@ -289,13 +289,18 @@ def build_kallaway(spec, spec_path, project):
     else:
         groups = [[word] for word in words]
     parts.append('<div id="caption-anchor">')
+    word_index = 0
     for index, group in enumerate(groups):
         start = float(group[0]["start"])
         end = float(group[-1]["end"]) if index + 1 == len(groups) else float(groups[index + 1][0]["start"])
         end = min(duration, max(end, start + 0.08))
         spans = []
         for word in group:
-            style = _word_style(word, styles)
+            if word_index < len(style_at):
+                style = style_at[word_index]
+            else:
+                style = _word_style(word, styles)
+            word_index += 1
             spans.append(
                 f'<span class="cap {style}">{escape(_caption_text(word, captions.get("omit_terminal_punctuation", True), keep_case))}</span>')
         parts.append(
@@ -320,7 +325,12 @@ def build_kallaway(spec, spec_path, project):
         def _payoff_html(token):
             bare = token.strip(".,!?:;\"'")
             if payoff and bare.lower() == payoff.lower():
-                css = "payoff box" if payoff_style == "box" else "payoff"
+                if payoff_style == "amber":
+                    css = "payoff box amber"
+                elif payoff_style == "box":
+                    css = "payoff box"
+                else:
+                    css = "payoff"
                 return f'<span class="{css}">{escape(token)}</span>'
             return escape(token)
 
@@ -450,6 +460,7 @@ def build_kallaway(spec, spec_path, project):
     .header-line{{display:block}}
     .header-text .payoff{{font-family:'{display}',cursive;font-weight:400;font-size:1.05em}}
     .header-text .payoff.box{{font-family:'{caption}',sans-serif;font-weight:800;background:{colors['accent']};color:{colors['on_accent']};padding:0.02em 0.16em;border-radius:8px}}
+    .header-text .payoff.box.amber{{background:{colors['warning']};color:{colors['contrast']}}}
     .header-text .key,.header-line.key{{color:{colors['accent']}}}
     .header-sub{{margin-top:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.08em;text-transform:uppercase;color:{colors['muted']}}}
     .header-label{{display:inline-block;background:{colors['accent']};color:{colors['on_accent']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{title_px*0.62:.1f}px;line-height:1;padding:0.22em 0.45em;border-radius:8px}}
@@ -534,15 +545,16 @@ def build_kallaway(spec, spec_path, project):
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
     .phone.hero{{position:absolute;margin:0;box-shadow:0 28px 64px rgba(0,0,0,0.55),0 0 48px {colors['accent']}44}}
-    .phone.hero .phone-screen img,.phone.hero .phone-screen video{{object-fit:contain;background:{colors['contrast']}}}
+    .phone.hero .phone-screen img,.phone.hero .phone-screen video{{object-fit:cover;background:{colors['contrast']}}}
     .phone-pan{{position:absolute;left:0;top:0;width:100%}}
     .callout-draw{{position:absolute;overflow:visible;pointer-events:none;z-index:4;opacity:0}}
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
     .phone-hl{{position:absolute;left:8%;right:8%;z-index:3;height:0;padding:0;background:transparent;border:none;border-bottom:4px solid {colors['accent']};overflow:visible}}
-    .bal-row{{display:flex;align-items:flex-end;justify-content:center;gap:28px;height:58%}}
-    .bal-col{{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;font-family:'{caption}',sans-serif;font-size:{28*scale:.0f}px;color:{colors['text']}}}
-    .bal-bar{{width:72px;height:180px;background:{colors['accent']};border-radius:10px 10px 4px 4px;transform:scaleY(0);transform-origin:50% 100%}}
-    .bal-bar.short{{height:64px;background:{colors['warning']}}}
+    .quote-card.balance{{flex-direction:column;align-items:stretch;justify-content:flex-end;height:100%;padding:4% 6% 8%}}
+    .bal-row{{display:flex;align-items:flex-end;justify-content:center;gap:6%;height:78%;width:100%}}
+    .bal-col{{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:12px;width:34%;font-family:'{caption}',sans-serif;font-size:{36*scale:.0f}px;color:{colors['text']}}}
+    .bal-bar{{width:100%;height:88%;background:{colors['accent']};border-radius:16px 16px 6px 6px;transform:scaleY(0);transform-origin:50% 100%}}
+    .bal-bar.short{{height:32%;background:{colors['warning']}}}
     .bal-ne{{font-family:'{display}',cursive;font-size:{72*scale:.0f}px;color:{colors['text']};align-self:center}}
     .stage-chip{{position:absolute;top:{10*scale:.0f}px;right:{10*scale:.0f}px;z-index:4;padding:{6*scale:.0f}px {10*scale:.0f}px;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.06em}}
     .stage-chip.bottom{{top:auto;bottom:{10*scale:.0f}px;left:{10*scale:.0f}px;right:{10*scale:.0f}px;text-align:center;white-space:normal;line-height:1.2;font-size:{mono_px*0.72:.1f}px;letter-spacing:0.03em}}
@@ -555,12 +567,12 @@ def build_kallaway(spec, spec_path, project):
     .swap{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
     .swap.side{{align-items:stretch;gap:{14*scale:.0f}px}}
     .swap-card{{position:absolute;width:78%;padding:8% 6%;border-radius:18px;text-align:center;font-family:'{display}',cursive;font-size:{42*scale:.0f}px;color:{colors['text']}}}
-    .swap.side .swap-card{{position:relative;width:auto;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6% 4%;font-size:{40*scale:.0f}px;line-height:0.95;overflow:hidden}}
+    .swap.side .swap-card{{position:relative;width:auto;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8% 6%;font-size:{64*scale:.0f}px;line-height:0.95;overflow:hidden;min-height:88%}}
     .swap-card.bad{{background:{colors['surface']};border:2px solid {colors['warning']};box-shadow:{colors['card_shadow']},0 0 36px {colors['warning']}55}}
     .swap-card.good{{background:{colors['surface']};border:2px solid {colors['accent']};box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
     .bad-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none}}
-    .rev{{width:92%;height:{78*scale:.0f}px;margin-top:{10*scale:.0f}px}}
-    .rev-label{{margin-top:4px;color:{colors['accent']};font-size:{mono_px*0.72:.1f}px}}
+    .rev{{width:100%;height:{220*scale:.0f}px;margin-top:{18*scale:.0f}px}}
+    .rev-label{{margin-top:10px;color:{colors['accent']};font-size:{mono_px:.1f}px;letter-spacing:0.08em}}
     .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
     .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}
     .quote-card{{height:100%;display:flex;align-items:center;justify-content:center;padding:6%}}

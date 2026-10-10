@@ -249,6 +249,10 @@ def decorate_events(motif, events, stage, start, end):
                 event.setdefault("combo", "8")
                 event.setdefault("label", "UI swipe")
                 event.setdefault("rotate", "ui")
+    if motif in {"phone_frame", "broll_card"}:
+        for event in events:
+            if event["kind"] == "whoosh":
+                event["label"] = "Graphic entrance"
     if motif in {"phone_frame", "broll_card", "hand_circle"}:
         draw = 0.45 if motif == "hand_circle" else float((stage.get("callout") or {}).get("draw") or 0.36)
         for event in events:
@@ -262,6 +266,13 @@ def decorate_events(motif, events, stage, start, end):
             })
     if motif == "doc_fan":
         for index, event in enumerate(events):
+            if event["kind"] == "error":
+                event.update({
+                    "file": BUZZER, "combo": "24", "label": "Graphic entrance",
+                    "fixed_file": True, "under_db": 8.0, "trim_frames": 8,
+                    "fade_frames": 3, "band": "noise",
+                })
+                continue
             event.update({
                 "file": SWOOSH_FAST, "combo": "paper", "label": "Page swish",
                 "fixed_file": True, "under_db": 10.0, "band": "mid",
@@ -297,6 +308,11 @@ def decorate_events(motif, events, stage, start, end):
             event["mute"] = True
             event["combo"] = "25"
             event["label"] = "Counter tick"
+        if ticks:
+            ticks[0]["mute"] = False
+            ticks[0]["kind"] = "pop"
+            ticks[0]["combo"] = "19"
+            ticks[0]["label"] = "Graphic entrance"
         for event in events:
             if event["kind"] != "ding":
                 continue
@@ -376,6 +392,9 @@ def decorate_events(motif, events, stage, start, end):
                 "file": LIST_BELLS[index % len(LIST_BELLS)], "combo": "22", "label": "List Tick",
                 "fixed_file": True, "trim_frames": 8, "fade_frames": 3, "band": "high",
             })
+        if events:
+            events[0]["label"] = "Graphic entrance"
+            events[0]["combo"] = "19"
     if motif == "offer_pair":
         items = [str(item) for item in (stage.get("items") or [])]
         money_n = 0
@@ -395,7 +414,10 @@ def decorate_events(motif, events, stage, start, end):
                 })
     if motif == "state_swap":
         for event in events:
-            if event["kind"] == "pop":
+            if event["kind"] == "whoosh":
+                event["label"] = "Graphic entrance"
+                event["combo"] = "8"
+            elif event["kind"] == "pop":
                 event.update({"combo": "19", "label": "Word Pop", "sound_at": _land(event["at"], end, 0.26)})
             elif event["kind"] == "error":
                 event.update({
@@ -596,6 +618,33 @@ def _density_rank(cue):
     return 8
 
 
+def _restore_isolated_entrances(flat, extra=5, gap=0.75):
+    """Put a sound back on an entrance the density cap silenced.
+
+    Only a cue at least ``gap`` seconds from anything still playing is restored,
+    and only a few of them, so stacked pops stay muted.
+    """
+    labels = {"Graphic entrance", "Chart entrance", "Chapter header"}
+    audible = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and float(cue.get("under_db") or 0) < 20
+    ]
+    muted = [
+        index for index, cue in enumerate(flat)
+        if cue.get("mute") and cue.get("label") in labels and float(cue.get("under_db") or 0) < 20
+    ]
+    restored = 0
+    for index in sorted(muted, key=lambda item: float(flat[item].get("sound_at", flat[item]["at"]))):
+        if restored >= extra:
+            break
+        moment = float(flat[index].get("sound_at", flat[index]["at"]))
+        if any(abs(float(flat[other].get("sound_at", flat[other]["at"])) - moment) < gap for other in audible):
+            continue
+        flat[index]["mute"] = False
+        audible.append(index)
+        restored += 1
+
+
 def _limit_density(flat):
     """Stay at or under 20 SFX per minute. Beds under 20 dB do not spend the budget.
 
@@ -657,6 +706,7 @@ def _limit_density(flat):
     for index in audible:
         if index not in keep_ids:
             flat[index]["mute"] = True
+    _restore_isolated_entrances(flat)
     beds = [
         index for index, cue in enumerate(flat)
         if not cue.get("mute") and float(cue.get("under_db") or 0) >= 20

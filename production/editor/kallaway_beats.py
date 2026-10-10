@@ -25,9 +25,9 @@ STAGE_KEYS = (
     "variant", "uncropped",
 )
 
-# Full-screen is zoomed out so the face is about a third of the frame. A punch is +10%.
-FULL_SCALE = 0.90
-PUNCH_STEP = 1.10
+# Full-screen and punch share scale 1 so the face is full bleed with no mid-shot jump.
+FULL_SCALE = 1.0
+PUNCH_STEP = 1.0
 CONTRAST_WORDS = {"but", "so", "now", "most", "never", "stop", "you"}
 
 
@@ -81,7 +81,8 @@ def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUN
                     best = (rank, at)
         piece = {key: value for key, value in shot.items() if key != "stage"}
         piece["scale"] = round(float(full_scale), 3)
-        if best is None:
+        punch_scale = round(float(full_scale) * float(step), 3)
+        if best is None or abs(punch_scale - float(full_scale)) < 0.001:
             piece["start"] = round(start, 3)
             piece["end"] = round(end, 3)
             piece["layout"] = "full"
@@ -97,7 +98,7 @@ def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUN
         punch["start"] = round(at, 3)
         punch["end"] = round(end, 3)
         punch["layout"] = "punch_in"
-        punch["scale"] = round(float(full_scale) * float(step), 3)
+        punch["scale"] = punch_scale
         built.append(punch)
     for index, shot in enumerate(built):
         shot["id"] = f"shot-{index:02d}"
@@ -194,7 +195,8 @@ def _fit_header(header, width, height, layout):
         source = lines[min(max(green), len(lines) - 1)]
         payoff = source.split()[-1].strip(".,!?:;\"'") if source.split() else ""
     if payoff and (payoff[:1] == "$" or any(ch.isdigit() for ch in payoff)):
-        payoff_style = "box"
+        # A price in the title is the bad offer. Amber, not a green payoff box.
+        payoff_style = "amber"
     title_top = float(layout.get("title_top", 0.0520833333)) * height
     max_bottom = min(240.0, float(layout["stage_top"]) * height - 8)
     room = max(48.0, max_bottom - title_top)
@@ -222,12 +224,55 @@ def _fit_header(header, width, height, layout):
     return entry
 
 
+def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
+    """Move a layout cut onto a nearby picture cut so a 2-frame orphan cannot sit between them."""
+    if len(shots) < 2 or not scene_times:
+        return shots
+    original = [float(shot["start"]) for shot in shots] + [float(shots[-1]["end"])]
+    edges = list(original)
+    scenes = [float(moment) for moment in scene_times]
+    for index in range(1, len(edges) - 1):
+        nearest = min(scenes, key=lambda moment: abs(moment - edges[index]))
+        if abs(nearest - edges[index]) <= window:
+            edges[index] = nearest
+    for index in range(1, len(edges) - 1):
+        if edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum:
+            edges[index] = original[index]
+    for shot, start, end in zip(shots, edges, edges[1:]):
+        shot["start"] = round(start, 3)
+        shot["end"] = round(end, 3)
+    return shots
+
+
+def _sentence_spans(words):
+    """Sentence slices. A period, a long pause, or a capital start opens the next one."""
+    if not words:
+        return []
+    continuations = {"and", "but", "that", "so", "when", "or", "because"}
+    spans = []
+    begin = 0
+    for index, word in enumerate(words[:-1]):
+        text = str(word.get("word") or word.get("text") or "").rstrip()
+        nxt = str(words[index + 1].get("word") or words[index + 1].get("text") or "").strip()
+        gap = float(words[index + 1]["start"]) - float(word["end"])
+        token = _token(word)
+        nxt_token = _token(words[index + 1])
+        end_punct = text.endswith((".", "!", "?"))
+        capital = bool(nxt[:1].isupper()) and nxt_token not in {"i", "ive", "id", "im"}
+        fresh_i = nxt_token in {"i", "ive", "id", "im"} and token not in continuations
+        if end_punct or gap > 0.35 or capital or fresh_i:
+            spans.append((begin, index + 1))
+            begin = index + 1
+    spans.append((begin, len(words)))
+    return spans
+
+
 def _cap_emphasis(words, styles, spans):
-    """At most one marker or green word in each beat. Amber prices stay."""
-    rank = {"marker": 0, "green": 1}
-    winners = set()
-    losers = set()
-    for begin, end in spans:
+    """One colored word per sentence. Amber counts. A price beats another amber."""
+    rank = {"marker": 0, "amber": 1, "green": 2}
+    chosen = {}
+    groups = _sentence_spans(words) or list(spans)
+    for begin, end in groups:
         best = None
         seen = []
         for index in range(begin, end):
@@ -235,17 +280,31 @@ def _cap_emphasis(words, styles, spans):
             style = styles.get(token)
             if style not in rank:
                 continue
-            seen.append(token)
-            if best is None or rank[style] < best[0] or (rank[style] == best[0] and index >= best[2]):
-                best = (rank[style], token, index)
+            score = rank[style]
+            if any(ch.isdigit() for ch in token) and style == "amber":
+                score = -1
+            seen.append(index)
+            if best is None or score < best[0] or (score == best[0] and index >= best[2]):
+                best = (score, token, index)
         if best:
-            winners.add(best[1])
-            for token in seen:
-                if token != best[1]:
-                    losers.add(token)
-    for token in losers - winners:
-        styles[token] = "normal"
-    return styles
+            chosen[best[2]] = styles.get(best[1], "normal")
+    style_at = []
+    for index, word in enumerate(words):
+        token = _token(word)
+        style = styles.get(token, "normal")
+        if style in rank:
+            style = chosen.get(index, "normal")
+        style_at.append(style if style in {"normal", "marker", "green", "amber"} else "normal")
+    kept = {}
+    for index, style in enumerate(style_at):
+        if style in rank:
+            kept[_token(words[index])] = style
+    for token in list(styles):
+        if styles.get(token) in rank and token not in kept:
+            styles[token] = "normal"
+    for token, style in kept.items():
+        styles[token] = style
+    return style_at
 
 
 def _clean(value):
@@ -444,7 +503,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         token = _token(word)
         if baked in {"marker", "green", "amber"} and token not in styles:
             styles[token] = baked
-    _cap_emphasis(ordered, styles, spans)
+    style_at = _cap_emphasis(ordered, styles, spans)
     full_scale = float(stage_plan.get("full_scale") or theme["layout"].get("full_scale") or FULL_SCALE)
     step = float(stage_plan.get("punch_step") or PUNCH_STEP)
     shots = apply_emphasis_punches(shots, ordered, styles, full_scale, step)
@@ -579,6 +638,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         "stage_slots": stage_slots,
         "captions": {
             "max_words": 1, "uppercase": False, "word_styles": styles,
+            "style_at": style_at,
             "keep_case": [_clean(token) for token in keep_case],
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },

@@ -80,8 +80,8 @@ def check(timeline_path, words_path=None, project=None):
         length = float(shot["end"]) - float(shot["start"])
         if length > 5.5 + tolerance:
             errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is longer than 5.5s")
-        elif length < 0.4:
-            errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is shorter than 0.4s")
+        elif length < 0.5 - tolerance:
+            errors.append(f"shots:{shot.get('id', index)}: {length:.2f}s is shorter than 0.5s")
         elif float(shot["start"]) >= 3.2 and index != len(shots) - 1 and not 1.15 <= length <= 5.05:
             warnings.append(f"shots:{shot.get('id', index)}: body shot is {length:.2f}s; expected about 2-5s")
         if index and abs(float(shot["start"]) - float(shots[index - 1]["end"])) > tolerance:
@@ -234,6 +234,50 @@ def check(timeline_path, words_path=None, project=None):
             if ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah:
                 errors.append(f"collision: callout and highlight overlap on {shot.get('id')}")
     del stage_right
+    layout = theme["layout"]
+    for key in ("wide_scale", "tight_scale", "full_scale", "punch_scale"):
+        if float(layout.get(key, 1)) < 0.999:
+            errors.append(f"fill: {key} is {layout.get(key)}; the face must fill the card or the frame")
+    for shot in shots:
+        scale = shot.get("scale")
+        if scale is not None and float(scale) < 0.999:
+            errors.append(
+                f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
+                "full bleed and the card fill use scale 1")
+    from kallaway_motifs import hero_phone_box
+    stage_w = float(layout["stage_width"]) * frame_w
+    stage_h = float(layout["stage_height"]) * frame_h
+    phone = hero_phone_box(stage_w, stage_h)
+    if stage_w and phone["width"] / stage_w < 0.60:
+        errors.append(
+            f"phone: mock width is {phone['width'] / stage_w:.0%} of the panel; it needs at least 60%")
+    style_at = (data.get("captions") or {}).get("style_at") or []
+    if words and style_at and len(style_at) == len(words):
+        from kallaway_beats import _sentence_spans
+        for begin, end in _sentence_spans(words):
+            colored = [
+                index for index in range(begin, end)
+                if style_at[index] in {"marker", "green", "amber"}
+            ]
+            if len(colored) > 1:
+                errors.append(
+                    f"emphasis: sentence at {words[begin].get('start')}s has {len(colored)} colored words")
+    if words and len(words) > 4:
+        gaps = []
+        mids = []
+        for prev, word in zip(words, words[1:]):
+            gap = float(word["start"]) - float(prev["end"])
+            gaps.append(gap)
+            text = str(prev.get("word") or prev.get("text") or "").rstrip()
+            if not text.endswith((".", "!", "?")):
+                mids.append((gap, prev))
+        tight = sum(gap <= 0.05 for gap in gaps) / len(gaps) > 0.6
+        if tight:
+            for gap, prev in mids:
+                if gap > 0.045:
+                    errors.append(
+                        f"gap: mid-phrase pause after {prev.get('word')} is {gap * 1000:.0f} ms; "
+                        "the cap is 40 ms")
     keyword = str(cta.get("keyword") or "")
     closing = " ".join(str(header.get("text", "")) for header in headers).lower()
     # A reach reel sets cta.required false and ends on the last word with no comment ask.

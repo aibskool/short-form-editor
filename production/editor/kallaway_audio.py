@@ -151,10 +151,9 @@ def _frame_rms(samples, rate, win_s=0.01, hop_s=0.004):
     return times, frames
 
 
-# Stop closures inside a word are often 80–120 ms. Bridge those so the louder
-# half of the word cannot discard the earlier half. A breath or the previous
-# word's tail sits farther away and stays in its own cluster.
-_WORD_BRIDGE_SECONDS = 0.14
+# A stop closure is under about 90 ms. A mid-phrase pause is 120 ms or more,
+# and bridging it would keep the slack inside the word.
+_WORD_BRIDGE_SECONDS = 0.09
 
 
 # Keep the decay, including a quiet fricative the broadband meter would miss.
@@ -464,7 +463,7 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                 gap = other[0] - cluster[1]
             else:
                 continue
-            if gap > 0.24:
+            if gap > 0.105:
                 continue
             if peak(other) < main_peak * (10 ** (-12.0 / 20.0)):
                 continue
@@ -503,22 +502,26 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                                 next_onset = tail + 0.004
                             break
                     break
-        # One stop release after the vowel (the /dʒ/ of "leverage"). A blip
-        # shorter than 40 ms, or anything that belongs to the next word, stays out.
-        if next_onset is None or next_onset > speech_end + 0.13:
+        # One stop release after the vowel (the /d/ of "build", the /k/ of "make").
+        # The burst can be only a couple of frames and 25 dB under the vowel.
+        stop_final = _ending_consonant(word) in {"d", "t", "k", "p", "b", "g"}
+        release_window = 0.11 if stop_final else 0.12
+        release_floor = -28.0 if stop_final else -12.0
+        min_burst = 0.012 if stop_final else 0.04
+        if next_onset is None or next_onset > speech_end + release_window + 0.02:
             for run in runs:
-                if run[0] <= speech_end + 0.015:
+                if run[0] <= speech_end + 0.008:
                     continue
-                if run[0] > speech_end + 0.12:
+                if run[0] > speech_end + release_window:
                     break
-                if run[1] - run[0] < 0.04:
+                if run[1] - run[0] < min_burst:
                     continue
                 if next_onset is not None and run[0] >= next_onset - 0.01:
                     break
                 if nxt and _overlap(run, next_start, next_end) > 0.02:
                     break
                 burst = peak(run)
-                if burst < max(main_peak * (10 ** (-12.0 / 20.0)), 10 ** (-34.0 / 20.0)):
+                if burst < max(main_peak * (10 ** (release_floor / 20.0)), 10 ** (-40.0 / 20.0)):
                     continue
                 speech_end = run[1]
                 break
@@ -644,10 +647,18 @@ def _finish_decays(refined, times, frames, duration):
 def _ending_consonant(word):
     import re
     token = re.sub(r"[^a-z]", "", str(word.get("word", word.get("text", ""))).lower())
-    for suffix in ("ce", "se", "th", "x", "z", "s", "t", "k", "d"):
+    # "make" and "like" end in a silent e. The stop is the letter before it.
+    if len(token) >= 3 and token.endswith("e") and token[-2] in "kptbdg":
+        return token[-2]
+    for suffix in ("ce", "se", "th", "x", "z", "s", "t", "k", "p", "b", "g", "d"):
         if token.endswith(suffix):
             return suffix
     return ""
+
+
+def _ends_sentence(word):
+    text = str(word.get("word") or word.get("text") or "").rstrip()
+    return text.endswith((".", "!", "?"))
 
 
 def measure_joins(samples, rate, ranges, words):
@@ -695,14 +706,16 @@ def measure_joins(samples, rate, ranges, words):
     return joins
 
 
-def keep_ranges(words, source_duration, gap=0.02, handle=0.0):
-    """Cut pauses longer than ``gap`` seconds down to about ``gap``.
+def keep_ranges(words, source_duration, gap=0.04, handle=0.0, sentence_gap=None):
+    """Cut a mid-phrase pause down to ``gap`` (at most 40 ms).
 
-    ``gap`` is the silence left between phrases (0 to 40 ms). The word bounds
-    already include the decay and the safety tail, so this only deletes the
-    air in the middle. ``handle`` is extra time outside those bounds.
+    A sentence ending in . ! or ? keeps ``sentence_gap`` (about 100 ms). The
+    word bounds already include the decay, so this only deletes the air
+    between words. ``handle`` is extra time outside those bounds.
     """
-    if gap <= 0 or handle < 0:
+    if sentence_gap is None:
+        sentence_gap = gap
+    if gap <= 0 or sentence_gap <= 0 or handle < 0:
         raise ValueError("pause gap and handle must be non-negative")
     ordered = sorted(words, key=lambda word: float(word["start"]))
     if not ordered:
@@ -712,9 +725,10 @@ def keep_ranges(words, source_duration, gap=0.02, handle=0.0):
     start = max(0.0, float(ordered[0]["start"]) - min(handle, gap / 2))
     for prev, word in zip(ordered, ordered[1:]):
         pause = float(word["start"]) - float(prev["end"])
-        if pause > gap:
-            tail = min(gap * 0.45, max(0.0, pause - 0.004))
-            head = min(gap - tail, max(0.0, pause - tail))
+        limit = sentence_gap if _ends_sentence(prev) else gap
+        if pause > limit:
+            tail = min(limit * 0.45, max(0.0, pause - 0.004))
+            head = min(limit - tail, max(0.0, pause - tail))
             ranges.append((start, min(source_duration, float(prev["end"]) + tail)))
             start = max(0.0, float(word["start"]) - head)
     ranges.append((start, min(source_duration, float(ordered[-1]["end"]) + min(handle, gap / 2))))
@@ -767,12 +781,92 @@ def _load_mix_voice(path, rate=RATE):
     return np.ascontiguousarray(samples, dtype=np.float64)
 
 
-def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
+def _quiet_spans(times, quiet):
+    spans = []
+    start = None
+    for moment, is_quiet in zip(times, quiet):
+        if is_quiet and start is None:
+            start = float(moment)
+        elif not is_quiet and start is not None:
+            spans.append((start, float(moment)))
+            start = None
+    if start is not None and len(times):
+        spans.append((start, float(times[-1])))
+    return spans
+
+
+def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
+    """Cut a quiet stretch inside a kept range down to ``max_keep``.
+
+    A stop closure under ``min_gap`` stays. A 120–280 ms mid-phrase pause,
+    which refine folded into the word, does not.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    if len(samples) < 8 or not ranges:
+        return list(ranges)
+    speech = _speech_band(samples, rate)
+    times, frames = _frame_rms(speech, rate, win_s=0.01, hop_s=0.005)
+    if len(frames) == 0:
+        return list(ranges)
+    floor = max(float(np.percentile(frames, 20)), 1e-6)
+    thresh = max(floor * (10 ** (_TAIL_MARGIN_DB / 20.0)), 10 ** (-42.0 / 20.0))
+    quiet = frames < thresh
+    rebuilt = []
+    for begin, end in ranges:
+        cursor = float(begin)
+        holes = []
+        for q0, q1 in _quiet_spans(times, quiet):
+            lo = max(q0, float(begin) + 0.03)
+            hi = min(q1, float(end) - 0.03)
+            if hi - lo >= min_gap:
+                holes.append((lo, hi))
+        for lo, hi in holes:
+            keep_to = min(hi, lo + max_keep * 0.5)
+            if keep_to - cursor > 0.02:
+                rebuilt.append((cursor, keep_to))
+            cursor = max(cursor, hi - max_keep * 0.5)
+        if float(end) - cursor > 0.02:
+            rebuilt.append((cursor, float(end)))
+    return rebuilt or list(ranges)
+
+
+def trim_final_nonspeech(samples, rate, ranges, max_tail=0.12):
+    """Leave at most ``max_tail`` of non-speech after the last decay."""
+    if not ranges:
+        return ranges
+    samples = np.asarray(samples, dtype=np.float64)
+    speech = _speech_band(samples, rate)
+    fricative = _fricative_band(samples, rate)
+    times, speech_frames = _frame_rms(speech, rate, win_s=0.01, hop_s=0.005)
+    _high_times, high_frames = _frame_rms(fricative, rate, win_s=0.01, hop_s=0.005)
+    if len(speech_frames) == 0:
+        return ranges
+    begin, end = ranges[-1]
+    speech_floor = max(float(np.percentile(speech_frames, 20)), 1e-6)
+    speech_thresh = max(speech_floor * (10 ** (6.0 / 20.0)), 10 ** (-42.0 / 20.0))
+    high_thresh = 10 ** (-46.0 / 20.0)
+    last = float(begin)
+    for index, moment in enumerate(times):
+        if moment < begin or moment > end:
+            continue
+        hot = speech_frames[index] >= speech_thresh
+        if index < len(high_frames) and high_frames[index] >= high_thresh:
+            hot = True
+        if hot:
+            last = float(moment)
+    cap = min(float(end), last + max_tail)
+    if float(end) - cap > 0.02 and cap - float(begin) > 0.05:
+        ranges = list(ranges)
+        ranges[-1] = (float(begin), cap)
+    return ranges
+
+
+def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
-    Each word keeps its decay plus a safety tail. Pauses longer than ``gap``
-    are cut down to about ``gap``, and each join gets an equal-power crossfade.
-    Picture hard-cuts at the midpoint of that crossfade so the clocks match.
+    Each word keeps its decay plus a safety tail. Mid-phrase pauses are cut
+    down to ``gap``. Sentence ends keep ``sentence_gap``. Each join gets an
+    equal-power crossfade. Picture hard-cuts at the midpoint of that crossfade.
     """
     if not 0 <= crossfade <= 0.02:
         raise ValueError("cut crossfade must be between 0 and 20 ms")
@@ -780,7 +874,9 @@ def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
     duration = _probe_duration(source)
     samples = _load_mono(source)
     refined = refine_word_bounds(samples, RATE, words)
-    ranges = keep_ranges(refined, duration, gap=gap, handle=handle)
+    ranges = keep_ranges(refined, duration, gap=gap, handle=handle, sentence_gap=sentence_gap)
+    ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
+    ranges = trim_final_nonspeech(samples, RATE, ranges)
     # Picture hard-cuts on the word boundary. The crossfade lives in the silence
     # after the safety tail, so it does not eat the fricative.
     video = list(ranges)
@@ -835,7 +931,7 @@ def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
 def _loudnorm_measure(path, target, peak, chain):
     result = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
-         f"{chain},loudnorm=I={target}:TP={peak}:LRA=7:print_format=json", "-f", "null", "-"],
+         f"{chain},loudnorm=I={target}:TP={peak}:LRA=11:print_format=json", "-f", "null", "-"],
         capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(result.stderr[-4000:])
@@ -847,13 +943,15 @@ def _loudnorm_measure(path, target, peak, chain):
     return json.loads(blocks[-1])
 
 
-def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4000, presence_db=4):
-    """Compress about 4:1, add a presence lift, and level the voice to the target."""
+def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4000, presence_db=4,
+                 ratio=2.2):
+    """Ease the compressor so loudness range stays near 2–5, then level the voice."""
     source, output = Path(source), Path(output)
+    ratio = max(1.2, min(float(ratio), 4.0))
     chain = (f"highpass=f=80,equalizer=f={presence_hz}:t=q:w=1.3:g={presence_db},"
-             "acompressor=threshold=-18dB:ratio=4:attack=8:release=110:makeup=3")
+             f"acompressor=threshold=-20dB:ratio={ratio:.2f}:attack=12:release=180:makeup=1.2")
     measured = _loudnorm_measure(source, target_lufs, true_peak, chain)
-    effect = (f"{chain},loudnorm=I={target_lufs}:TP={true_peak}:LRA=7:"
+    effect = (f"{chain},loudnorm=I={target_lufs}:TP={true_peak}:LRA=11:"
               f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
               f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
               f"offset={measured['target_offset']}:linear=true")

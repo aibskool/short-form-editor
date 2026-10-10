@@ -663,15 +663,12 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out):
 
 
 def _shot_scale(shot, layout):
-    if shot.get("scale"):
-        return float(shot["scale"])
-    if shot.get("layout") == "punch_in":
-        return float(layout.get("punch_scale", 0.99))
-    if shot.get("layout") == "full":
-        return float(layout.get("full_scale", 0.90))
-    if shot.get("crop") == "tight":
-        return float(layout.get("tight_scale", 0.72))
-    return float(layout.get("wide_scale", 1))
+    """Split and full-bleed stay at 1. The crop is object-position, not a shrink."""
+    del layout
+    if shot.get("layout") in {None, "split", "full", "punch_in"}:
+        requested = float(shot["scale"]) if shot.get("scale") else 1.0
+        return requested if requested > 1.0 else 1.0
+    return 1.0
 
 
 def pop_limits(layout, height):

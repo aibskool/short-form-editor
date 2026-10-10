@@ -80,6 +80,24 @@ def _try_transcribe(source, destination):
     return words
 
 
+def _scene_times(video):
+    """Picture-cut times. A layout boundary near one of these is the same cut."""
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(video),
+         "-filter:v", "select='gt(scene,0.28)',showinfo", "-f", "null", "-"],
+        capture_output=True, text=True)
+    times = []
+    for line in result.stderr.splitlines():
+        if "pts_time:" not in line:
+            continue
+        token = line.split("pts_time:", 1)[1].split()[0]
+        try:
+            times.append(float(token))
+        except ValueError:
+            continue
+    return times
+
+
 def render(source, output, words_path=None, project=None, keyword=None, title=None, theme_mode="dark",
            theme_path=None, stage_plan=None, music=None, emphasis=None, quality="draft", workers=1,
            skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None):
@@ -96,11 +114,13 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         source, raw_words, project / "tightened.mp4",
         gap=float(audio_cfg["pause_gap_seconds"]),
         handle=float(audio_cfg["join_handle_seconds"]),
-        crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)))
+        crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)),
+        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])))
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),
-        presence_hz=float(audio_cfg["presence_hz"]), presence_db=float(audio_cfg["presence_db"]))
+        presence_hz=float(audio_cfg["presence_hz"]), presence_db=float(audio_cfg["presence_db"]),
+        ratio=float(audio_cfg.get("compression_ratio", 2.2)))
     words = tightened["words"]
     # The processed file keeps the tightened picture. Word times are on that clock.
     if words[-1]["end"] > tightened["duration"] + 0.08:
@@ -132,6 +152,8 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         seed_path=str(source))
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
+    from kallaway_beats import snap_shot_edges
+    timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], _scene_times(leveled["output"]))
     if timeline.get("sfx"):
         baked = project / "voice-sfx.mp4"
         mixed = mix_voice_sfx(leveled["output"], baked, timeline["sfx"], project / "sfx")
