@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -12,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from kallaway_audio import (
-    SFX_KINDS, UNDER_DB, keep_ranges, measure_sfx_stem, refine_word_bounds, sfx_variants,
-    write_sfx_library,
+    SFX_KINDS, UNDER_DB, _k_weight, _load_mix_voice, _momentary_lufs, keep_ranges,
+    measure_sfx_stem, mix_cues, refine_word_bounds, sfx_variants, write_sfx_library,
 )
 from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
@@ -532,6 +533,48 @@ class KallawayTests(unittest.TestCase):
             self.assertFalse(row["clustered"], row)
             self.assertTrue(row["ok"], row)
             self.assertLessEqual(abs(row["error_db"]), 2.0, row)
+            self.assertLessEqual(row["gain_db"], 12.0, row)
+
+    def test_leading_silence_does_not_crush_the_voice(self):
+        from kallaway_pack import pack_ready
+        if not pack_ready():
+            return
+        rate = 48000
+        t = np.arange(int(rate * 3.0)) / rate
+        voice = 0.2 * np.sin(2 * np.pi * 180 * t)
+        cues = [
+            {"kind": "bass", "at": 0.20, "file": "07 Booms/Boom 14.mp3", "under_db": 6},
+            {"kind": "pop", "at": 1.60, "file": "35 Money & Cash/Cash Register Ka Ching 02.mp3", "under_db": 10},
+        ]
+        mixed, report = mix_cues(voice, rate, cues)
+        self.assertEqual(len(report), 2)
+        isolated = _k_weight(mixed - voice, rate)
+        for row in report:
+            self.assertGreater(row["cue_lufs"], -40.0, row)
+            self.assertLess(row["gain_db"], 6.0, row)
+            heard = _momentary_lufs(isolated, row["at"])
+            self.assertGreater(heard, -50.0, row)
+            self.assertLess(abs(heard - row["target_lufs"]), 3.0, row)
+        voice_rms = float(np.sqrt(np.mean(voice * voice)))
+        mix_rms = float(np.sqrt(np.mean(mixed * mixed)))
+        self.assertLess(abs(20.0 * np.log10(mix_rms / voice_rms)), 6.0)
+        self.assertLess(float(np.max(np.abs(mixed))), 2.0)
+
+    def test_stereo_voice_is_averaged_before_the_sfx_bake(self):
+        rate = 48000
+        tone = (0.8 * np.sin(2 * np.pi * 220 * np.arange(rate // 2) / rate)).astype(np.float32)
+        stereo = np.column_stack([tone, tone])
+        pcm = (np.clip(stereo, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "voice.wav"
+            with wave.open(str(path), "wb") as handle:
+                handle.setnchannels(2)
+                handle.setsampwidth(2)
+                handle.setframerate(rate)
+                handle.writeframes(pcm)
+            voice = _load_mix_voice(path, rate)
+        self.assertLess(float(np.max(np.abs(voice))), 0.85)
+        self.assertGreater(float(np.max(np.abs(voice))), 0.7)
 
     def test_progress_bar_is_off_unless_the_beat_asks(self):
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",

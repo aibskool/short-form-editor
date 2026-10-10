@@ -138,7 +138,10 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         timeline["source"]["path"] = str(baked.resolve())
         timeline["sfx_baked"] = True
         timeline["sfx_mix"] = {"peak": mixed["peak"], "trim_db": mixed["trim_db"]}
-        for cue, row in zip(timeline["sfx"], mixed["cues"]):
+        # The report lists only the cues that were played. Zip would write
+        # those levels onto muted rows and drop the rest.
+        for row in mixed["cues"]:
+            cue = timeline["sfx"][row["source_index"]]
             cue.update({
                 "under_db": row["under_db"],
                 "gain_db": row["gain_db"],
@@ -146,6 +149,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
                 "target_lufs": row["target_lufs"],
                 "voice_lufs": row["voice_lufs"],
                 "file": row["file"],
+                "body_at": row["body_at"],
             })
     timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
     timeline["joins"] = tightened.get("joins") or []

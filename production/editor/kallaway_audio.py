@@ -462,6 +462,18 @@ def _load_mono(path, rate=RATE):
     return np.frombuffer(raw, dtype=np.float32).copy()
 
 
+def _load_mix_voice(path, rate=RATE):
+    """Stereo voice for the SFX bake, averaged so a correlated pair does not sum past 0 dBFS.
+
+    ``-ac 1`` adds the channels. The leveled file already peaks near -1 dBTP per
+    channel, and that sum clips before a single effect is added.
+    """
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "2", "-ar", str(rate), "-f", "f32le", "-"])
+    samples = np.frombuffer(raw, dtype="<f4").reshape(-1, 2).mean(axis=1)
+    return np.ascontiguousarray(samples, dtype=np.float64)
+
+
 def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
@@ -614,6 +626,41 @@ def _momentary_lufs(weighted, start):
     return _lufs(float(np.dot(chunk, chunk)) / count)
 
 
+def _loudest_momentary(weighted):
+    """Loudest ungated 400 ms window. Returns LUFS and the window start in seconds."""
+    count = int(round(_MOMENTARY_S * RATE))
+    if len(weighted) == 0:
+        return -120.0, 0.0
+    if len(weighted) <= count:
+        return _lufs(float(np.dot(weighted, weighted)) / max(1, len(weighted))), 0.0
+    step = max(1, int(round(0.010 * RATE)))
+    power = np.cumsum(weighted * weighted)
+    best = -120.0
+    best_at = 0
+    last = len(weighted) - count
+    for origin in range(0, last + 1, step):
+        total = float(power[origin + count - 1] - (power[origin - 1] if origin else 0.0))
+        val = _lufs(total / count)
+        if val > best:
+            best = val
+            best_at = origin
+    return best, best_at / float(RATE)
+
+
+def _placed_window(weighted):
+    """400 ms window that should land on the cue, and where it starts in the file.
+
+    Boom 14 and Ka Ching 02 open on silence. Scoring that head as the level
+    asks for tens of dB of gain, and the hit then arrives late. When the head
+    is more than 8 dB quieter than the loudest window, skip to that window.
+    """
+    loud, body = _loudest_momentary(weighted)
+    head = _momentary_lufs(weighted, 0.0)
+    if body > 0.02 and loud > head + 8.0:
+        return loud, body
+    return head, 0.0
+
+
 def _short_term_lufs(weighted, start):
     """Ungated 3 s K-weighted loudness around ``start``, using samples that exist."""
     origin = int(round((float(start) - _SHORTTERM_S / 2.0) * RATE))
@@ -668,6 +715,10 @@ def mix_cues(voice, rate, cues, library=None):
     ratio. Pack files are not filtered. A file that peaks above 0 dBFS is
     turned down to 0 dBFS before that measurement. ``sound_at`` is the sample
     start; a reverse cue with ``align`` end finishes on ``sound_at``.
+
+    A file that opens on silence is trimmed to its loud window so the hit
+    lands on that time and the gain is not taken from the silence. Gain is
+    clamped so a bad measurement cannot boost a cue by tens of dB.
     """
     from kallaway_pack import render
     voice = _resample(voice, rate, RATE)
@@ -675,32 +726,45 @@ def mix_cues(voice, rate, cues, library=None):
     mixed = np.array(voice, dtype=np.float64, copy=True)
     variant_use = {}
     report = []
-    for cue in cues:
+    for index, cue in enumerate(cues):
         prepared_cue = _cue_for_mix(cue, library, variant_use)
         if prepared_cue is None:
             continue
         prepared, placed, info = render(prepared_cue)
         if len(prepared) == 0:
             continue
-        cue_lufs = _momentary_lufs(_k_weight(prepared, RATE), 0.0)
+        weighted_cue = _k_weight(prepared, RATE)
+        if prepared_cue.get("align") == "end":
+            cue_lufs, _body = _loudest_momentary(weighted_cue)
+            body_at = 0.0
+        else:
+            cue_lufs, body_at = _placed_window(weighted_cue)
+        if cue_lufs <= -70.0:
+            continue
         voice_lufs = _short_term_lufs(weighted_voice, max(0.0, placed))
         under = prepared_cue.get("under_db")
         under = float(UNDER_DB.get(prepared_cue["kind"], 16.0) if under is None else under)
         target = voice_lufs - under
-        gain_db = target - cue_lufs
+        gain_db = float(np.clip(target - cue_lufs, -40.0, 12.0))
         gain = 10 ** (gain_db / 20.0)
+        offset = int(round(body_at * RATE))
+        chunk = prepared[offset:]
+        if offset > 0 and len(chunk):
+            fade_n = min(len(chunk), int(round(0.005 * RATE)))
+            chunk[:fade_n] *= np.linspace(0.0, 1.0, fade_n)
         start = int(round(placed * RATE))
-        chunk = prepared
         if start < 0:
-            chunk = prepared[-start:]
+            chunk = chunk[-start:]
             start = 0
         if 0 <= start < len(mixed) and len(chunk):
             stop = min(len(mixed), start + len(chunk))
             mixed[start:stop] += chunk[:stop - start] * gain
         report.append({
+            "source_index": index,
             "kind": prepared_cue["kind"],
             "at": round(placed, 3),
             "cue_at": round(float(cue.get("at", placed)), 3),
+            "body_at": round(body_at, 3),
             "under_db": under,
             "voice_lufs": round(voice_lufs, 2),
             "cue_lufs": round(cue_lufs, 2),
@@ -749,7 +813,8 @@ def measure_sfx_stem(voice, rate, cues, library=None):
             attack = isolated[origin:origin + attack_n]
         attack_peak = float(np.max(np.abs(attack))) if len(attack) else 0.0
         prepared, _placed, _info = render(row)
-        cue_peak = float(np.max(np.abs(prepared[:attack_n]))) if len(prepared) else 0.0
+        body = int(round(float(row.get("body_at") or 0.0) * RATE))
+        cue_peak = float(np.max(np.abs(prepared[body:body + attack_n]))) if len(prepared) else 0.0
         cue_peak *= 10 ** (row["gain_db"] / 20.0)
         if cue_peak > 1e-8 and attack_peak > 0:
             attack_error = 20.0 * math.log10(attack_peak / cue_peak)
@@ -779,14 +844,28 @@ def measure_sfx_stem(voice, rate, cues, library=None):
 def mix_voice_sfx(source, output, cues, library=None):
     """Bake the leveled cues into the voice file. The picture is copied."""
     source, output = Path(source), Path(output)
-    voice = _load_mono(source, RATE)
+    voice = _load_mix_voice(source, RATE)
     mixed, report = mix_cues(voice, RATE, cues, library)
+    # A hot cue must not turn the voice down. Pull only the samples that cross
+    # the ceiling, and only by reducing the effect under them. If the voice
+    # itself is still over, a small whole-mix trim is the last resort.
+    limit = 0.98
     peak = float(np.max(np.abs(mixed))) if len(mixed) else 0.0
     trim_db = 0.0
-    if peak > 0.98:
-        trim = 0.98 / peak
+    if peak > limit and len(mixed) == len(voice):
+        sfx = mixed - voice
+        direction = np.sign(mixed)
+        direction[direction == 0.0] = 1.0
+        over = np.abs(mixed) > limit
+        sfx = sfx.copy()
+        sfx[over] = limit * direction[over] - voice[over]
+        mixed = voice + sfx
+        peak = float(np.max(np.abs(mixed))) if len(mixed) else 0.0
+    if peak > limit:
+        trim = limit / peak
         trim_db = 20.0 * math.log10(trim)
         mixed = mixed * trim
+        peak = limit
     pcm = np.clip(mixed, -1.0, 1.0).astype(np.float32)
     output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
