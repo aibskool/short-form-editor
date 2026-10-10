@@ -168,6 +168,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         timeline["shots"], timeline.get("headers"), minimum=1.52,
         scene_times=picture_cuts, video_end=float(tightened["duration"]))
     reanchor_led_sfx(timeline, original_starts, fps=float(timeline.get("output", {}).get("fps", 30)))
+    timeline["capture_path"] = str(Path(source).resolve())
     timeline["source_ranges"] = [
         [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
     ]

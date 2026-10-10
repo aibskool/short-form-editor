@@ -277,6 +277,14 @@ class KallawayTests(unittest.TestCase):
             kept_silence += max(0.0, min(end, 0.48) - max(begin, 0.36))
         self.assertLessEqual(kept_silence, 0.08)
 
+    def test_a_released_silence_inside_a_word_is_not_a_clipped_cut(self):
+        from kallaway_audio import released_interior
+        rate = 16000
+        t = np.arange(rate) / rate
+        tone = _voiced(t, 180, 0.4, (t >= 0.10) & (t < 0.30))
+        self.assertTrue(released_interior(tone, rate, 0.45, 0.60))
+        self.assertFalse(released_interior(tone, rate, 0.18, 0.32))
+
     def test_a_cut_inside_an_aligned_word_is_sealed(self):
         from kallaway_audio import interior_cuts, missing_script_words, seal_word_interiors
         words = [{"word": "ends", "start": 1.00, "end": 1.46}, {"word": "it", "start": 1.55, "end": 1.70}]

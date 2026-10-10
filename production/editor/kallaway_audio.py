@@ -1122,6 +1122,30 @@ def seal_word_interiors(ranges, words, margin=0.012):
     return merged
 
 
+def released_interior(samples, rate, start, end):
+    """A hole inside a word that is silence after the syllable has already fallen.
+
+    The stop in "ends" is this. A cut that still holds the vowel is not.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    start, end = float(start), float(end)
+    if end <= start + 0.01:
+        return False
+    speech = _speech_band(samples, rate)
+    a = int(max(0.0, start) * rate)
+    b = int(min(len(samples), end * rate))
+    if b <= a:
+        return False
+
+    def rms(chunk):
+        if len(chunk) == 0:
+            return -80.0
+        return _db(math.sqrt(float(np.dot(chunk, chunk)) / len(chunk)))
+
+    lead_a = int(max(0.0, (start - 0.02) * rate))
+    return rms(speech[a:b]) <= -48.0 and rms(samples[lead_a:a]) <= -30.0
+
+
 def interior_cuts(ranges, words, margin=0.012):
     """Gaps between keep ranges that open inside an aligned word."""
     found = []
@@ -1137,6 +1161,7 @@ def interior_cuts(ranges, words, margin=0.012):
                     "word": str(word.get("word") or word.get("text") or ""),
                     "edge": "gap",
                     "at": round(prev_end, 3),
+                    "until": round(begin, 3),
                 })
                 break
     return found
@@ -1215,6 +1240,15 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
                 holes.append((lo, hi))
         for lo, hi in holes:
             keep_to = min(hi, lo + max_keep * 0.5)
+            # The join hears the last 20 ms of what we keep. "builds" is still
+            # at -23 dB there, so that hole would clip the word. The stop in
+            # "ends" has already fallen under -30 dB.
+            out_a = int(max(0, (keep_to - 0.02) * rate))
+            out_b = int(min(len(samples), keep_to * rate))
+            if out_b > out_a:
+                tail = float(np.dot(samples[out_a:out_b], samples[out_a:out_b])) / (out_b - out_a)
+                if _db(math.sqrt(max(tail, 0.0))) > -30.0:
+                    continue
             if keep_to - cursor > 0.02:
                 rebuilt.append((cursor, keep_to))
             cursor = max(cursor, hi - max_keep * 0.5)
@@ -1250,18 +1284,26 @@ def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
     fricative = _fricative_band(samples, rate)
     times, speech_frames = _frame_rms(speech, rate, win_s=0.01, hop_s=0.005)
     _high_times, high_frames = _frame_rms(fricative, rate, win_s=0.01, hop_s=0.005)
+    _full_times, full_frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
     if len(speech_frames) == 0:
         return list(ranges)
-    count = min(len(times), len(speech_frames), len(high_frames) or len(speech_frames))
+    count = min(len(times), len(speech_frames), len(high_frames) or len(speech_frames), len(full_frames) or len(speech_frames))
     times = times[:count]
     speech_frames = speech_frames[:count]
     if len(high_frames) >= count:
         high_frames = high_frames[:count]
     else:
         high_frames = np.zeros(count)
+    if len(full_frames) >= count:
+        full_frames = full_frames[:count]
+    else:
+        full_frames = np.zeros(count)
     speech_floor = max(float(np.percentile(speech_frames, 20)), 1e-6)
     speech_thresh = max(speech_floor * (10 ** (6.0 / 20.0)), 10 ** (-42.0 / 20.0))
     high_thresh = 10 ** (-46.0 / 20.0)
+    # A /z/ can sit under the speech band and still be loud. Trimming through
+    # it lands the join on the consonant ("builds").
+    full_thresh = 10 ** (-32.0 / 20.0)
     rebuilt = []
     last_index = len(ranges) - 1
     for index, (begin, end) in enumerate(ranges):
@@ -1271,10 +1313,10 @@ def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
             rebuilt.append((begin, end))
             continue
         last = begin
-        for moment, voiced, hiss in zip(times, speech_frames, high_frames):
+        for moment, voiced, hiss, full in zip(times, speech_frames, high_frames, full_frames):
             if moment < begin or moment > end:
                 continue
-            if voiced >= speech_thresh or hiss >= high_thresh:
+            if voiced >= speech_thresh or hiss >= high_thresh or full >= full_thresh:
                 last = float(moment)
         cap = min(end, last + float(max_quiet))
         if end - cap > 0.02 and cap - begin > 0.05:
@@ -1292,18 +1334,22 @@ def trim_final_nonspeech(samples, rate, ranges, max_tail=0.12):
     fricative = _fricative_band(samples, rate)
     times, speech_frames = _frame_rms(speech, rate, win_s=0.01, hop_s=0.005)
     _high_times, high_frames = _frame_rms(fricative, rate, win_s=0.01, hop_s=0.005)
+    _full_times, full_frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
     if len(speech_frames) == 0:
         return ranges
     begin, end = ranges[-1]
     speech_floor = max(float(np.percentile(speech_frames, 20)), 1e-6)
     speech_thresh = max(speech_floor * (10 ** (6.0 / 20.0)), 10 ** (-42.0 / 20.0))
     high_thresh = 10 ** (-46.0 / 20.0)
+    full_thresh = 10 ** (-32.0 / 20.0)
     last = float(begin)
     for index, moment in enumerate(times):
         if moment < begin or moment > end:
             continue
         hot = speech_frames[index] >= speech_thresh
         if index < len(high_frames) and high_frames[index] >= high_thresh:
+            hot = True
+        if index < len(full_frames) and full_frames[index] >= full_thresh:
             hot = True
         if hot:
             last = float(moment)
