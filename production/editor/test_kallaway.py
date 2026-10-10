@@ -1394,11 +1394,22 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(top + cap, 1190, delta=2)
 
     def test_output_frame_check_rejects_a_short_shot(self):
-        from check_kallaway_style import short_spans
+        from check_kallaway_style import insert_spans_from_diffs, short_spans
         self.assertEqual(short_spans([1.0, 5.0], 8.0), [])
         found = short_spans([10.667, 10.700], 24.0)
         self.assertTrue(found)
         self.assertLess(found[0]["seconds"], 0.5)
+        # A cut that holds is one shot. A second cut one frame later is a stray.
+        hold = [2.0] * 8
+        hold[2] = 40.0
+        self.assertEqual(insert_spans_from_diffs(hold), [])
+        stray = [2.0] * 8
+        stray[2] = 30.0
+        stray[3] = 60.0
+        stray[4] = 3.0
+        spans = insert_spans_from_diffs(stray)
+        self.assertEqual(len(spans), 1)
+        self.assertLess(spans[0][1] - spans[0][0], 0.5)
 
     def test_a_scene_cut_includes_its_first_frame(self):
         from kallaway_beats import quantize_cut, snap_shot_edges, lengthen_closing_face

@@ -83,12 +83,41 @@ def _probe_duration(video):
     return float(probe.stdout.strip() or 0)
 
 
-def find_insert_spans(video, prev_min=16.0, next_min=10.0, fps=30):
-    """One-frame pictures that match neither neighbor.
+def insert_spans_from_diffs(diffs, fps=30, prev_min=20.0, next_min=25.0, hold_max=10.0):
+    """Spans where a cut in and a cut out land within two frames, then the picture holds.
 
-    A real cut differs from the frame before it and then holds. A stray frame
-    differs from both sides, so it is its own shot. Measured on decoded frames.
+    ``diffs[i]`` is the mean absolute difference between frame i and frame i+1.
+    A head turn differs from both neighbors and keeps moving. A stray take is a
+    second cut one or two frames later, and the frame after that cut holds.
     """
+    step = 1.0 / float(fps)
+    spans = []
+    count = len(diffs) + 1
+    index = 1
+    while index < count - 2:
+        entered = diffs[index - 1] >= prev_min
+        left = diffs[index] >= next_min and diffs[index + 1] < hold_max
+        if entered and left:
+            spans.append((round(index * step, 4), round((index + 1) * step, 4)))
+            index += 2
+            continue
+        two = (
+            index < count - 3
+            and entered
+            and diffs[index] < hold_max
+            and diffs[index + 1] >= next_min
+            and diffs[index + 2] < hold_max
+        )
+        if two:
+            spans.append((round(index * step, 4), round((index + 2) * step, 4)))
+            index += 3
+            continue
+        index += 1
+    return spans
+
+
+def find_insert_spans(video, prev_min=20.0, next_min=25.0, hold_max=10.0, fps=30):
+    """One- and two-frame takes measured on decoded output frames."""
     import subprocess
     import numpy as np
     duration = _probe_duration(video)
@@ -100,25 +129,14 @@ def find_insert_spans(video, prev_min=16.0, next_min=10.0, fps=30):
         stderr=subprocess.DEVNULL)
     frame = 180 * 320
     count = len(raw) // frame
-    if count < 3:
+    if count < 4:
         return []
     frames = [np.frombuffer(raw[i * frame:(i + 1) * frame], dtype=np.uint8) for i in range(count)]
-    step = 1.0 / float(fps)
-    spans = []
-    run = None
-    for index in range(1, count - 1):
-        prev = float(np.mean(np.abs(frames[index].astype(np.float32) - frames[index - 1].astype(np.float32))))
-        nxt = float(np.mean(np.abs(frames[index].astype(np.float32) - frames[index + 1].astype(np.float32))))
-        stray = prev >= prev_min and nxt >= next_min
-        start = index * step
-        if stray and run is None:
-            run = start
-        elif not stray and run is not None:
-            spans.append((round(run, 4), round(start, 4)))
-            run = None
-    if run is not None:
-        spans.append((round(run, 4), round((count - 1) * step, 4)))
-    return spans
+    diffs = [
+        float(np.mean(np.abs(frames[index + 1].astype(np.float32) - frames[index].astype(np.float32))))
+        for index in range(count - 1)
+    ]
+    return insert_spans_from_diffs(diffs, fps=fps, prev_min=prev_min, next_min=next_min, hold_max=hold_max)
 
 
 def shift_moment(moment, spans):
