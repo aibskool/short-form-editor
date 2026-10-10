@@ -600,6 +600,7 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
     _carry_release(refined, times, frames)
     _extend_stop_peak(refined, samples, rate)
     _keep_late_coda(refined, samples, rate)
+    _hold_until_released(refined, samples, rate)
     for index in range(len(refined) - 1):
         nxt = float(refined[index + 1]["start"])
         if float(refined[index]["end"]) > nxt - 0.004:
@@ -673,6 +674,58 @@ def _keep_late_coda(refined, samples, rate):
             moment += 0.02
         if cursor > end + 0.04:
             word["end"] = round(min(cursor, nxt - 0.02), 4)
+
+
+def _hold_until_released(refined, samples, rate):
+    """Move an out-point off a tail the join check would call clipped.
+
+    The last 20 ms has to fall 12 dB from the vowel, or already sit under
+    about -27 dBFS. A /z/ that is still up, as in "builds", stays with the word
+    until it does. The walk stops 20 ms before the next word.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    if not len(frames):
+        return
+    grid = times[:len(frames)]
+    levels = frames[:len(grid)]
+
+    def tail_db(moment):
+        a = int(max(0, (moment - 0.020) * rate))
+        b = int(min(len(samples), moment * rate))
+        chunk = samples[a:b]
+        if len(chunk) == 0:
+            return -80.0
+        rms = math.sqrt(float(np.dot(chunk, chunk)) / len(chunk))
+        return _db(rms)
+
+    def vowel_db(moment):
+        mask = (grid >= moment - 0.45) & (grid <= moment - 0.02)
+        if not np.any(mask):
+            return tail_db(moment)
+        return _db(float(np.max(levels[mask])))
+
+    for index, word in enumerate(refined[:-1]):
+        end = float(word["end"])
+        nxt = float(refined[index + 1]["start"])
+        if nxt - end <= 0.025:
+            continue
+        level = tail_db(end)
+        drop = vowel_db(end) - level
+        if drop >= 12.0 or level <= -27.0:
+            continue
+        cursor = end
+        moment = end
+        limit = nxt - 0.02
+        while moment < limit:
+            moment = min(limit, moment + 0.01)
+            level = tail_db(moment)
+            drop = vowel_db(moment) - level
+            cursor = moment
+            if drop >= 12.0 or level <= -27.0:
+                break
+        if cursor > end + 0.008:
+            word["end"] = round(min(cursor, limit), 4)
 
 
 def _claim_orphan_codas(refined, runs, peak, pad_out):
