@@ -1609,6 +1609,15 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
         self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
 
+    def test_foliage_quilt_samples_inside_the_tile(self):
+        from kallaway_matte import _quilt
+        atlas = np.zeros((30, 384, 3), np.float32)
+        atlas[:, :, 1] = 90
+        for seed in range(20):
+            plate = _quilt(1080, 512, atlas, seed=seed)
+            self.assertEqual(plate.shape, (512, 1080, 3))
+            self.assertGreater(float(plate[:, :, 1].mean()), 40)
+
     def test_full_face_caption_sits_between_the_beard_and_the_pin(self):
         from kallaway_style import assign_full_captions, full_caption_top
         theme, _, _, _ = load_theme("dark")

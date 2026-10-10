@@ -1145,8 +1145,12 @@ def _quilt(width, height, atlas, seed=7):
     phase = (int(seed) % 17) * 0.37
     warp_x = 16.0 * np.sin(yy / 41.0 + phase) + 9.0 * np.sin(xx / 57.0)
     warp_y = 12.0 * np.sin(xx / 47.0 + phase) + 7.0 * np.cos(yy / 33.0)
-    sx = np.mod(xx + warp_x, tile.shape[1] - 1).astype(np.float32)
-    sy = np.mod(yy + warp_y, tile.shape[0] - 1).astype(np.float32)
+    # Float mod can land on the divisor itself. The neighbor sample would then
+    # read one pixel past the mirrored tile.
+    span_x = tile.shape[1] - 1
+    span_y = tile.shape[0] - 1
+    sx = np.clip(np.mod(xx + warp_x, span_x), 0, span_x - 1e-3).astype(np.float32)
+    sy = np.clip(np.mod(yy + warp_y, span_y), 0, span_y - 1e-3).astype(np.float32)
     x0 = np.floor(sx).astype(np.int32)
     y0 = np.floor(sy).astype(np.int32)
     x1 = x0 + 1
