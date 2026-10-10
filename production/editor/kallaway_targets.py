@@ -308,6 +308,17 @@ def place_targets(stage, screen=None):
         anchors.append(block)
     if not anchors:
         return None
+    if stage.get("uncropped"):
+        # The phone shows the whole frame. The circle is drawn in that frame,
+        # then the camera pushes in. A crop pan would cut text off the bezel.
+        stage["frame"] = {
+            "img_h": 100.0,
+            "viewport_height": 1.0,
+            "viewport_top": 0.0,
+            "scroll_to": 0.0,
+        }
+        stage.pop("scroll", None)
+        return stage["frame"]
     moment = stage.get("target_time") if stage.get("target_time") is not None else stage.get("poster_time")
     still = raster_for_target(stage.get("target_still") or stage["media"], moment)
     with Image.open(still) as image:

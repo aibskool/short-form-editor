@@ -22,6 +22,7 @@ STAGE_KEYS = (
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
     "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
+    "variant", "uncropped",
 )
 
 # Full-screen sits 13% tighter than a wide split. Each punch stacks another 12%.
@@ -30,61 +31,74 @@ PUNCH_STEP = 1.12
 CONTRAST_WORDS = {"but", "so", "now", "most", "never", "stop", "you"}
 
 
-def _is_emphasis(word, styles):
+def _emphasis_rank(word, styles):
+    """Lower is the word the punch should land on. None means leave the shot alone."""
     token = _token(word)
     if not token:
-        return False
+        return None
     style = styles.get(token)
-    if style not in (None, "", "normal"):
-        return True
+    if style == "marker":
+        return 0
+    if style in {"green", "amber"}:
+        return 1
     if any(char.isdigit() for char in token):
-        return True
-    return token in CONTRAST_WORDS and style != "normal"
+        return 2
+    if token in CONTRAST_WORDS and style != "normal":
+        return 3
+    return None
 
 
 def apply_emphasis_punches(shots, words, styles, full_scale=FULL_SCALE, step=PUNCH_STEP):
-    """Hard punch-ins on emphasis words inside a full-screen stretch. Silent cuts.
+    """One silent punch on the key word of a full-screen stretch, held through that stretch.
 
-    The first piece stays full-screen at ``full_scale``. Later pieces jump 12%
-    tighter, up to three steps, then punch back out to the full-screen scale.
+    The full-screen scale is the thought-start frame. The punch does not jump
+    back out inside the phrase, and neither piece is shorter than 0.8 s. An
+    authored punch-in is kept as one shot.
     """
     built = []
     for shot in shots:
         start, end = float(shot["start"]), float(shot["end"])
-        if shot.get("layout") == "punch_in" and "scale" not in shot:
+        if shot.get("layout") == "punch_in":
             shot = dict(shot)
-            shot["scale"] = round(float(full_scale) * float(step), 3)
+            if "scale" not in shot:
+                shot["scale"] = round(float(full_scale) * float(step), 3)
             built.append(shot)
             continue
         if shot.get("layout") != "full":
             built.append(shot)
             continue
-        cuts = [start]
-        if end - start >= 1.55:
-            picked = []
+        best = None
+        if end - start >= 1.25:
             for word in words:
                 at = float(word["start"])
-                if start + 0.55 <= at <= end - 0.55 and _is_emphasis(word, styles):
-                    if not picked or at - picked[-1] >= 1.5:
-                        picked.append(at)
-            for at in picked:
-                if at - cuts[-1] >= 0.5 and end - at >= 0.5:
-                    cuts.append(at)
-        cuts.append(end)
-        level = 0
-        for index, (left, right) in enumerate(zip(cuts, cuts[1:])):
-            piece = {key: value for key, value in shot.items() if key != "stage"}
-            piece["start"] = round(left, 3)
-            piece["end"] = round(right, 3)
-            if index == 0 or level >= 3:
-                piece["layout"] = "full"
-                piece["scale"] = round(float(full_scale), 3)
-                level = 0
-            else:
-                level += 1
-                piece["layout"] = "punch_in"
-                piece["scale"] = round(float(full_scale) * (float(step) ** level), 3)
+                # The punch itself is held at least 0.8 s. The opening frame can be shorter.
+                if not (start + 0.45 <= at <= end - 0.8):
+                    continue
+                rank = _emphasis_rank(word, styles)
+                if rank is None:
+                    continue
+                if best is None or rank < best[0] or (rank == best[0] and at < best[1]):
+                    best = (rank, at)
+        piece = {key: value for key, value in shot.items() if key != "stage"}
+        piece["scale"] = round(float(full_scale), 3)
+        if best is None:
+            piece["start"] = round(start, 3)
+            piece["end"] = round(end, 3)
+            piece["layout"] = "full"
             built.append(piece)
+            continue
+        at = best[1]
+        opening = dict(piece)
+        opening["start"] = round(start, 3)
+        opening["end"] = round(at, 3)
+        opening["layout"] = "full"
+        built.append(opening)
+        punch = dict(piece)
+        punch["start"] = round(at, 3)
+        punch["end"] = round(end, 3)
+        punch["layout"] = "punch_in"
+        punch["scale"] = round(float(full_scale) * float(step), 3)
+        built.append(punch)
     for index, shot in enumerate(built):
         shot["id"] = f"shot-{index:02d}"
     return built
@@ -305,7 +319,13 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
 
     for left, right in zip(shots, shots[1:]):
         if left.get("layout") == "split" and right.get("layout") == "split":
-            if left["stage"]["motif"] == right["stage"]["motif"]:
+            same = (
+                left["stage"].get("motif") == right["stage"].get("motif")
+                and (left["stage"].get("variant") or "") == (right["stage"].get("variant") or "")
+                and (left["stage"].get("media") or "") == (right["stage"].get("media") or "")
+                and (left["stage"].get("text") or "") == (right["stage"].get("text") or "")
+            )
+            if same:
                 raise ValueError(
                     f"motif {left['stage']['motif']} repeats on {left['id']} and {right['id']}; "
                     "put a full-screen cut or a different motif between them")
@@ -398,13 +418,17 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             track["envelope"] = envelope
         music_tracks.append(track)
 
-    gains = theme.get("sfx_gain", {})
-    sfx = _cover_sfx(shots, ordered, styles, gains)
+    from kallaway_audio import UNDER_DB
+    unders = theme.get("sfx_under_db") or {}
+    sfx = _cover_sfx(shots, ordered, styles, unders)
     present = {(item["kind"], item["at"]) for item in sfx}
     for moment in bass_at:
         key = ("bass", round(moment, 3))
         if key not in present:
-            sfx.append({"kind": "bass", "at": key[1], "gain": gains.get("bass", 0.35)})
+            sfx.append({
+                "kind": "bass", "at": key[1],
+                "under_db": float(unders.get("bass", UNDER_DB["bass"])),
+            })
     sfx.sort(key=lambda item: (item["at"], item["kind"]))
 
     title = headers[0]["text"] if headers else plain_text(keyword)

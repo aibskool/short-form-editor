@@ -253,8 +253,14 @@ _WHOOSH_GAP = 0.32
 _MAX_BOOMS = 3
 
 
-def _cover_sfx(shots, words, styles, gains):
-    """Sounds on graphic entrances only. Punch-ins, layout cuts, and exits stay silent."""
+def _cover_sfx(shots, words, styles, unders=None):
+    """Sounds on graphic entrances only. Punch-ins, layout cuts, and exits stay silent.
+
+    ``unders`` is how many dB the cue's momentary loudness sits under the voice's
+    short-term loudness. The mixer turns that into a gain per cue.
+    """
+    from kallaway_audio import UNDER_DB
+    unders = unders or {}
     events = []
     for shot in shots:
         if shot.get("layout") != "split":
@@ -284,7 +290,8 @@ def _cover_sfx(shots, words, styles, gains):
                 continue
         if at < 0:
             continue
-        sfx.append({"kind": kind, "at": round(at, 3), "gain": gains.get(kind, 0.16)})
+        under = float(unders.get(kind, UNDER_DB.get(kind, 11.0)))
+        sfx.append({"kind": kind, "at": round(at, 3), "under_db": under})
     return sfx
 
 
@@ -510,7 +517,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
             "max_words": 2, "uppercase": False, "word_styles": styles,
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },
-        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_gain", {})),
+        "sfx": _cover_sfx(shots, ordered, styles, theme.get("sfx_under_db") or {}),
     }
 
 

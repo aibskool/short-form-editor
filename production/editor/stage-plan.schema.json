@@ -244,7 +244,9 @@
         "poster_time": {"type": "number"},
         "target_time": {"type": "number"},
         "target_still": {"type": "string"},
-        "typing": {"type": "boolean"}
+        "typing": {"type": "boolean"},
+        "variant": {"type": "string", "description": "Motif composition. quote_card uses receipt or browser."},
+        "uncropped": {"type": "boolean", "description": "Show the phone frame in full. The camera pushes in after the slide."}
       }
     }
   }

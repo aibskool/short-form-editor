@@ -272,28 +272,30 @@ def build_kallaway(spec, spec_path, project):
 
     from kallaway_audio import SFX_KINDS, sfx_variants, write_sfx_library
     library = spec_path.parent / "sfx"
-    if any(sound.get("kind") for sound in spec.get("sfx", [])) and not sfx_variants("pop", library):
-        write_sfx_library(library)
-    variant_use = {}
-    for index, sound in enumerate(spec.get("sfx", [])):
-        if sound.get("kind"):
-            if sound["kind"] not in SFX_KINDS:
-                raise ValueError(f"unknown sfx kind: {sound['kind']}")
-            variants = sfx_variants(sound["kind"], library)
-            if not variants:
-                raise ValueError(f"sfx library has no files for {sound['kind']}")
-            slot = variant_use.get(sound["kind"], 0)
-            variant_use[sound["kind"]] = slot + 1
-            chosen = variants[slot % len(variants)]
-            path = media(str(chosen))
-            length = float(probe(project / path)["format"]["duration"])
-        else:
-            path = media(sound["path"])
-            length = float(sound.get("duration", probe(project / path)["format"]["duration"]))
-        gain = sound.get("gain", theme.get("sfx_gain", {}).get(sound.get("kind"), 0.35))
-        audio.append(
-            f'<audio id="sfx-{index}" src="{path}" data-start="{float(sound["at"]):.4f}" data-duration="{length:.4f}" '
-            f'data-track-index="{20+index}" data-volume="{float(gain):.4f}"></audio>')
+    # Cues baked into the voice file must not be mixed a second time here.
+    if spec.get("sfx") and not spec.get("sfx_baked"):
+        if any(sound.get("kind") for sound in spec.get("sfx", [])) and not sfx_variants("pop", library):
+            write_sfx_library(library)
+        variant_use = {}
+        for index, sound in enumerate(spec.get("sfx", [])):
+            if sound.get("kind"):
+                if sound["kind"] not in SFX_KINDS:
+                    raise ValueError(f"unknown sfx kind: {sound['kind']}")
+                variants = sfx_variants(sound["kind"], library)
+                if not variants:
+                    raise ValueError(f"sfx library has no files for {sound['kind']}")
+                slot = variant_use.get(sound["kind"], 0)
+                variant_use[sound["kind"]] = slot + 1
+                chosen = variants[slot % len(variants)]
+                path = media(str(chosen))
+                length = float(probe(project / path)["format"]["duration"])
+            else:
+                path = media(sound["path"])
+                length = float(sound.get("duration", probe(project / path)["format"]["duration"]))
+            gain = sound.get("gain", theme.get("sfx_gain", {}).get(sound.get("kind"), 0.35))
+            audio.append(
+                f'<audio id="sfx-{index}" src="{path}" data-start="{float(sound["at"]):.4f}" data-duration="{length:.4f}" '
+                f'data-track-index="{20+index}" data-volume="{float(gain):.4f}"></audio>')
 
     for index, sound in enumerate(spec.get("music", [])):
         path, start, end, source_start, gain, envelope = validate_music(sound, spec_path, project, duration, index)
@@ -362,13 +364,22 @@ def build_kallaway(spec, spec_path, project):
     .nbox{{position:absolute;left:4%;right:4%;top:0;border:3px solid {colors['accent_strong']};border-radius:{16*scale:.0f}px;pointer-events:none}}
     .chart{{width:100%;height:86%}}
     .chart-label{{text-align:right;color:{colors['muted']};font-size:{mono_px:.1f}px}}
-    .bars{{display:flex;align-items:flex-end;justify-content:space-between;height:100%;gap:{18*scale:.0f}px;padding:0 6% 8%}}
-    .bar-col{{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px}}
-    .bar{{width:70%;border-radius:{10*scale:.0f}px {10*scale:.0f}px 0 0;transform:scaleY(0);transform-origin:50% 100%}}
+    .chart-frame{{display:flex;height:100%;gap:{8*scale:.0f}px;padding:2% 2% 0}}
+    .y-axis{{display:flex;flex-direction:column;justify-content:space-between;height:86%;color:{colors['muted']};font-family:'{mono}',monospace;font-size:{mono_px*0.7:.1f}px;letter-spacing:0}}
+    .bars{{display:flex;align-items:flex-end;justify-content:space-between;height:100%;gap:{14*scale:.0f}px;padding:0 2% 4%;flex:1;border-left:2px solid {colors['border']};border-bottom:2px solid {colors['border']}}}
+    .bar-col{{position:relative;flex:1;height:86%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}}
+    .bar{{width:78%;border-radius:{10*scale:.0f}px {10*scale:.0f}px 0 0;transform:scaleY(0);transform-origin:50% 100%;box-shadow:0 12px 24px rgba(0,0,0,0.35)}}
+    .bar-x{{position:absolute;top:8%;left:0;right:0;text-align:center;font-family:'{display}',cursive;font-size:{42*scale:.0f}px;color:{colors['warning']};opacity:0;text-shadow:0 8px 18px rgba(0,0,0,0.45)}}
     .bar-col .mono{{color:{colors['muted']};font-size:{mono_px*0.85:.1f}px}}
     .counter{{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}}
-    .count-num{{font-family:'{caption}',sans-serif;font-weight:900;font-size:{210*scale:.0f}px;line-height:0.9;color:{colors['accent']};letter-spacing:-0.04em}}
-    .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:12px}}
+    .counter.dense{{justify-content:space-between;padding:1% 0 0}}
+    .count-num{{font-family:'{caption}',sans-serif;font-weight:900;font-size:{210*scale:.0f}px;line-height:0.9;color:{colors['accent']};letter-spacing:-0.04em;text-shadow:0 0 36px {colors['accent']}88}}
+    .counter.dense .count-num{{font-size:{148*scale:.0f}px}}
+    .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:8px}}
+    .site-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:{8*scale:.0f}px;width:100%;flex:1}}
+    .site-thumb{{position:relative;border-radius:{12*scale:.0f}px;background:linear-gradient(160deg,{colors['surface']},{colors['contrast']});border:1px solid {colors['border']};box-shadow:0 16px 32px rgba(0,0,0,0.4);min-height:{72*scale:.0f}px;padding:{8*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{16*scale:.0f}px}}
+    .site-thumb .mono{{display:block;color:{colors['muted']};font-size:{mono_px*0.65:.1f}px;margin-bottom:4px}}
+    .site-thumb i{{position:absolute;left:8%;right:8%;bottom:18%;height:8px;border-radius:4px;background:{colors['accent']};opacity:0.85}}
     .shotcard{{height:100%;border-radius:{20*scale:.0f}px;background:{colors['surface']};border:1px solid {colors['border']};padding:8% 8%;display:flex;flex-direction:column;justify-content:center;gap:{18*scale:.0f}px;position:relative;overflow:hidden}}
     .fake-line{{height:{22*scale:.0f}px;border-radius:8px;background:{colors['border']}}}
     .hl-line{{align-self:flex-start;background:{_rgba(colors['accent'], 0.4)};color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;padding:0.2em 0.45em;border-radius:10px;border:2px solid {colors['accent_strong']};opacity:0}}
@@ -395,6 +406,8 @@ def build_kallaway(spec, spec_path, project):
     .logo-chip{{background:{colors['surface']};border:1px solid {colors['border']};color:{colors['text']};border-radius:16px;padding:18px 22px;font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px}}
     .logo-lines{{position:absolute;left:0;right:0;top:28%;width:100%;height:40%}}
     .phone.fill{{width:100%;height:100%;margin:0;padding:{8*scale:.0f}px;border-radius:{28*scale:.0f}px}}
+    .phone.fit{{width:auto;height:100%;aspect-ratio:9/16;max-width:92%;margin:0 auto;padding:{8*scale:.0f}px;box-shadow:0 28px 64px rgba(0,0,0,0.55),0 0 48px {colors['accent']}44}}
+    .phone.fit .phone-screen img,.phone.fit .phone-screen video{{object-fit:contain;background:{colors['contrast']}}}
     .phone-pan{{position:absolute;left:0;top:0;width:100%}}
     .callout-draw{{position:absolute;overflow:visible;pointer-events:none;z-index:4;opacity:0}}
     .callout-draw path{{fill:none;stroke:{colors['accent_strong']};stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}}
@@ -408,18 +421,40 @@ def build_kallaway(spec, spec_path, project):
     .vac-chip{{position:absolute;padding:{10*scale:.0f}px {16*scale:.0f}px;border-radius:999px;background:{colors['surface']};color:{colors['text']};border:1px solid {colors['border']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{26*scale:.0f}px}}
     .vac-result{{position:relative;padding:{16*scale:.0f}px {22*scale:.0f}px;border-radius:16px;background:{colors['accent']};color:{colors['on_accent']};font-family:'{display}',cursive;font-size:{40*scale:.0f}px;box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
     .swap{{position:relative;height:100%;display:flex;align-items:center;justify-content:center}}
+    .swap.side{{align-items:stretch;gap:{14*scale:.0f}px}}
     .swap-card{{position:absolute;width:78%;padding:8% 6%;border-radius:18px;text-align:center;font-family:'{display}',cursive;font-size:{42*scale:.0f}px;color:{colors['text']}}}
+    .swap.side .swap-card{{position:relative;width:auto;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6% 4%;font-size:{40*scale:.0f}px;line-height:0.95;overflow:hidden}}
     .swap-card.bad{{background:{colors['surface']};border:2px solid {colors['warning']};box-shadow:{colors['card_shadow']},0 0 36px {colors['warning']}55}}
     .swap-card.good{{background:{colors['surface']};border:2px solid {colors['accent']};box-shadow:{colors['card_shadow']},0 0 36px {colors['accent']}66}}
+    .bad-tint{{position:absolute;inset:0;background:{colors['negative']};opacity:0;pointer-events:none}}
+    .rev{{width:92%;height:{78*scale:.0f}px;margin-top:{10*scale:.0f}px}}
+    .rev-label{{margin-top:4px;color:{colors['accent']};font-size:{mono_px*0.72:.1f}px}}
     .stage-chip.green{{background:{colors['accent']};color:{colors['on_accent']}}}
     .stage-chip.amber{{background:{colors['warning']};color:{colors['contrast']}}}
     .quote-card{{height:100%;display:flex;align-items:center;justify-content:center;padding:6%}}
-    .quote-text{{position:relative;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1.05;color:{colors['text']};text-align:center}}
+    .quote-text{{position:relative;font-family:'{display}',cursive;font-size:{96*scale:.0f}px;line-height:1.0;color:{colors['text']};text-align:center}}
+    .receipt{{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;gap:{8*scale:.0f}px;padding:5% 6%;border-radius:{22*scale:.0f}px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);box-shadow:0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.16)}}
+    .receipt-glow{{position:absolute;left:18%;right:18%;top:16%;height:42%;background:radial-gradient(circle,{colors['accent']}55,transparent 70%);filter:blur(8px);pointer-events:none}}
+    .receipt-kicker{{position:relative;color:{colors['muted']};font-size:{mono_px*0.8:.1f}px}}
+    .receipt-amt{{position:relative;font-family:'{display}',cursive;font-size:{112*scale:.0f}px;line-height:0.9;color:{colors['text']};text-shadow:0 0 28px {colors['accent']}77}}
+    .receipt-line{{position:relative;display:flex;justify-content:space-between;color:{colors['muted']};font-family:'{mono}',monospace;font-size:{mono_px*0.75:.1f}px}}
+    .cal{{position:relative;display:flex;gap:{6*scale:.0f}px}}
+    .cal span{{flex:1;text-align:center;padding:{8*scale:.0f}px 0;border-radius:8px;font-family:'{mono}',monospace;font-size:{mono_px*0.7:.1f}px}}
+    .cal-on{{background:{colors['accent']};color:{colors['on_accent']}}}
+    .cal-off{{background:{colors['contrast']};color:{colors['muted']};border:1px solid {colors['border']}}}
+    .paid-stamp{{position:absolute;right:8%;top:18%;padding:{6*scale:.0f}px {14*scale:.0f}px;border:4px solid {colors['negative']};color:{colors['negative']};font-family:'{display}',cursive;font-size:{54*scale:.0f}px;letter-spacing:0.04em;border-radius:8px;opacity:0;box-shadow:0 12px 28px rgba(0,0,0,0.35)}}
+    .browser{{position:relative;height:100%;display:flex;flex-direction:column;border-radius:{20*scale:.0f}px;overflow:hidden;background:{colors['contrast']};border:1px solid rgba(255,255,255,0.14);box-shadow:0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)}}
+    .browser .chrome{{flex:0 0 auto}}
+    .browser-live{{flex:1;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:8%;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{28*scale:.0f}px}}
+    .browser-live b{{font-family:'{display}',cursive;font-weight:400;font-size:{64*scale:.0f}px}}
+    .browser-live span{{display:inline-block;margin-right:{10*scale:.0f}px;padding:0.2em 0.5em;border-radius:999px;background:{colors['surface']};border:1px solid {colors['border']};font-size:{18*scale:.0f}px}}
+    .browser-dead{{position:absolute;left:0;right:0;top:{54*scale:.0f}px;bottom:0;padding:8% 6%;font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95;color:{colors['text']};opacity:0}}
     .quote-strike{{position:absolute;left:-4%;right:-4%;top:52%;height:{10*scale:.0f}px;background:{colors['warning']};transform:scaleX(0);transform-origin:0 50%}}
     .offer-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .offer-kicker{{color:{colors['muted']};font-size:{mono_px:.1f}px}}
     .offer-row{{flex:1;display:flex;gap:{12*scale:.0f}px}}
-    .offer-card{{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6%;background:{colors['surface']};border:1px solid {colors['border']};border-radius:16px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05}}
+    .offer-card{{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6% 4%;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);border-radius:18px;color:{colors['text']};font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95;box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)}}
+    .offer-card.good{{border-color:{colors['accent']};box-shadow:0 24px 48px rgba(0,0,0,0.45),0 0 36px {colors['accent']}66}}
     .offer-note{{text-align:center;color:{colors['muted']};font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;letter-spacing:0.02em}}
     .flow{{height:100%;display:flex;align-items:center;justify-content:space-between;gap:{10*scale:.0f}px;padding:0 2%}}
     .flow-label{{flex:1;text-align:center;background:{colors['surface']};border:1px solid {colors['border']};border-radius:16px;padding:{16*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{28*scale:.0f}px;line-height:1.05}}

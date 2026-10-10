@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE.parent))
 
 from edit import build  # noqa: E402
 from hyperframes_cli import run as run_hyperframes  # noqa: E402
-from kallaway_audio import process_voice, tighten_video, write_bed, write_sfx_library  # noqa: E402
+from kallaway_audio import mix_voice_sfx, process_voice, tighten_video, write_bed, write_sfx_library  # noqa: E402
 from kallaway_plan import plan_timeline  # noqa: E402
 from kallaway_style import load_theme  # noqa: E402
 from check_kallaway_style import check as check_style  # noqa: E402
@@ -131,6 +131,21 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         seed_path=str(source))
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
+    if timeline.get("sfx"):
+        baked = project / "voice-sfx.mp4"
+        mixed = mix_voice_sfx(leveled["output"], baked, timeline["sfx"], project / "sfx")
+        timeline["source"]["path"] = str(baked.resolve())
+        timeline["sfx_baked"] = True
+        timeline["sfx_mix"] = {"peak": mixed["peak"], "trim_db": mixed["trim_db"]}
+        for cue, row in zip(timeline["sfx"], mixed["cues"]):
+            cue.update({
+                "under_db": row["under_db"],
+                "gain_db": row["gain_db"],
+                "gain": row["gain"],
+                "target_lufs": row["target_lufs"],
+                "voice_lufs": row["voice_lufs"],
+                "file": row["file"],
+            })
     timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
     timeline["joins"] = tightened.get("joins") or []
     spec_path = project / "timeline.json"

@@ -16,6 +16,7 @@
       "muted": "#A8A8A2",
       "warning": "#ECC94B",
       "warning_text": "#ECC94B",
+      "negative": "#E0533D",
       "on_accent": "#1A1A1A",
       "grid": "#3A3A3A",
       "grid_style": "dots",
@@ -34,6 +35,7 @@
       "muted": "#5E584F",
       "warning": "#ECC94B",
       "warning_text": "#7A5E12",
+      "negative": "#E0533D",
       "on_accent": "#1A1A1A",
       "grid": "#E4DDD0",
       "grid_style": "lines",
@@ -108,6 +110,19 @@
     "lead_magnet_detail": "30+ AI business ideas, each with an A to Z guide to landing the first client",
     "cta_template": "Comment {keyword}",
     "default_keyword": "VAULT"
+  },
+  "sfx_under_db": {
+    "pop": 11,
+    "click": 11,
+    "typing": 11,
+    "ticking": 11,
+    "marker": 11,
+    "paper": 11,
+    "error": 11,
+    "whoosh": 13,
+    "riser": 13,
+    "ding": 11,
+    "bass": 7
   },
   "sfx_gain": {
     "pop": 0.1585,

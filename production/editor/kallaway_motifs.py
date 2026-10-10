@@ -242,8 +242,12 @@ def stage_events(motif, start, end, stage=None):
             rise = min(0.55, max(0.28, (end - start) * 0.4))
             return [{"at": round(start, 3), "kind": "riser"},
                     {"at": _clamp(start + rise, start, end), "kind": "ding"}]
-        count = int(stage.get("count") or len(stage.get("heights") or []) or 4)
-        return [{"at": t, "kind": "pop"} for t in _times(start, end, max(1, count), 0.8)]
+        heights = list(stage.get("heights") or [])
+        count = int(stage.get("count") or len(heights) or 4)
+        events = [{"at": t, "kind": "pop"} for t in _times(start, end, max(1, count), 0.8)]
+        if heights and float(heights[min(len(heights), len(events)) - 1]) <= 12 and events:
+            events.append({"at": _clamp(float(events[-1]["at"]) + 0.32, start, end), "kind": "error"})
+        return events
     if motif == "counter":
         ticks = _times(start, min(end, start + 0.9), 6, 0.8)
         events = [{"at": t, "kind": "ticking"} for t in ticks]
@@ -267,6 +271,10 @@ def stage_events(motif, start, end, stage=None):
             {"at": round(min(end - 0.05, start + 0.2), 3), "kind": "whoosh"}]
     if motif == "quote_card":
         events = [{"at": round(start, 3), "kind": "pop"}]
+        if stage.get("variant") == "receipt":
+            count = len(stage.get("items") or ["JAN", "FEB", "MAR", "APR", "MAY"])
+            for moment in _times(start + 0.08, min(end, start + 0.62), max(1, count), 0.5):
+                events.append({"at": moment, "kind": "ticking"})
         if stage.get("strike"):
             events.append({"at": _clamp(stage.get("strike_at", start + 0.35), start, end), "kind": "error"})
         return events
@@ -349,12 +357,17 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         desat = float(stage.get("desaturate") or 0)
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
         motion = stage.get("motion") or resolve_annotations(stage, start, end)
-        img_h = image_height_percent(stage)
+        uncropped = bool(stage.get("uncropped"))
+        img_h = 100.0 if uncropped else image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
-        scroll_to = float(scroll.get("to", 0)) if scroll else 0
+        scroll_to = 0.0 if uncropped else (float(scroll.get("to", 0)) if scroll else 0)
         # A measured target uses a pan whose aspect matches the file, so image
-        # percentages land on the same pixels. A hand-authored box keeps cover.
-        fit = "fill" if (stage.get("frame") or {}).get("img_h") else "cover"
+        # percentages land on the same pixels. An uncropped phone shows the
+        # whole frame and the camera pushes toward the circle.
+        if uncropped:
+            fit = "contain"
+        else:
+            fit = "fill" if (stage.get("frame") or {}).get("img_h") else "cover"
         if media_url:
             picture = _media_tag(ident, media_url, start, end, fit, sat, track_index, stage)
         else:
@@ -377,7 +390,12 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             extras += (f'<div id="{ident}-hl" class="hl-line phone-hl" style="top:{top:.2f}%">'
                        f'{_esc(highlight.get("label") or "")}</div>')
         thumb = "" if detailed else f'<div id="{ident}-thumb" class="thumb-dot"></div>'
-        klass = "phone fill" if media_url and detailed else "phone"
+        if uncropped:
+            klass = "phone fit"
+        elif media_url and detailed:
+            klass = "phone fill"
+        else:
+            klass = "phone"
         # A filling bar reads as a stray underline. It is off unless the beat asks.
         bar = ""
         if stage.get("progress"):
@@ -385,14 +403,23 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         body = (f'<div id="{ident}-phone" class="{klass}"><div class="phone-screen">'
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
                 f'{bar}{thumb}</div></div>')
-        animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
+        if uncropped:
+            animations.append(
+                f'tl.fromTo("#{ident}-phone",{{y:96,opacity:0,rotation:-4}},'
+                f'{{y:0,opacity:1,rotation:-1.4,duration:0.42,ease:"back.out(1.5)",'
+                f'transformOrigin:"50% 80%",immediateRender:false}},{events[0]["at"]});')
+            animations.append(
+                f'tl.to("#{ident}-phone",{{scale:1.07,rotation:0,duration:0.55,ease:"power2.out",'
+                f'transformOrigin:"50% 42%"}},{events[0]["at"] + 0.36:.3f});')
+        else:
+            animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         if stage.get("progress"):
             animations.append(
                 f'tl.fromTo("#{ident}-prog",{{scaleX:0}},{{scaleX:1,duration:{max(0.4, duration-0.45):.3f},ease:"none",transformOrigin:"0% 50%"}},{start+0.2});')
         if not detailed:
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
-        if scroll:
+        if scroll and not uncropped:
             # The pan is the screenshot. yPercent moves the callout with the pixels.
             extra = img_h - 100
             fro = -float(scroll.get("from", 0)) * extra / img_h * 100
@@ -476,21 +503,35 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         labels = list(stage.get("labels") or [])
         negative = bool(stage.get("negative"))
         sliced = stage.get("reveal") == "slice"
-        count = min(len(heights), 5 if sliced else len(events))
+        count = min(len(heights), 5 if sliced else len([event for event in events if event["kind"] == "pop"] or events))
+        pop_events = [event for event in events if event["kind"] == "pop"] or events
         bars = []
         for index in range(count):
             short = float(heights[index]) <= 12
-            color = warning if (negative and index == 0) or short else (accent if index == count - 1 else border)
+            color = warning if short or (negative and index == 0) else accent
+            visual = 86 if short else heights[index]
             caption = _esc(labels[index]) if index < len(labels) else f"{index+1:02d}"
+            marker = f'<div id="{ident}-x{index}" class="bar-x">X</div>' if short else ""
             bars.append(
-                f'<div class="bar-col"><div id="{ident}-b{index}" class="bar" '
-                f'style="height:{heights[index]}%;background:{color}"></div>'
+                f'<div class="bar-col">{marker}<div id="{ident}-b{index}" class="bar" '
+                f'style="height:{visual}%;background:{color}"></div>'
                 f'<span class="mono">{caption}</span></div>')
-            at = events[0]["at"] if sliced else events[index]["at"]
+            at = events[0]["at"] if sliced else pop_events[min(index, len(pop_events) - 1)]["at"]
             animations.append(
-                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:0.42,ease:"back.out(1.4)",'
+                f'tl.fromTo("#{ident}-b{index}",{{scaleY:0}},{{scaleY:1,duration:0.36,ease:"back.out(1.5)",'
                 f'transformOrigin:"50% 100%",immediateRender:false}},{at});')
-        body = f'<div class="bars">{"".join(bars)}</div>'
+            if short and not sliced:
+                animations.append(
+                    f'tl.to("#{ident}-b{index}",{{scaleY:0.02,duration:0.28,ease:"power2.in"}},'
+                    f'{at + 0.34:.3f});')
+        drop = next((event for event in events if event["kind"] == "error"), None)
+        if drop:
+            animations.append(
+                f'tl.fromTo("#{ident}-x{count - 1}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.2,'
+                f'ease:"back.out(2)",transformOrigin:"50% 50%",immediateRender:false}},{drop["at"]});')
+        body = (
+            f'<div class="chart-frame"><div class="y-axis"><span>100</span><span>50</span><span>0</span></div>'
+            f'<div class="bars">{"".join(bars)}</div></div>')
 
     elif motif == "counter":
         target = int(stage.get("value", 30))
@@ -499,8 +540,19 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         suffix = json.dumps(str(stage.get("suffix") or ""))
         variable = ident.replace("-", "_") + "n"
         label_html = f'<div class="mono count-label">{_esc(label)}</div>' if label else ""
-        body = (f'<div class="counter"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
-                f'{label_html}</div>')
+        thumbs = []
+        tick_events = [event for event in events if event["kind"] == "ticking"]
+        ding_at = next((event["at"] for event in events if event["kind"] == "ding"), start)
+        for index, item in enumerate(list(stage.get("items") or [])[:8]):
+            at = tick_events[index]["at"] if index < len(tick_events) else ding_at
+            thumbs.append(
+                f'<div id="{ident}-s{index}" class="site-thumb"><span class="mono">{index+1:02d}</span>'
+                f'<b>{_esc(item)}</b><i></i></div>')
+            animations.append(_pop(f"#{ident}-s{index}", at))
+        grid = f'<div class="site-grid">{"".join(thumbs)}</div>' if thumbs else ""
+        dense = " dense" if thumbs else ""
+        body = (f'<div class="counter{dense}"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
+                f'{grid}{label_html}</div>')
         animations.append(
             f'const {variable}={{v:0}};'
             f'tl.to({variable},{{v:{target},duration:0.9,ease:"power2.out",'
@@ -606,15 +658,58 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
 
     elif motif == "quote_card":
         quote = stage.get("text") or stage.get("label") or "We already have one."
-        strike = ""
-        if stage.get("strike"):
-            strike = f'<div id="{ident}-strike" class="quote-strike"></div>'
-            at = next(event["at"] for event in events if event["kind"] == "error")
-            animations.append(
-                f'tl.fromTo("#{ident}-strike",{{scaleX:0}},{{scaleX:1,duration:0.22,ease:"power2.out",'
-                f'transformOrigin:"0% 50%",immediateRender:false}},{at});')
-        body = (f'<div id="{ident}-quote" class="quote-card"><div class="quote-text">{_esc(quote)}{strike}</div></div>')
-        animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
+        variant = stage.get("variant") or ""
+        if variant == "receipt":
+            months = list(stage.get("items") or ["JAN", "FEB", "MAR", "APR", "MAY"])
+            ticks = [event for event in events if event["kind"] == "ticking"]
+            cells = []
+            for index, month in enumerate(months):
+                tone = "cal-on" if index == 0 else "cal-off"
+                cells.append(f'<span id="{ident}-m{index}" class="{tone}">{_esc(month)}</span>')
+                at = ticks[index]["at"] if index < len(ticks) else events[0]["at"]
+                animations.append(_pop(f"#{ident}-m{index}", at))
+            stamp = ""
+            if stage.get("strike"):
+                stamp = f'<div id="{ident}-stamp" class="paid-stamp">PAID</div>'
+                at = next(event["at"] for event in events if event["kind"] == "error")
+                animations.append(
+                    f'tl.fromTo("#{ident}-stamp",{{scale:1.6,rotation:-20,opacity:0}},'
+                    f'{{scale:1,rotation:-12,opacity:1,duration:0.22,ease:"back.out(2)",'
+                    f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
+            body = (
+                f'<div id="{ident}-quote" class="receipt"><div class="receipt-glow"></div>'
+                f'<div class="mono receipt-kicker">INVOICE · WEBSITE BUILD</div>'
+                f'<div class="receipt-amt">{_esc(quote)}</div>'
+                f'<div class="receipt-line"><span>Paid once</span><span>Then nothing</span></div>'
+                f'<div class="cal">{"".join(cells)}</div>{stamp}</div>')
+            animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
+        elif variant == "browser":
+            body = (
+                f'<div id="{ident}-quote" class="browser"><div class="chrome"><i></i><i></i><i></i>'
+                f'<span class="mono">client-site.com</span></div>'
+                f'<div id="{ident}-live" class="browser-live"><b>Client site</b>'
+                f'<span>Home</span><span>Work</span><span>Contact</span></div>'
+                f'<div id="{ident}-dead" class="browser-dead">{_esc(quote)}</div></div>')
+            animations.append(_slide(f"#{ident}-quote", events[0]["at"]))
+            if stage.get("strike"):
+                at = next(event["at"] for event in events if event["kind"] == "error")
+                animations.append(f'tl.to("#{ident}-live",{{opacity:0,duration:0.06}},{at:.3f});')
+                animations.append(
+                    f'tl.fromTo("#{ident}-dead",{{opacity:0,y:10}},{{opacity:1,y:0,duration:0.18,'
+                    f'ease:"power2.out",immediateRender:false}},{at:.3f});')
+                animations.append(
+                    f'tl.fromTo("#{ident}-quote",{{x:0}},{{x:7,duration:0.04,yoyo:true,repeat:5,'
+                    f'ease:"none"}},{at:.3f});')
+        else:
+            strike = ""
+            if stage.get("strike"):
+                strike = f'<div id="{ident}-strike" class="quote-strike"></div>'
+                at = next(event["at"] for event in events if event["kind"] == "error")
+                animations.append(
+                    f'tl.fromTo("#{ident}-strike",{{scaleX:0}},{{scaleX:1,duration:0.22,ease:"power2.out",'
+                    f'transformOrigin:"0% 50%",immediateRender:false}},{at});')
+            body = (f'<div id="{ident}-quote" class="quote-card"><div class="quote-text">{_esc(quote)}{strike}</div></div>')
+            animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
 
     elif motif == "offer_pair":
         items = list(stage.get("items") or ["First offer", "Second offer"])[:2]
@@ -625,7 +720,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         note_html = f'<div class="offer-note">{_esc(note)}</div>' if note else ""
         cards = []
         for index, item in enumerate(items):
-            cards.append(f'<div id="{ident}-o{index}" class="offer-card">{_esc(item)}</div>')
+            rich = "<br>".join(_esc(part.strip()) for part in str(item).split("|"))
+            tone = " good" if index == 1 else ""
+            cards.append(f'<div id="{ident}-o{index}" class="offer-card{tone}">{rich}</div>')
             animations.append(_pop(f"#{ident}-o{index}", events[index]["at"]))
         body = f'<div class="offer-col">{kicker}<div class="offer-row">{"".join(cards)}</div>{note_html}</div>'
 
@@ -685,17 +782,32 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             items.append("Right")
         swipe = next(event["at"] for event in events if event["kind"] == "error")
         good = next(event["at"] for event in events if event["kind"] == "ding")
-        # The winning card stays hidden until it pops. A later fromTo does not
-        # hide it during the opening, so the wrong state would never read alone.
-        body = (f'<div class="swap"><div id="{ident}-bad" class="swap-card bad">{_esc(items[0])}</div>'
-                f'<div id="{ident}-good" class="swap-card good" style="opacity:0">{_esc(items[1])}</div></div>')
+        # Both cards are on screen together. The losing card tints and swipes
+        # off. The winner picks up a green glow and a rising revenue line.
+        body = (
+            f'<div class="swap side"><div id="{ident}-bad" class="swap-card bad">'
+            f'<div id="{ident}-tint" class="bad-tint"></div><b>{_esc(items[0])}</b></div>'
+            f'<div id="{ident}-good" class="swap-card good"><b>{_esc(items[1])}</b>'
+            f'<svg class="rev" viewBox="0 0 220 90"><path id="{ident}-line" '
+            f'd="M8 78 L48 70 L82 58 L120 40 L160 22 L208 8" fill="none" stroke="{accent}" '
+            f'stroke-width="6" stroke-linecap="round" stroke-dasharray="320"/>'
+            f'<circle id="{ident}-dot" cx="208" cy="8" r="6" fill="{accent}" opacity="0"/></svg>'
+            f'<div class="mono rev-label">Recurring revenue</div></div></div>')
         animations.append(_pop(f"#{ident}-bad", events[0]["at"]))
+        animations.append(_pop(f"#{ident}-good", events[0]["at"] + 0.1))
         animations.append(
-            f'tl.to("#{ident}-bad",{{x:220,opacity:0,rotation:8,duration:0.22,ease:"power2.in"}},{swipe:.3f});')
-        animations.append(f'tl.set("#{ident}-good",{{scale:0,opacity:0}},{float(start):.3f});')
+            f'tl.to("#{ident}-tint",{{opacity:0.72,duration:0.12,ease:"power1.out"}},{swipe:.3f});')
         animations.append(
-            f'tl.fromTo("#{ident}-good",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.26,'
-            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{float(good):.3f});')
+            f'tl.to("#{ident}-bad",{{x:280,opacity:0,rotation:8,duration:0.22,ease:"power2.in"}},{swipe:.3f});')
+        animations.append(
+            f'tl.to("#{ident}-good",{{boxShadow:"0 24px 48px rgba(0,0,0,0.45), 0 0 42px {accent}aa",'
+            f'duration:0.28}},{float(good):.3f});')
+        animations.append(
+            f'tl.fromTo("#{ident}-line",{{strokeDashoffset:320}},{{strokeDashoffset:0,duration:0.7,'
+            f'ease:"power2.out"}},{float(good):.3f});')
+        animations.append(
+            f'tl.fromTo("#{ident}-dot",{{scale:0.4,opacity:0}},{{scale:1,opacity:1,duration:0.2,'
+            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{float(good) + 0.55:.3f});')
 
     else:
         raise ValueError(f"unknown stage motif: {motif}")
@@ -704,7 +816,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
 
     # A slow push so a held graphic never sits dead still.
     hold = max(0.6, float(end) - float(start) - 0.28)
-    drift = 1.0 + min(0.08, max(0.03, hold * 0.012))
+    drift = 1.0 + min(0.08, max(0.05, hold * 0.012))
     animations.append(
         f'tl.fromTo("#{ident}",{{scale:1}},{{scale:{drift:.3f},duration:{hold:.3f},ease:"none",'
         f'transformOrigin:"50% 46%",immediateRender:false}},{float(start) + 0.22:.3f});')

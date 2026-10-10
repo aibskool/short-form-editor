@@ -10,7 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 
-from kallaway_audio import SFX_KINDS, keep_ranges, refine_word_bounds, sfx_variants, write_sfx_library
+from kallaway_audio import (
+    SFX_KINDS, UNDER_DB, keep_ranges, measure_sfx_stem, refine_word_bounds, sfx_variants,
+    write_sfx_library,
+)
 from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
 from kallaway_style import _caption_text, load_theme
@@ -106,13 +109,22 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(refined[0]["end"], 0.62)
         self.assertLess(refined[0]["end"], 0.68)
 
-    def test_word_end_keeps_searching_when_the_vowel_outlasts_the_window(self):
+    def test_word_end_follows_a_vowel_that_is_still_up_at_350ms(self):
         rate = 16000
-        t = np.arange(int(rate * 1.2)) / rate
-        tone = ((t >= 0.20) & (t < 0.78)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
+        t = np.arange(int(rate * 1.4)) / rate
+        tone = ((t >= 0.20) & (t < 0.95)).astype(np.float64) * 0.35 * np.sin(2 * np.pi * 180 * t)
         refined = refine_word_bounds(tone, rate, [{"word": "leverage", "start": 0.22, "end": 0.40}])
-        self.assertGreater(refined[0]["end"], 0.78)
-        self.assertLess(refined[0]["end"], 0.86)
+        self.assertGreater(refined[0]["end"], 0.95)
+        self.assertLess(refined[0]["end"], 1.05)
+
+    def test_fricative_tail_keeps_a_quiet_hiss(self):
+        rate = 16000
+        t = np.arange(rate) / rate
+        vowel = ((t >= 0.20) & (t < 0.45)).astype(np.float64) * 0.4 * np.sin(2 * np.pi * 180 * t)
+        hiss = ((t >= 0.45) & (t < 0.68)).astype(np.float64) * 0.02 * np.sin(2 * np.pi * 6000 * t)
+        refined = refine_word_bounds(vowel + hiss, rate, [{"word": "once", "start": 0.22, "end": 0.45}])
+        self.assertGreater(refined[0]["fricative_tail"], 0.15)
+        self.assertGreater(refined[0]["end"], 0.68)
 
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
         theme, _, _, _ = load_theme("dark")
@@ -446,20 +458,29 @@ class KallawayTests(unittest.TestCase):
             self.assertIn("background music", str(caught.exception))
 
 
-    def test_sfx_gains_follow_the_v2_bands(self):
-        import math
-        gains = load_theme()[0]["sfx_gain"]
-        bands = {
-            "pop": (-18.1, -13.9), "click": (-18.1, -13.9), "typing": (-18.1, -13.9),
-            "ticking": (-18.1, -13.9), "marker": (-18.1, -13.9), "paper": (-18.1, -13.9),
-            "error": (-18.1, -13.9), "whoosh": (-20.1, -15.9), "riser": (-20.1, -15.9),
-            "ding": (-16.1, -11.9), "bass": (-10.1, -5.9),
-        }
-        self.assertEqual(set(gains), set(bands))
-        for kind, (low, high) in bands.items():
-            db = 20 * math.log10(float(gains[kind]))
-            self.assertGreaterEqual(db, low, kind)
-            self.assertLessEqual(db, high, kind)
+    def test_sfx_levels_follow_voice_loudness(self):
+        unders = load_theme()[0]["sfx_under_db"]
+        self.assertEqual(set(unders), set(UNDER_DB))
+        for kind, under in UNDER_DB.items():
+            self.assertAlmostEqual(float(unders[kind]), under, places=1)
+
+    def test_sfx_stem_hits_every_cue_level(self):
+        rate = 48000
+        t = np.arange(int(rate * 4.4)) / rate
+        voice = 0.2 * np.sin(2 * np.pi * 180 * t)
+        cues = [
+            {"kind": "bass", "at": 0.05, "under_db": 7},
+            {"kind": "pop", "at": 0.90, "under_db": 11},
+            {"kind": "whoosh", "at": 1.80, "under_db": 13},
+            {"kind": "ding", "at": 2.70, "under_db": 11},
+            {"kind": "marker", "at": 3.60, "under_db": 11},
+        ]
+        rows = measure_sfx_stem(voice, rate, cues)
+        self.assertEqual(len(rows), len(cues))
+        for row in rows:
+            self.assertFalse(row["clustered"], row)
+            self.assertTrue(row["ok"], row)
+            self.assertLessEqual(abs(row["error_db"]), 2.0, row)
 
     def test_progress_bar_is_off_unless_the_beat_asks(self):
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
@@ -578,8 +599,10 @@ class KallawayTests(unittest.TestCase):
         kills = boundary_hard_kills("".join(animations), markup)
         self.assertTrue(any("#stage-13-bad" in kill and "opacity:0" in kill for kill in kills), kills)
         script = "".join(animations)
-        self.assertIn('tl.set("#stage-13-good",{scale:0,opacity:0},2.000);', script)
-        self.assertIn('style="opacity:0"', section)
+        self.assertIn('id="stage-13-good"', section)
+        self.assertNotIn('tl.set("#stage-13-good",{scale:0,opacity:0},2.000);', script)
+        self.assertIn('id="stage-13-line"', section)
+        self.assertIn("swap side", section)
 
     def test_reach_reel_can_omit_the_comment_ask(self):
         from check_kallaway_style import check

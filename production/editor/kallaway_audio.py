@@ -140,15 +140,47 @@ def _frame_rms(samples, rate, win_s=0.01, hop_s=0.004):
 _WORD_BRIDGE_SECONDS = 0.14
 
 
-# v2: keep the decay and a safety tail. Cuts remove the gap after that, not the consonant.
+# Keep the decay, including a quiet fricative the broadband meter would miss.
 _HEAD_PAD = 0.030
-_TAIL_PAD = 0.025
-_TAIL_SEARCH = 0.250
-_TAIL_MARGIN_DB = 6.0
+_TAIL_PAD = 0.040
+_TAIL_SEARCH = 0.350
+_TAIL_MARGIN_DB = 3.0
+_FRICATIVE_LOW = 3000.0
+_FRICATIVE_HIGH = 10000.0
 
 
 def _db(amplitude):
     return 20.0 * math.log10(max(float(amplitude), 1e-8))
+
+
+def _biquad(samples, b0, b1, b2, a1, a2):
+    from scipy.signal import lfilter
+    return lfilter(
+        [b0, b1, b2], [1.0, a1, a2], np.asarray(samples, dtype=np.float64))
+
+
+def _rbj(samples, rate, freq, kind):
+    """One RBJ biquad. ``kind`` is highpass or lowpass."""
+    freq = min(float(freq), float(rate) * 0.45)
+    omega = 2.0 * math.pi * freq / float(rate)
+    cosine = math.cos(omega)
+    alpha = math.sin(omega) / (2.0 * 0.707)
+    if kind == "highpass":
+        b0 = (1.0 + cosine) / 2.0
+        b1 = -(1.0 + cosine)
+        b2 = (1.0 + cosine) / 2.0
+    else:
+        b0 = (1.0 - cosine) / 2.0
+        b1 = 1.0 - cosine
+        b2 = (1.0 - cosine) / 2.0
+    a0 = 1.0 + alpha
+    return _biquad(samples, b0 / a0, b1 / a0, b2 / a0, (-2.0 * cosine) / a0, (1.0 - alpha) / a0)
+
+
+def _fricative_band(samples, rate):
+    """3–10 kHz energy. Broadband RMS treats a quiet "s" or "th" as silence."""
+    band = _rbj(np.asarray(samples, dtype=np.float64), rate, _FRICATIVE_LOW, "highpass")
+    return _rbj(band, rate, _FRICATIVE_HIGH, "lowpass")
 
 
 def _decay_time(times, frames, thresh, whisper_end, limit):
@@ -181,27 +213,40 @@ def _decay_time(times, frames, thresh, whisper_end, limit):
 
 
 def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD):
-    """Keep each word through its energy decay, then add a safety tail.
+    """Keep each word through its decay, including a high-band fricative, then add 40 ms.
 
     The onset is the speech burst that overlaps the whisper span (a stop closure
-    stays inside; a separated breath does not), pulled back 30 ms so plosives and
-    "s" onsets survive. The end is where 10 ms RMS falls to the noise floor + 6 dB,
-    searched from the whisper end out to +250 ms, plus a 25 ms safety tail. If that
-    window never leaves the vowel, the search continues until the floor or the next word.
+    stays inside; a separated breath does not), pulled back 30 ms. The end is where
+    BOTH broadband RMS and the 3–10 kHz band have fallen to their own noise floor
+    + 3 dB, searched from the whisper end out to +350 ms, plus a 40 ms safety tail.
+    ``fricative_tail`` is how long the high band stayed up past the whisper mark.
     """
     samples = np.asarray(samples, dtype=np.float64)
     ordered = sorted(words, key=lambda word: float(word["start"]))
     times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
+    _high_times, high_frames = _frame_rms(_fricative_band(samples, rate), rate, win_s=0.01, hop_s=0.005)
     if len(frames) == 0:
         return [dict(word) for word in ordered]
     floor = max(float(np.percentile(frames, 20)), 1e-5)
     thresh = floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
+    # The 20th percentile of the high band is often digital silence, which makes
+    # every vowel look like a fricative. Use the high band during broadband quiet
+    # instead, so the floor is the booth, not a zero sample.
+    if len(high_frames) == len(frames):
+        quiet = frames <= thresh
+        if int(np.count_nonzero(quiet)) > 8:
+            high_floor = float(np.percentile(high_frames[quiet], 90))
+        else:
+            high_floor = float(np.percentile(high_frames, 50))
+    else:
+        high_floor = float(np.percentile(high_frames, 50)) if len(high_frames) else 1e-5
+    high_floor = max(high_floor, 1e-6)
+    high_thresh = high_floor * (10 ** (_TAIL_MARGIN_DB / 20.0))
     duration = len(samples) / float(rate)
     refined = []
     for index, word in enumerate(ordered):
         start = float(word["start"])
         end = float(word["end"])
-        prev_end = float(refined[-1]["end"]) if refined else 0.0
         next_start = float(ordered[index + 1]["start"]) if index + 1 < len(ordered) else duration
         chosen = dict(word)
         lo = max(0.0, start - 0.08)
@@ -211,7 +256,7 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
         local = frames[mask]
         onset = start
         if len(local):
-            # Floor + 6 dB, not a fraction of the vowel, so a quiet "s" or plosive still counts.
+            # Floor + 3 dB, not a fraction of the vowel, so a quiet "s" or plosive still counts.
             hot = local >= thresh
             runs = []
             cursor = 0
@@ -243,34 +288,50 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
                     return min(cluster[1], end) - max(cluster[0], start)
 
                 onset = max(clusters, key=cluster_overlap)[0]
-        onset = max(prev_end, onset - pad_in)
-        # Search the decay on its own. A following word that whisper starts
-        # immediately does not cut this tail off; overlapping ranges stay one piece.
+        # Overlapping tails stay in spoken order. The previous word's end may
+        # run into this one; clamping the start to that end would reorder them.
+        onset = max(0.0, onset - pad_in)
+        if refined:
+            onset = max(onset, float(refined[-1]["start"]) + 0.02)
+        # A following word that starts while the fricative is still up does not
+        # cut it. The ranges overlap and the pause cutter keeps them as one piece.
         limit = min(end + _TAIL_SEARCH, duration)
-        decay = _decay_time(times, frames, thresh, end, max(end, limit))
-        # Whisper often closes a trailing consonant before the vowel has fallen.
-        # If the 250 ms window never settles and its typical level is still the
-        # vowel, keep going until the floor or the next word. A window that has
-        # already dropped into a breath stays put, so that breath is cut as a gap.
-        # A one-frame dip does not count as settled; the median ignores it.
-        body = (times >= max(0.0, end - 0.20)) & (times <= min(duration, end + 0.05))
-        window = (times >= end) & (times <= limit)
-        unsettled = decay >= limit - 0.025
-        if unsettled and np.any(body) and np.any(window):
-            peak = float(frames[body].max())
-            typical = float(np.median(frames[window]))
-            still_in_vowel = (_db(peak) - _db(typical)) < 20.0 and typical > thresh
-            far = min(duration, end + 0.70, max(limit, next_start - 0.030))
-            if still_in_vowel and far > limit + 0.01:
-                decay = _decay_time(times, frames, thresh, end, far)
+        broad_end = _decay_time(times, frames, thresh, end, max(end, limit))
+        hiss_end = (
+            _decay_time(_high_times, high_frames, high_thresh, end, max(end, limit))
+            if len(high_frames) else broad_end)
+        # A fricative that has already fallen stays inside the 350 ms window.
+        # A vowel that is still up there is followed to the floor, at most +700 ms.
+        if broad_end >= limit - 0.015:
+            far = min(end + 0.700, duration)
+            if next_start > end + 0.03:
+                far = min(far, max(limit, next_start - 0.004))
+            if far > limit + 0.01:
+                broad_end = _decay_time(times, frames, thresh, end, far)
+                if len(high_frames):
+                    hiss_end = max(
+                        hiss_end,
+                        _decay_time(_high_times, high_frames, high_thresh, end, far))
+        decay = max(broad_end, hiss_end)
         offset = min(duration, decay + pad_out)
-        if next_start > end + 0.03:
+        # The safety tail is silence after the word. A mouth noise inside those
+        # 40 ms is the next event, so the tail stops at the rise.
+        rise = thresh * (10 ** (6.0 / 20.0))
+        hot = np.where((times > decay + 0.008) & (times <= offset) & (frames > rise))[0]
+        if len(hot):
+            offset = max(decay, min(offset, float(times[hot[0]]) - 0.004))
+        if next_start > end + 0.03 and next_start - 0.004 >= decay:
             offset = min(offset, next_start - 0.004)
-        if offset - onset < 0.04:
+        if offset <= onset + 0.04:
+            floor_start = float(refined[-1]["start"]) + 0.02 if refined else 0.0
+            chosen["start"] = round(max(float(word["start"]), floor_start), 4)
+            chosen["end"] = round(max(float(word["end"]), chosen["start"] + 0.041), 4)
+            chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
             refined.append(chosen)
             continue
         chosen["start"] = round(onset, 4)
         chosen["end"] = round(offset, 4)
+        chosen["fricative_tail"] = round(max(0.0, hiss_end - end), 4)
         refined.append(chosen)
     return refined
 
@@ -285,10 +346,10 @@ def _ending_consonant(word):
 
 
 def measure_joins(samples, rate, ranges, words):
-    """Score each tightened join. The outgoing 20 ms must sit within 6 dB of the noise floor.
+    """Score each tightened join. The outgoing 20 ms must sit within 3 dB of the noise floor.
 
     Measured on the source tail that the cutter kept, before the crossfade mixes
-    in the next word. A loud tail means the cut landed inside the decay.
+    in the next word. ``fricative_tail`` is the high-band life past the whisper mark.
     """
     samples = np.asarray(samples, dtype=np.float64)
     times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
@@ -314,6 +375,7 @@ def measure_joins(samples, rate, ranges, words):
             "source_end": round(float(end), 3),
             "word": str(word.get("word", word.get("text", ""))),
             "consonant": _ending_consonant(word),
+            "fricative_tail": round(float(word.get("fricative_tail") or 0.0), 3),
             "tail_db": round(_db(rms), 2),
             "floor_db": round(floor_db, 2),
             "over_db": round(over, 2),
@@ -397,31 +459,26 @@ def tighten_video(source, words, output, gap=0.02, handle=0.0, crossfade=0.012):
     samples = _load_mono(source)
     refined = refine_word_bounds(samples, RATE, words)
     ranges = keep_ranges(refined, duration, gap=gap, handle=handle)
-    video = []
-    for index, (begin, end) in enumerate(ranges):
-        left, right = begin, end
-        long_enough = (end - begin) > max(0.03, crossfade * 3)
-        if crossfade and index > 0 and long_enough:
-            left += crossfade / 2
-        if crossfade and index < len(ranges) - 1 and long_enough:
-            right -= crossfade / 2
-        if right - left < 0.02:
-            left, right = begin, end
-        video.append((left, right))
+    # Picture hard-cuts on the word boundary. The crossfade lives in the silence
+    # after the safety tail, so it does not eat the fricative.
+    video = list(ranges)
     filters = []
     expected = 0.0
     last = len(ranges) - 1
     for index, (begin, end) in enumerate(ranges):
         vb, ve = video[index]
         filters.append(f"[0:v]trim=start={vb:.6f}:end={ve:.6f},setpts=PTS-STARTPTS[v{index}]")
-        length = end - begin
+        audio_end = end
+        if crossfade and index < last:
+            audio_end = min(ranges[index + 1][0], end + crossfade)
+        length = audio_end - begin
         fades = ""
         if index == 0:
             fades += ",afade=t=in:d=0.004"
         if index == last:
             fades += f",afade=t=out:st={max(0, length - 0.004):.6f}:d=0.004"
         filters.append(
-            f"[0:a]atrim=start={begin:.6f}:end={end:.6f},asetpts=PTS-STARTPTS{fades}[a{index}]")
+            f"[0:a]atrim=start={begin:.6f}:end={audio_end:.6f},asetpts=PTS-STARTPTS{fades}[a{index}]")
         expected += ve - vb
     if crossfade and len(ranges) > 1:
         # Quarter-sine curves are equal-power, so the join does not dip.
@@ -485,3 +542,211 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(output)],
         check=True)
     return {"output": str(output), "measurement": measured, "target_lufs": target_lufs}
+
+
+# Momentary SFX loudness sits this far under the voice's short-term loudness.
+# Midpoints of the phone-speaker bands: transients 10–12, whooshes 12–14, bass 6–8.
+UNDER_DB = {
+    "pop": 11.0, "click": 11.0, "typing": 11.0, "ticking": 11.0,
+    "marker": 11.0, "paper": 11.0, "error": 11.0,
+    "whoosh": 13.0, "riser": 13.0, "ding": 11.0, "bass": 7.0,
+}
+_LOWPASS_KINDS = {"whoosh", "riser"}
+_MOMENTARY_S = 0.400
+_SHORTTERM_S = 3.0
+# ITU-R BS.1770-4 pre-filter and RLB weighting, 48 kHz.
+_K_PRE_B = (1.53512485958697, -2.69169618940638, 1.19839281085285)
+_K_PRE_A = (-1.69065929318241, 0.73248077421585)
+_K_RLB_B = (1.0, -2.0, 1.0)
+_K_RLB_A = (-1.99004745483398, 0.99007225036621)
+
+
+def _resample(samples, src_rate, dst_rate):
+    samples = np.asarray(samples, dtype=np.float64)
+    if int(src_rate) == int(dst_rate) or len(samples) == 0:
+        return samples
+    duration = len(samples) / float(src_rate)
+    dest_n = max(1, int(round(duration * dst_rate)))
+    source_x = np.linspace(0.0, duration, num=len(samples), endpoint=False)
+    dest_x = np.linspace(0.0, duration, num=dest_n, endpoint=False)
+    return np.interp(dest_x, source_x, samples)
+
+
+def _lufs(mean_square):
+    if mean_square <= 1e-20:
+        return -120.0
+    return -0.691 + 10.0 * math.log10(mean_square)
+
+
+def _k_weight(samples, rate):
+    weighted = _resample(samples, rate, RATE)
+    weighted = _biquad(weighted, *_K_PRE_B, *_K_PRE_A)
+    return _biquad(weighted, *_K_RLB_B, *_K_RLB_A)
+
+
+def _momentary_lufs(weighted, start):
+    """Ungated 400 ms K-weighted loudness. A short click is scored in the full window."""
+    count = int(round(_MOMENTARY_S * RATE))
+    origin = int(round(float(start) * RATE))
+    chunk = np.zeros(count, dtype=np.float64)
+    src_a = max(0, origin)
+    src_b = min(len(weighted), origin + count)
+    if src_b > src_a:
+        dest = src_a - origin
+        chunk[dest:dest + (src_b - src_a)] = weighted[src_a:src_b]
+    return _lufs(float(np.dot(chunk, chunk)) / count)
+
+
+def _short_term_lufs(weighted, start):
+    """Ungated 3 s K-weighted loudness around ``start``, using samples that exist."""
+    origin = int(round((float(start) - _SHORTTERM_S / 2.0) * RATE))
+    end = origin + int(round(_SHORTTERM_S * RATE))
+    origin = max(0, origin)
+    end = min(len(weighted), max(origin + 1, end))
+    chunk = weighted[origin:end]
+    if len(chunk) < int(0.05 * RATE):
+        return -120.0
+    return _lufs(float(np.dot(chunk, chunk)) / len(chunk))
+
+
+def _load_wav(path):
+    with wave.open(str(path), "rb") as handle:
+        rate = handle.getframerate()
+        channels = handle.getnchannels()
+        width = handle.getsampwidth()
+        frames = handle.readframes(handle.getnframes())
+    if width != 2:
+        raise ValueError(f"{path} is not 16-bit PCM")
+    samples = np.frombuffer(frames, dtype="<i2").astype(np.float64) / 32768.0
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+    return _resample(samples, rate, RATE)
+
+
+def _prepare_cue(samples, kind):
+    if kind in _LOWPASS_KINDS:
+        return _rbj(samples, RATE, 8000.0, "lowpass")
+    return np.asarray(samples, dtype=np.float64)
+
+
+def mix_cues(voice, rate, cues, library=None):
+    """Place each cue so its momentary loudness sits under the voice at that moment.
+
+    The offset is SFX momentary LUFS minus voice short-term LUFS, not a peak
+    ratio. Whooshes and risers are low-passed at 8 kHz before the measurement
+    and before they are added.
+    """
+    voice = _resample(voice, rate, RATE)
+    weighted_voice = _k_weight(voice, RATE)
+    mixed = np.array(voice, dtype=np.float64, copy=True)
+    variant_use = {}
+    report = []
+    for cue in cues:
+        kind = str(cue.get("kind") or "")
+        if kind not in SFX_KINDS:
+            raise ValueError(f"unknown sfx kind: {kind}")
+        at = float(cue["at"])
+        variants = sfx_variants(kind, library)
+        if not variants:
+            raise FileNotFoundError(f"no recordings for {kind}")
+        slot = variant_use.get(kind, 0)
+        variant_use[kind] = slot + 1
+        chosen = variants[slot % len(variants)]
+        prepared = _prepare_cue(_load_wav(chosen), kind)
+        cue_lufs = _momentary_lufs(_k_weight(prepared, RATE), 0.0)
+        voice_lufs = _short_term_lufs(weighted_voice, at)
+        under = cue.get("under_db")
+        under = float(UNDER_DB.get(kind, 11.0) if under is None else under)
+        target = voice_lufs - under
+        gain_db = target - cue_lufs
+        gain = 10 ** (gain_db / 20.0)
+        start = int(round(at * RATE))
+        if 0 <= start < len(mixed):
+            stop = min(len(mixed), start + len(prepared))
+            mixed[start:stop] += prepared[:stop - start] * gain
+        report.append({
+            "kind": kind,
+            "at": round(at, 3),
+            "under_db": under,
+            "voice_lufs": round(voice_lufs, 2),
+            "cue_lufs": round(cue_lufs, 2),
+            "target_lufs": round(target, 2),
+            "gain_db": round(gain_db, 2),
+            "gain": round(gain, 5),
+            "file": Path(chosen).name,
+        })
+    return mixed, report
+
+
+def measure_sfx_stem(voice, rate, cues, library=None):
+    """Mix the cues, subtract the voice-only render, and score every cue.
+
+    A cue with no neighbor inside its 400 ms window must land within 2 dB of
+    its target. A clustered cue must not come in quieter than that target, and
+    its own 30 ms attack must land within 2 dB of the gained recording.
+    """
+    voice = _resample(voice, rate, RATE)
+    mixed, report = mix_cues(voice, RATE, cues, library)
+    isolated = mixed - voice
+    weighted = _k_weight(isolated, RATE)
+    rows = []
+    for row in report:
+        measured = _momentary_lufs(weighted, row["at"])
+        error = measured - row["target_lufs"]
+        window = [
+            other for other in report
+            if -0.08 <= float(other["at"]) - float(row["at"]) < (_MOMENTARY_S - 0.02)
+        ]
+        attack_n = int(round(0.030 * RATE))
+        origin = int(round(float(row["at"]) * RATE))
+        attack = isolated[origin:origin + attack_n]
+        attack_peak = float(np.max(np.abs(attack))) if len(attack) else 0.0
+        prepared = _prepare_cue(_load_wav(Path(library or SFX_LIBRARY) / row["file"]), row["kind"])
+        cue_peak = float(np.max(np.abs(prepared[:attack_n]))) if len(prepared) else 0.0
+        cue_peak *= 10 ** (row["gain_db"] / 20.0)
+        if cue_peak > 1e-8 and attack_peak > 0:
+            attack_error = 20.0 * math.log10(attack_peak / cue_peak)
+        else:
+            attack_error = -120.0
+        clustered = len(window) > 1
+        if clustered:
+            # Cues that share the 400 ms window add as power. The stem has to
+            # match that sum, so a missing or quiet cue still fails.
+            power = sum(10 ** (float(item["target_lufs"]) / 10.0) for item in window)
+            expected = 10.0 * math.log10(max(power, 1e-20))
+            judged = measured - expected
+        else:
+            expected = row["target_lufs"]
+            judged = error
+        scored = dict(row)
+        scored["stem_lufs"] = round(measured, 2)
+        scored["expected_lufs"] = round(expected, 2)
+        scored["error_db"] = round(judged, 2)
+        scored["attack_error_db"] = round(attack_error, 2)
+        scored["clustered"] = clustered
+        scored["ok"] = abs(judged) <= 2.0
+        rows.append(scored)
+    return rows
+
+
+def mix_voice_sfx(source, output, cues, library=None):
+    """Bake the leveled cues into the voice file. The picture is copied."""
+    source, output = Path(source), Path(output)
+    voice = _load_mono(source, RATE)
+    mixed, report = mix_cues(voice, RATE, cues, library)
+    peak = float(np.max(np.abs(mixed))) if len(mixed) else 0.0
+    trim_db = 0.0
+    if peak > 0.98:
+        trim = 0.98 / peak
+        trim_db = 20.0 * math.log10(trim)
+        mixed = mixed * trim
+    pcm = np.clip(mixed, -1.0, 1.0).astype(np.float32)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "f32le", "-ar", str(RATE), "-ac", "1", "-i", "pipe:0",
+         "-i", str(source), "-map", "1:v:0", "-map", "0:a:0",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         "-movflags", "+faststart", str(output)],
+        input=pcm.tobytes(), check=True)
+    return {"output": str(output), "peak": round(peak, 4), "trim_db": round(trim_db, 3), "cues": report}
