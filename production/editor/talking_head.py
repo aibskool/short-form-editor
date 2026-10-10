@@ -80,11 +80,15 @@ def _try_transcribe(source, destination):
     return words
 
 
-def _scene_times(video):
+# A 1-frame take change sits under 0.16. 0.10 still ignores ordinary head motion.
+SCENE_THRESHOLD = 0.10
+
+
+def _scene_times(video, threshold=SCENE_THRESHOLD):
     """Picture-cut times. A layout boundary near one of these is the same cut."""
     result = subprocess.run(
         ["ffmpeg", "-hide_banner", "-i", str(video),
-         "-filter:v", "select='gt(scene,0.16)',showinfo", "-f", "null", "-"],
+         "-filter:v", f"select='gt(scene,{float(threshold):.3f})',showinfo", "-f", "null", "-"],
         capture_output=True, text=True)
     times = []
     for line in result.stderr.splitlines():
@@ -153,10 +157,16 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
     from kallaway_beats import lengthen_closing_face, snap_shot_edges
-    timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], _scene_times(leveled["output"]))
+    from kallaway_plan import reanchor_led_sfx
+    original_starts = [float(shot["start"]) for shot in (timeline.get("shots") or [])]
+    picture_cuts = _scene_times(leveled["output"])
+    timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], picture_cuts)
     # Scene snap can pull the last face back under a second and a half.
+    # Do not cross back over the picture cut; use the hold after the last word.
     timeline["shots"] = lengthen_closing_face(
-        timeline["shots"], timeline.get("headers"), minimum=1.52)
+        timeline["shots"], timeline.get("headers"), minimum=1.52,
+        scene_times=picture_cuts, video_end=float(tightened["duration"]))
+    reanchor_led_sfx(timeline, original_starts, fps=float(timeline.get("output", {}).get("fps", 30)))
     timeline["source_ranges"] = [
         [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
     ]
@@ -185,7 +195,9 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
                 "body_at": row["body_at"],
             })
     _write_sfx_log(timeline, project)
-    timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
+    played = round(float(timeline["shots"][-1]["end"]), 3)
+    file_end = round(float(tightened["duration"]), 3)
+    timeline["source"]["segments"] = [{"start": 0, "end": min(played, file_end)}]
     timeline["joins"] = tightened.get("joins") or []
     attach_popout(
         timeline, source, tightened.get("ranges") or [],
@@ -230,7 +242,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     finalize.extend(["--target-lufs", str(target_lufs), "--true-peak", str(true_peak),
                      "--codec-headroom-db", str(codec_headroom_db)])
     subprocess.run(finalize, check=True, env=env)
+    from check_kallaway_style import output_short_shots
+    shorts = output_short_shots(final)
+    if shorts:
+        raise SystemExit(
+            "output has a shot under 0.5s, measured on the rendered frames: "
+            + json.dumps(shorts))
     report["output"] = str(final)
+    report["output_short_shots"] = shorts
     report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report

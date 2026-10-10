@@ -601,6 +601,7 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
     _extend_stop_peak(refined, samples, rate)
     _keep_late_coda(refined, samples, rate)
     _hold_until_released(refined, samples, rate)
+    _trim_trailing_silence(refined, samples, rate)
     for index in range(len(refined) - 1):
         nxt = float(refined[index + 1]["start"])
         if float(refined[index]["end"]) > nxt - 0.004:
@@ -608,6 +609,61 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
             if refined[index]["end"] > nxt - 0.004:
                 refined[index]["end"] = round(nxt - 0.004, 4)
     return refined
+
+
+def _trim_trailing_silence(refined, samples, rate, floor_db=-46.0, min_silence=0.15, keep_tail=0.04):
+    """Pull a word end off a near-silent stretch that was folded into the word.
+
+    A stop closure that comes back up as a coda stays: the loud part after the
+    quiet finishes well before the next word. A quiet run that lasts into the
+    next word is a pause. The gap trim then keeps at most a sentence breath.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    hop = max(1, int(0.01 * rate))
+    step = hop / float(rate)
+
+    def level(moment):
+        a = int(max(0, moment * rate))
+        b = int(min(len(samples), a + hop))
+        if b <= a:
+            return -80.0
+        energy = float(np.dot(samples[a:b], samples[a:b])) / (b - a)
+        return _db(math.sqrt(max(energy, 0.0)))
+
+    for index, word in enumerate(refined):
+        start = float(word["start"])
+        end = float(word["end"])
+        if end - start < 0.25:
+            continue
+        nxt = float(refined[index + 1]["start"]) if index + 1 < len(refined) else end + 1.0
+        quiet = []
+        cursor = start + 0.05
+        run = None
+        while cursor < end:
+            if level(cursor) < floor_db:
+                if run is None:
+                    run = cursor
+            elif run is not None:
+                if cursor - run >= min_silence:
+                    quiet.append((run, cursor))
+                run = None
+            cursor += step
+        if run is not None and end - run >= min_silence:
+            quiet.append((run, end))
+        if not quiet:
+            continue
+        span_start, span_end = quiet[-1]
+        after = None
+        cursor = span_end
+        while cursor < end:
+            if level(cursor) >= floor_db:
+                after = cursor + step
+            cursor += step
+        if after is not None and nxt - after > 0.08 and end - span_end > 0.08:
+            continue
+        new_end = min(span_start + keep_tail, nxt - 0.02)
+        if new_end > start + 0.05:
+            word["end"] = round(new_end, 4)
 
 
 def _extend_stop_peak(refined, samples, rate):
@@ -1156,6 +1212,19 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
     return rebuilt or list(ranges)
 
 
+def extend_closing_hold(ranges, source_duration, hold=0.10):
+    """Keep a short silent hold after the last word when the source still has it."""
+    if not ranges or hold <= 0:
+        return ranges
+    begin, end = ranges[-1]
+    held = min(float(source_duration), float(end) + float(hold))
+    if held - float(end) < 1.0 / 30.0:
+        return ranges
+    ranges = list(ranges)
+    ranges[-1] = (float(begin), held)
+    return ranges
+
+
 def trim_final_nonspeech(samples, rate, ranges, max_tail=0.12):
     """Leave at most ``max_tail`` of non-speech after the last decay."""
     if not ranges:
@@ -1259,6 +1328,9 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     # excise may open a hole inside one aligned word ("ends", "flow"). Put it back.
     ranges = seal_word_interiors(ranges, refined)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
+    # A tenth of a second after the last word, when the source still has it.
+    # The closing face can use this hold without crossing back over a picture cut.
+    ranges = extend_closing_hold(ranges, duration, hold=0.10)
     # Picture hard-cuts on the word boundary. The crossfade lives in the silence
     # after the safety tail, so it does not eat the fricative.
     video = list(ranges)

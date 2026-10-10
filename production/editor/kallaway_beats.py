@@ -11,7 +11,7 @@ import re
 
 from kallaway_motifs import resolve_annotations
 from kallaway_plan import (
-    NEGATIVE, _cover_sfx, _lands_on, _slot_words, _spoken, _token, anchor_sfx,
+    NEGATIVE, _caption_block, _cover_sfx, _lands_on, _slot_words, _spoken, _token, anchor_sfx,
     caption_phrases, plain_text, sfx_placement_rows,
 )
 
@@ -226,7 +226,18 @@ def _fit_header(header, width, height, layout):
     return entry
 
 
-def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
+def quantize_cut(moment, fps=30):
+    """Presentation time of a scene frame, early enough that the frame is in the new shot.
+
+    A scene at 10.6666... rounded to 3 decimals is 10.667, which is after that
+    frame. The layout then changes on the next frame and the new take flashes
+    for one frame in the old layout.
+    """
+    index = int(round(float(moment) * float(fps)))
+    return round(index / float(fps) - 0.0005, 3)
+
+
+def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5, fps=30):
     """Move a layout cut onto a nearby picture cut so a 1–3 frame orphan cannot sit between them.
 
     The picture change is the earliest scene inside the window. A one-frame
@@ -238,12 +249,14 @@ def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
     original = [float(shot["start"]) for shot in shots] + [float(shots[-1]["end"])]
     edges = list(original)
     scenes = sorted(float(moment) for moment in scene_times)
+    frame = 1.0 / float(fps)
     for index in range(1, len(edges) - 1):
         near = [moment for moment in scenes if abs(moment - edges[index]) <= window]
         if not near:
             continue
-        before = [moment for moment in near if moment <= edges[index] + (1.0 / 30.0)]
-        edges[index] = min(before) if before else min(near, key=lambda moment: abs(moment - edges[index]))
+        before = [moment for moment in near if moment <= edges[index] + frame]
+        chosen = min(before) if before else min(near, key=lambda moment: abs(moment - edges[index]))
+        edges[index] = quantize_cut(chosen, fps)
     for index in range(1, len(edges) - 1):
         moved = abs(edges[index] - original[index])
         short = edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum
@@ -255,27 +268,50 @@ def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
     return shots
 
 
-def lengthen_closing_face(shots, headers=None, minimum=1.52):
-    """The last full-face or punch has to hold at least a second and a half."""
+def lengthen_closing_face(shots, headers=None, minimum=1.52, scene_times=None, video_end=None):
+    """The last full-face or punch has to hold at least a second and a half.
+
+    The start does not cross back over a picture cut. Stealing that frame is
+    what puts one take inside the next layout. When the previous shot cannot
+    give the time, the end may run up to a tenth of a second into the hold
+    that follows the last word.
+    """
     if len(shots) < 2:
         return shots
     last = shots[-1]
     if last.get("layout") not in {"full", "punch_in"}:
         return shots
-    span = float(last["end"]) - float(last["start"])
-    if span + 1e-3 >= minimum:
-        return shots
-    prev = shots[-2]
-    room = float(prev["end"]) - float(prev["start"]) - 1.2
-    shift = min(max(0.0, room), minimum - span)
-    if shift < 0.03:
-        return shots
-    boundary = round(float(last["start"]) - shift, 3)
-    prev["end"] = boundary
-    last["start"] = boundary
-    for header in headers or []:
-        if float(header.get("start", 0)) < boundary < float(header.get("end", 0)):
-            header["end"] = boundary
+    start = float(last["start"])
+    end = float(last["end"])
+    floor = start
+    if scene_times:
+        on_cut = [float(moment) for moment in scene_times if float(moment) <= start + (1.0 / 30.0)]
+        if on_cut and start - max(on_cut) <= 0.08:
+            floor = max(floor, quantize_cut(max(on_cut)))
+    span = end - start
+    if span + 1e-3 < minimum:
+        prev = shots[-2]
+        room = float(prev["end"]) - float(prev["start"]) - 1.2
+        room = min(room, start - floor)
+        shift = min(max(0.0, room), minimum - span)
+        if shift >= 0.03:
+            boundary = round(max(floor, start - shift), 3)
+            prev["end"] = boundary
+            last["start"] = boundary
+            start = boundary
+            for header in headers or []:
+                if float(header.get("start", 0)) < boundary < float(header.get("end", 0)):
+                    header["end"] = boundary
+    span = end - start
+    if span + 1e-3 < minimum and video_end is not None:
+        need = minimum - span
+        extra = min(need, 0.10, max(0.0, float(video_end) - end))
+        if extra >= 0.02:
+            end = round(end + extra, 3)
+            last["end"] = end
+            for header in headers or []:
+                if abs(float(header.get("end", 0)) - (end - extra)) <= 0.02:
+                    header["end"] = end
     return shots
 
 
@@ -687,12 +723,9 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         "notices": notices,
         "shots": shots,
         "stage_slots": stage_slots,
-        "captions": {
-            "max_words": 1, "uppercase": False, "word_styles": styles,
-            "style_at": style_at,
-            "keep_case": [_clean(token) for token in keep_case],
-            "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
-        },
+        "captions": _caption_block(
+            ordered, styles, stage_plan, style_at=style_at,
+            keep_case=[_clean(token) for token in keep_case]),
         "sfx": sfx,
         "sfx_log": sfx_placement_rows(sfx),
         "speaker_reveal": float(stage_plan["speaker_reveal"]) if stage_plan.get("speaker_reveal") else None,

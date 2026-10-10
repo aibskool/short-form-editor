@@ -6,9 +6,10 @@ once per source video and reused.
 
 Robust Video Matting (resnet50) runs offline at the source resolution. It is
 recurrent, so the silhouette holds still from frame to frame. The composition
-pass then steadies the edge band with optical flow, feathers it by a pixel or
-two, pulls foliage green out of that band, and bakes the same soft contact
-shadow. The result is a straight-alpha QuickTime on the same frames as the picture.
+pass then steadies the edge band with optical flow, feathers it by 2-3 px,
+pulls foliage green out of a 6 px band, drops specks under 200 px, and bakes
+the same soft contact shadow. The result is a straight-alpha QuickTime on the
+same frames as the picture.
 """
 import hashlib
 import os
@@ -25,20 +26,25 @@ from scipy import ndimage
 # recurrent model is the default. downsample 0.25 softened the ear, so it is 0.5.
 MODEL = "rvm-resnet50-fullres-d050-edge-v1"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
-# Kept for the anchor record. The split crop no longer uses a fraction of the
-# head: the chin sits on the card top and the whole head is above it.
+# Kept for the anchor record. The split crop places the crown, not a fraction of the head.
 POP_FRACTION = 0.32
 POP_FLOOR = 0.22
 POP_CAP = 0.42
-# Source pixels added under the estimated jaw so the chin stays above the card.
+# Source pixels added under the estimated jaw when a chin row is reported.
 CHIN_PAD_PX = 28
+# The hair clears the card by about this much. Kallaway's own split frames
+# put only the crown above y 1408: median 70 px, and the take stays in 50-100.
+CROWN_POP_TARGET_PX = 70
+CROWN_POP_MIN_PX = 50
+CROWN_POP_MAX_PX = 100
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
-# The live clearance is caption_band_px (the line, plus the gaps on both sides).
 CROWN_HEADROOM_PX = 96
-# The caption line ends this many pixels above the crown. It never crosses the head.
-CAPTION_GAP_ABOVE_CROWN_PX = 12
+# The caption baseline sits this far above the crown. 25-50 is the allowed band.
+CAPTION_GAP_ABOVE_CROWN_PX = 35
 # Empty pixels between the graphic stage and the top of that line.
 CAPTION_GAP_BELOW_STAGE_PX = 18
+# Inter Black cap height over the em size. 54 px type has about a 39 px cap.
+SPLIT_CAP_FACTOR = 39.0 / 54.0
 # Matches .caption-text { line-height: 1.02 } and .cap.marker { font-size: 1.12em }.
 CAPTION_LINE_FACTOR = 1.02
 CAPTION_EMPHASIS = 1.12
@@ -54,17 +60,25 @@ SEAM_PX = 4
 ANALYSIS_LONG_EDGE = 720
 GUIDE_RADIUS = 12
 GUIDE_EPS = 8e-4
-# Soft ramp on the silhouette. A bald head wants one to two pixels, not a halo.
-FEATHER_PX = 1.5
+# Soft ramp on the silhouette. Two to three pixels, not a halo and not a stair.
+FEATHER_PX = 2.5
 # Weight of the current frame on the uncertain edge. The solid body is not blended.
-TEMPORAL_NOW = 0.72
+TEMPORAL_NOW = 0.38
+# Gaussian on the alpha before the threshold, so the crown stays round.
+CONTOUR_SIGMA = 1.45
+# A second blur of the mask. Wide enough to kill a 1 px stair, short of a flat crown.
+CONTOUR_ROUND_SIGMA = 1.8
+# Connected components smaller than this are specks, including islands above the hair.
+SPECK_MIN_PX = 200
+# Foliage green is pulled off this many pixels either side of the contour.
+DESPILL_RADIUS_PX = 6
 # Encoder scale inside Robust Video Matting. The alpha is still full frame size.
 # 0.5 keeps the ears and the crown; 0.25 is the live-call look this replaced.
 RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-smooth-feather1.5-despill"
+EDGE_RECIPE = "rvm-r50-d050-flow-smooth-feather2.5-despill6-speck200"
 
 
 def _run(args):
@@ -426,21 +440,54 @@ def _foreground_color(rgb, person):
     return out
 
 
-def despill_green(rgb, person):
-    """Take foliage green off the soft edge. Skin inside the silhouette stays."""
-    out = np.asarray(rgb, dtype=np.float32)
-    edge = (person > 0.02) & (person < 0.92)
-    if not np.any(edge):
-        return out
-    if out is rgb or not out.flags.writeable:
-        out = out.copy()
+def _drop_specks(binary, min_area=SPECK_MIN_PX):
+    """Drop specks and any island that sits entirely above the crown."""
+    labels, count = ndimage.label(binary)
+    if count <= 0:
+        return binary
+    counts = np.bincount(labels.ravel())
+    largest = 1 + int(np.argmax(counts[1:]))
+    body_rows = np.where(labels == largest)[0]
+    crown = int(body_rows.min()) if body_rows.size else 0
+    keep = np.zeros(count + 1, dtype=bool)
+    keep[largest] = True
+    for label in range(1, count + 1):
+        if label == largest:
+            continue
+        area = int(counts[label])
+        rows = np.where(labels == label)[0]
+        if rows.size == 0:
+            continue
+        floating = int(rows.max()) < crown - 1
+        if area >= min_area and not floating:
+            keep[label] = True
+    return keep[labels]
+
+
+def despill_green(rgb, person, binary=None):
+    """Take foliage green off the edge band. Skin inside the silhouette stays.
+
+    The band is the soft ramp plus ``DESPILL_RADIUS_PX`` on either side of the
+    contour, so a green fringe cannot sit just inside a solid pixel.
+    """
+    out = np.array(rgb, dtype=np.float32, copy=True)
     red = out[:, :, 0]
     green = out[:, :, 1]
     blue = out[:, :, 2]
     limit = np.maximum(red, blue)
     excess = np.clip(green - limit, 0, None)
-    # The outer fringe loses the spill. A nearly solid pixel keeps its color.
-    strength = np.clip((0.92 - person) / 0.90, 0, 1)
+    edge = (person > 0.02) & (person < 0.98)
+    strength = np.clip((0.98 - person) / 0.96, 0, 1)
+    if binary is not None:
+        mask = np.asarray(binary, dtype=bool)
+        inside = ndimage.distance_transform_edt(mask)
+        outside = ndimage.distance_transform_edt(~mask)
+        near = ((inside > 0) & (inside <= DESPILL_RADIUS_PX)) | (
+            (outside > 0) & (outside <= DESPILL_RADIUS_PX) & (person > 0.01))
+        strength = np.where(near, 1.0, strength)
+        edge = edge | near
+    if not np.any(edge):
+        return out
     out[:, :, 1] = np.where(edge, green - excess * strength, green)
     return out
 
@@ -478,7 +525,9 @@ def _flow_stabilize(alpha, previous, gray):
             prev_alpha.astype(np.float32),
             grid_x + flow[:, :, 0], grid_y + flow[:, :, 1],
             cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    edge = ((alpha > 0.02) & (alpha < 0.98)) | ((warped > 0.02) & (warped < 0.98))
+    edge = ((alpha > 0.01) & (alpha < 0.99)) | ((warped > 0.01) & (warped < 0.99))
+    disagree = np.abs(alpha - warped) > 0.12
+    edge = edge | (disagree & (np.maximum(alpha, warped) > 0.04) & (np.minimum(alpha, warped) < 0.96))
     mixed = alpha.copy()
     mixed[edge] = TEMPORAL_NOW * alpha[edge] + (1.0 - TEMPORAL_NOW) * warped[edge]
     return mixed.astype(np.float32)
@@ -514,18 +563,23 @@ def refine_frame(rgb, coarse, previous=None):
     alpha = np.clip(alpha, 0, 1).astype(np.float32)
     gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
     alpha = _flow_stabilize(alpha, previous, gray)
-    # A one-pixel stair on the bald crown. Blur the contour only; the state
-    # carried forward stays sharp so the blur does not accumulate.
-    contour = ndimage.gaussian_filter(alpha, 0.9)
+    # Blur the contour only. The state carried forward stays sharp so the blur
+    # does not accumulate, and the crown stays a curve instead of a flat cut.
+    contour = ndimage.gaussian_filter(alpha, CONTOUR_SIGMA)
     binary = contour >= 0.5
     binary = ndimage.binary_fill_holes(binary)
     # Close pinholes. Do not open: opening eats the ear.
     binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
+    binary = _drop_specks(binary)
+    rounded = ndimage.gaussian_filter(binary.astype(np.float32), CONTOUR_ROUND_SIGMA)
+    binary = rounded >= 0.5
+    binary = ndimage.binary_fill_holes(binary)
+    binary = _drop_specks(binary)
     person = _distance_feather(binary, FEATHER_PX)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
     person = np.where(core, 1.0, person).astype(np.float32)
-    fg = despill_green(_foreground_color(rgb, person), person)
+    fg = despill_green(_foreground_color(rgb, person), person, binary)
     shadow = cast_shadow(person) * (1 - person)
     out_a = np.clip(person + shadow, 0, 1)
     straight = np.zeros_like(fg)
@@ -597,8 +651,8 @@ def _segment_gray(source, output):
                 blob = _exact(frame_bytes)
                 if len(blob) < frame_bytes:
                     break
-                rgb = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 3)
-                src = torch.from_numpy(np.ascontiguousarray(rgb))
+                rgb = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 3).copy()
+                src = torch.from_numpy(rgb)
                 src = src.permute(2, 0, 1).unsqueeze(0).float().mul_(1 / 255)
                 _fgr, pha, *rec = model(src, *rec, RVM_DOWNSAMPLE)
                 alpha = pha[0, 0].clamp_(0, 1).mul_(255).byte().cpu().numpy()
@@ -777,24 +831,37 @@ def chin_row(head):
 
 
 def _caption_line_px(font_px):
-    """Line box, including a stressed word, so the glyphs stay off the crown."""
-    return float(font_px) * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
+    """Cap height. The baseline sits on this, and a marker word grows a few pixels."""
+    return float(font_px) * SPLIT_CAP_FACTOR
 
 
 def caption_band_px(layout_spec, height):
     """Pixels from the crown up through the caption line to the stage bottom."""
-    font = float(layout_spec.get("caption_split_px", layout_spec.get("caption_font_px", 60)))
+    font = float(layout_spec.get("caption_split_px", layout_spec.get("caption_font_px", 54)))
     font *= float(height) / 1920.0
     scale = float(height) / 1920.0
     return _caption_line_px(font) + CAPTION_GAP_ABOVE_CROWN_PX * scale + CAPTION_GAP_BELOW_STAGE_PX * scale
 
 
 def split_caption_top_px(crown_canvas_y, font_px, height):
-    """Top of the one-line caption, just above this crown and below the title band."""
-    line = _caption_line_px(font_px)
-    top = float(crown_canvas_y) - CAPTION_GAP_ABOVE_CROWN_PX * (height / 1920.0) - line
-    floor = 248.0 * (height / 1920.0)
+    """CSS top of the one-line caption. The baseline is 35 px above this crown.
+
+    The line does not track the head inside the shot. The caller passes that
+    segment's highest crown. A marker word is about 5 px taller, so the gap
+    stays inside 25-50 px.
+    """
+    scale = float(height) / 1920.0
+    cap = _caption_line_px(font_px)
+    baseline = float(crown_canvas_y) - CAPTION_GAP_ABOVE_CROWN_PX * scale
+    top = baseline - cap
+    floor = 248.0 * scale
     return max(floor, top)
+
+
+def full_caption_top_px(baseline_px, font_px, height):
+    """CSS top that puts the full-face baseline on ``baseline_px``."""
+    cap = _caption_line_px(font_px)
+    return float(baseline_px) * (float(height) / 1920.0) - cap
 
 
 def smooth_crown_samples(samples, window=3):
@@ -837,8 +904,8 @@ def highest_crown_source_y(head, start=None, end=None):
 def pop_limits(layout, height):
     """Stage and caption lines, in canvas pixels.
 
-    The split crop does not stop at these lines. The chin goes on the card
-    top, and the stage is raised so panels stay above the hair.
+    The crown clears the card by 50-100 px. The stage stays on the theme line
+    unless the hair would otherwise run into the caption.
     """
     scale_y = height / 1920.0
     card_top = layout["card_top"] * height
@@ -855,23 +922,52 @@ def pop_limits(layout, height):
     }
 
 
-def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
-    """object-position Y that sets the chin on the card top.
+def crown_pop_px(head, video_w, video_h, card_w, card_h, scale):
+    """Canvas pixels of the median crown above the card, clamped to 50-100.
 
-    Scale stays at 1. The full source width fills the card, and the rows under
-    the chin are the neck, shoulders, and chest. The whole head is above the
-    card. A raised hand does not pull the chin back down into the card.
+    A higher crown (smaller source row) pops further. If that crown would clear
+    more than 100 px, the crop shifts down. If the low crown would clear less
+    than 50, it shifts up, and that shift never pushes the high crown past 100.
+    Scale stays at 1, so a close take cannot shrink the face without side bars.
+    """
+    median = float(head["head_top"])
+    high = float(head.get("head_high", median))
+    low = float(head.get("head_low", median))
+    span = cover_fit(video_w, video_h, card_w, card_h) * float(scale or 1.0)
+
+    def above(pop, row):
+        return float(pop) + (median - float(row)) * span
+
+    pop = float(CROWN_POP_TARGET_PX)
+    if above(pop, high) > CROWN_POP_MAX_PX:
+        pop -= above(pop, high) - CROWN_POP_MAX_PX
+    if above(pop, low) < CROWN_POP_MIN_PX:
+        pop += CROWN_POP_MIN_PX - above(pop, low)
+        if above(pop, high) > CROWN_POP_MAX_PX:
+            pop -= above(pop, high) - CROWN_POP_MAX_PX
+    return pop
+
+
+def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
+    """object-position Y that sets the median crown about 70 px above the card.
+
+    Scale stays at 1. The full source width fills the card. The face, neck,
+    and shoulders sit inside it, and only the crown clears the top edge.
+    A raised hand does not move that crop.
     """
     del limits
+    pop = crown_pop_px(head, video_w, video_h, card_w, card_h, scale)
     return position_for_row(
-        chin_row(head), 0.0, video_w, video_h, card_w, card_h, scale=scale)
+        float(head["head_top"]), pop, video_w, video_h, card_w, card_h, scale=scale)
 
 
 def frame_popout(timeline, head, theme):
-    """Point split shots so the chin rests on the card and the head pops out.
+    """Point split shots so the crown clears the card by about 70 px.
 
-    Full and punch stay on the theme crop with the pop hidden. The stage is
-    raised from this measurement so panel graphics clear the hair.
+    The face stays inside the card. Full and punch stay on the theme crop with
+    the pop hidden. A per-take full-face baseline, when the timeline has one,
+    places that caption. The stage ends on the theme line unless the hair
+    would run into the caption.
     """
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
@@ -920,7 +1016,7 @@ def frame_popout(timeline, head, theme):
             min(hand_tops), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
         hand_above = round(-hand_y, 1)
     head_px = head["head_height"] * cover_fit(video_w, video_h, card_w, card_h)
-    font_px = float(layout.get("caption_split_px", 60)) * (width / 1080.0)
+    font_px = float(layout.get("caption_split_px", 54)) * (width / 1080.0)
     card_top_px = float(layout["card_top"]) * height
     caption_pcts = []
     for scale, shots in groups.items():
@@ -929,12 +1025,20 @@ def frame_popout(timeline, head, theme):
             source_y = highest_crown_source_y(head, shot.get("start"), shot.get("end"))
             local = source_y_on_card(
                 source_y, video_w, video_h, card_w, card_h, pos_y, scale=scale)
-            if local >= -40:
+            if local >= -20:
                 shot["caption_y"] = round(float(layout["caption_split_y"]) * 100, 2)
             else:
                 top = split_caption_top_px(card_top_px + local, font_px, height)
                 shot["caption_y"] = round(100.0 * top / height, 2)
             caption_pcts.append(shot["caption_y"])
+    full_baseline = (timeline.get("captions") or {}).get("full_baseline_px")
+    if full_baseline:
+        full_font = float(layout.get("caption_full_px", 67)) * (width / 1080.0)
+        full_top = full_caption_top_px(float(full_baseline), full_font, height)
+        full_pct = round(100.0 * full_top / height, 2)
+        for shot in timeline.get("shots") or []:
+            if shot.get("layout") in {"full", "punch_in"}:
+                shot["caption_y"] = full_pct
     caption_pct = min(caption_pcts) if caption_pcts else round(float(layout["caption_split_y"]) * 100, 2)
     timeline["source"]["popout"] = {
         "object_position": label,
