@@ -88,8 +88,8 @@ def hero_phone_box(stage_w, stage_h):
 
     A 9:19.5 phone at that width is taller than the stage. The frame uses the
     stage height so the bezel ends with the graphic, about 50 px above the
-    caption, and the recording is letterboxed inside the screen. A bottom
-    chip overlays the bezel.
+    caption. The recording is refit to this screen so the glass stays full.
+    A bottom chip overlays the bezel.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
     margin = 8.0
@@ -435,6 +435,10 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         detailed = bool(scroll or desat or stage.get("callout") or stage.get("highlight"))
         motion = stage.get("motion") or resolve_annotations(stage, start, end)
         geo = hero_phone_box(box["width"], box["height"])
+        # The plan measured the pan on the theme stage. This handset is the
+        # one on screen, often taller, and the recording has to fill it.
+        from kallaway_targets import refit_recorded_frame
+        refit_recorded_frame(stage, geo["screen"])
         img_h = image_height_percent(stage)
         sat = max(0.0, min(1.0, 1.0 - desat))
         scroll_to = float(scroll.get("to", 0)) if scroll else 0

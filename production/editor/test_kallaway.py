@@ -852,6 +852,44 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("scale:1,", script)
         self.assertLess(stage["motion"]["push_end"], stage["callout"]["at"] + 0.001)
 
+    def test_a_taller_stage_refits_the_phone_so_the_screen_stays_full(self):
+        from PIL import Image, ImageDraw, ImageFont
+        from kallaway_motifs import hero_phone_box
+        from kallaway_targets import frame_geometry
+        font = ImageFont.truetype(str(Path(__file__).resolve().parent / "fonts" / "Inter-Black.ttf"), 48)
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B",
+                  "on_accent": "#111", "negative": "#E0533D"}
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Image.new("RGB", (1080, 1920), (24, 28, 32))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((80, 1100, 1000, 1500), fill=(255, 248, 241))
+            draw.text((140, 1220), "Upgrade now", fill=(20, 20, 20), font=font)
+            path = Path(tmp) / "page.png"
+            image.save(path)
+            stage = {
+                "motif": "phone_frame",
+                "media": str(path),
+                "target_still": str(path),
+                "scroll": {"from": 0},
+                "callout": {"at": 1.2, "target_text": "Upgrade now", "group": "surface"},
+            }
+            # The plan measures against the shorter theme screen.
+            theme = hero_phone_box(972, 802)["screen"]
+            resolve_annotations(stage, 0.0, 3.0, theme)
+            short = dict(stage["frame"])
+            tall_box = {"left": 54, "top": 270, "width": 972, "height": 971}
+            section, _animations, _events = motif_markup(
+                "phone_frame", stage, 0.0, 3.0, tall_box, colors, "stage-0", str(path))
+            drawn = hero_phone_box(tall_box["width"], tall_box["height"])["screen"]
+            expected = frame_geometry((1080, 1920), drawn)
+            self.assertAlmostEqual(stage["frame"]["img_h"], expected["img_h"], delta=0.05)
+            self.assertNotAlmostEqual(short["img_h"], stage["frame"]["img_h"], delta=1.0)
+            self.assertIn(f'height:{stage["frame"]["img_h"]:.2f}%', section)
+            # The pan is the screenshot fit to the screen width, so the glass has no empty band.
+            pan_h = drawn[1] * stage["frame"]["img_h"] / 100.0
+            self.assertAlmostEqual(pan_h, drawn[0] * (1920 / 1080), delta=1.0)
+
     def test_state_swap_exit_is_hard_killed_on_a_clip_boundary(self):
         from edit import boundary_hard_kills
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
@@ -1201,14 +1239,13 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(below, 0.75)
 
     def test_boundary_feather_softens_frame_cuts_and_keeps_the_head(self):
-        from kallaway_matte import feather_boundary_alpha
+        from kallaway_matte import feather_boundary_alpha, head_box_holds
         alpha = np.zeros((80, 100), np.uint8)
         alpha[8:24, 40:60] = 255
         alpha[30:38, 20:80] = 255
         alpha[40:, :] = 255
-        out = feather_boundary_alpha(alpha, ramp_px=16)
-        self.assertTrue(np.array_equal(out[8:24, 40:60], alpha[8:24, 40:60]))
-        self.assertTrue(np.array_equal(out[30:38, 20:80], alpha[30:38, 20:80]))
+        out = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40)
+        self.assertTrue(np.array_equal(out[:40], alpha[:40]))
         self.assertEqual(int(out[50, 0]), 0)
         self.assertEqual(int(out[50, 99]), 0)
         self.assertEqual(int(out[50, 50]), 255)
@@ -1217,18 +1254,34 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(int(out[79, 50]), 0)
         self.assertAlmostEqual(int(out[71, 50]), 127, delta=2)
         self.assertEqual(int(out[40, 50]), 255)
-        # A straight shoulder wall inset from the frame fades. A curving head does not.
+        # The head box keeps the raw matte. A fade that eats it fails.
+        head_box_holds(alpha, out, top=8, height=16, left=40, right=60)
+        eaten = alpha.copy()
+        eaten[8:24, 40:60] = (eaten[8:24, 40:60].astype(np.float32) * 0.8).astype(np.uint8)
+        with self.assertRaises(ValueError):
+            head_box_holds(alpha, eaten, top=8, height=16, left=40, right=60)
+        # A face that reaches the frame, with the ramp pulled up over it, fails too.
+        face = np.zeros((80, 100), np.uint8)
+        face[8:24, 0:40] = 255
+        over_face = feather_boundary_alpha(face, ramp_px=16, shoulder_y=0)
+        with self.assertRaises(ValueError):
+            head_box_holds(face, over_face, top=8, height=16, left=0, right=40)
+        # An inset vertical wall is not a frame edge. It stays opaque.
         wall = np.zeros((220, 180), np.uint8)
         for y in range(8, 48):
             left = 130 - (y - 8) * 2
             wall[y, left:left + 20] = 255
         wall[70:190, 30:110] = 255
-        faded = feather_boundary_alpha(wall, ramp_px=16)
+        faded = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60)
         self.assertTrue(np.array_equal(faded[16, 114:134], wall[16, 114:134]))
-        self.assertEqual(int(faded[120, 30]), 0)
-        self.assertGreater(int(faded[120, 38]), 40)
-        self.assertLess(int(faded[120, 38]), 230)
+        self.assertEqual(int(faded[120, 30]), 255)
         self.assertEqual(int(faded[120, 70]), 255)
+        head_box_holds(wall, faded, top=8, height=40, left=90, right=160)
+        # The gain does not move from frame to frame.
+        from kallaway_matte import boundary_gain
+        gain = boundary_gain(220, 180, 16, 60)
+        again = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60, gain=gain)
+        self.assertTrue(np.array_equal(again, faded))
 
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate

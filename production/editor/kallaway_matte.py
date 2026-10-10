@@ -51,7 +51,10 @@ PLATE_VIGNETTE = 0.12
 PLATE_RECIPE = "blur-cover-v1"
 # Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
 BOUNDARY_RAMP_CARD_PX = 64.0
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v2"
+# Geometric frame-edge ramp only. A silhouette detector is not part of this token.
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v3"
+# The face box may lose this fraction of its raw matte. More than that fails the render.
+HEAD_MATTE_DROP_LIMIT = 0.10
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -1156,79 +1159,67 @@ def _smoothstep(values):
     return t * t * (3.0 - 2.0 * t)
 
 
-def _edge_columns(opaque):
-    """Leftmost and rightmost opaque x per row. -1 when the row is empty."""
-    height, width = opaque.shape
-    has = opaque.any(axis=1)
-    left = np.argmax(opaque, axis=1)
-    right = width - 1 - np.argmax(opaque[:, ::-1], axis=1)
-    left = np.where(has, left, -1)
-    right = np.where(has, right, -1)
-    return left.astype(np.int32), right.astype(np.int32)
+def boundary_gain(height, width, ramp_px, shoulder_y):
+    """Fixed eased ramp at the source frame's left, right, and bottom edges.
+
+    The ramp is geometry, not a silhouette. It is 1 above ``shoulder_y`` and,
+    from that row down, eases across ``ramp_px`` at the frame columns and up
+    from the bottom edge. The same mask applies to every frame.
+    """
+    height, width = int(height), int(width)
+    ramp = max(1.0, float(ramp_px))
+    xs = np.arange(width, dtype=np.float32)
+    ys = np.arange(height, dtype=np.float32)
+    horizontal = _smoothstep(xs / ramp) * _smoothstep((width - 1.0 - xs) / ramp)
+    vertical = _smoothstep((height - 1.0 - ys) / ramp)
+    gain = np.ones((height, width), dtype=np.float32)
+    shoulder = int(np.clip(np.floor(float(shoulder_y)), 0, height))
+    if shoulder < height:
+        gain[shoulder:, :] *= horizontal
+        gain[shoulder:, :] *= vertical[shoulder:, None]
+    return gain
 
 
-def _straight_edge(edge, window=70, slack=48):
-    """Rows whose silhouette x stays nearly still. A curving head does not."""
-    edge = np.asarray(edge)
-    count = len(edge)
-    straight = np.zeros(count, dtype=bool)
-    half = int(window)
-    need = max(8, half // 2)
-    for index in range(count):
-        if edge[index] < 0:
-            continue
-        sample = edge[max(0, index - half):min(count, index + half + 1)]
-        sample = sample[sample >= 0]
-        if sample.size < need:
-            continue
-        if float(sample.max() - sample.min()) <= slack:
-            straight[index] = True
-    return straight
+def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None):
+    """Ease alpha on the source-frame boundary below the shoulder line.
 
-
-def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
-    """Ease alpha where the matte is cut off in a straight line.
-
-    A row that meets the left or right edge of the frame fades in from that
-    edge. A long vertical run of the silhouette, the shoulder wall, fades in
-    from the silhouette itself. A column that meets the bottom fades upward.
-    The crown and a curving contour keep the matte's own feather. ``ramp_px``
-    is in the same pixels as ``alpha``.
+    Left and right are the columns where the scaled source frame meets the
+    card. The bottom edge is the hand cut. Rows above ``shoulder_y`` keep the
+    matte's own feather. An inset contour, including the face, is not a ramp.
+    ``ramp_px`` is in the same pixels as ``alpha``. Pass ``gain`` to reuse one
+    mask for every frame.
     """
     alpha = np.asarray(alpha)
     if alpha.ndim != 2:
         raise ValueError("boundary feather expects one alpha plane")
     height, width = alpha.shape
-    ramp = max(1.0, float(ramp_px))
-    edge = max(1, int(touch_px))
-    opaque = alpha > 16
-    touch_left = opaque[:, :edge].any(axis=1)
-    touch_right = opaque[:, -edge:].any(axis=1)
-    touch_bottom = opaque[-edge:, :].any(axis=0)
-    left_x, right_x = _edge_columns(opaque)
-    # A frame cut is already ramped from x = 0. Do not ramp it again.
-    straight_left = _straight_edge(np.where(touch_left, -1, left_x))
-    straight_right = _straight_edge(np.where(touch_right, -1, right_x))
-    if not (touch_left.any() or touch_right.any() or touch_bottom.any()
-            or straight_left.any() or straight_right.any()):
-        return np.ascontiguousarray(alpha)
-    gain = np.ones((height, width), dtype=np.float32)
-    xs = np.arange(width, dtype=np.float32)
-    ys = np.arange(height, dtype=np.float32)
-    if touch_left.any():
-        gain[touch_left] *= _smoothstep(xs / ramp)
-    if touch_right.any():
-        gain[touch_right] *= _smoothstep((width - 1 - xs) / ramp)
-    if straight_left.any():
-        origin = np.where(straight_left, left_x, -1.0e6).astype(np.float32)
-        gain *= _smoothstep((xs[None, :] - origin[:, None]) / ramp)
-    if straight_right.any():
-        origin = np.where(straight_right, right_x, 1.0e6).astype(np.float32)
-        gain *= _smoothstep((origin[:, None] - xs[None, :]) / ramp)
-    if touch_bottom.any():
-        gain[:, touch_bottom] *= _smoothstep((height - 1 - ys) / ramp)[:, None]
+    if gain is None:
+        gain = boundary_gain(height, width, ramp_px, shoulder_y)
+    elif gain.shape != alpha.shape:
+        raise ValueError("boundary gain must match the alpha plane")
     faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)
     return np.ascontiguousarray(faded.astype(np.uint8))
+
+
+def head_box_holds(raw, faded, top, height, left=0, right=None, limit=HEAD_MATTE_DROP_LIMIT):
+    """Raise when the face/head box keeps less than ``1 - limit`` of its raw matte."""
+    raw = np.asarray(raw)
+    faded = np.asarray(faded)
+    y0 = max(0, int(np.floor(float(top))))
+    y1 = min(raw.shape[0], int(np.ceil(float(top) + float(height))))
+    x0 = max(0, int(np.floor(float(left))))
+    x1 = raw.shape[1] if right is None else min(raw.shape[1], int(np.ceil(float(right))))
+    if y1 <= y0 or x1 <= x0:
+        return True
+    raw_sum = float(raw[y0:y1, x0:x1].astype(np.float64).sum())
+    if raw_sum <= 0:
+        return True
+    kept = float(faded[y0:y1, x0:x1].astype(np.float64).sum()) / raw_sum
+    if kept < 1.0 - float(limit) - 1e-9:
+        raise ValueError(
+            f"face matte dropped to {kept:.1%} of the raw matte inside the head box; "
+            f"the limit is {1.0 - float(limit):.0%}")
+    return True
 
 
 def _radial_vignette(image, strength):
@@ -1336,22 +1327,27 @@ def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, 
     return dest
 
 
-def apply_boundary_feather(alpha_path, dest, scale, ramp_card=BOUNDARY_RAMP_CARD_PX):
-    """Bake an eased ramp into alpha that meets the left, right, or bottom edge.
+def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_height,
+                           ramp_card=BOUNDARY_RAMP_CARD_PX):
+    """Bake one eased ramp into alpha at the source frame's left, right, and bottom.
 
-    The source matte stays cached. This file is the one the card composites,
-    so a change of ramp does not re-run Robust Video Matting. ``ramp_card``
-    is pixels on the placed card; the source ramp is that divided by scale.
+    The ramp starts at ``shoulder_y`` and is identical on every frame. The
+    source matte stays cached. This file is the one the card composites, so a
+    change of ramp does not re-run Robust Video Matting. ``ramp_card`` is
+    pixels on the placed card; the source ramp is that divided by scale.
     """
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
-    token = f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|scale={float(scale):.4f}"
+    token = (
+        f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|scale={float(scale):.4f}"
+        f"|shoulder={float(shoulder_y):.2f}")
     if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
     facts = _video_facts(alpha_path)
     width, height = int(facts["width"]), int(facts["height"])
     fps = float(facts["fps"])
     ramp_src = float(ramp_card) / max(float(scale), 1e-3)
+    gain = boundary_gain(height, width, ramp_src, shoulder_y)
     print(f"feathering frame-cut edges over {float(ramp_card):.0f}px at card scale", flush=True)
     frame_bytes = width * height * 4
     reader = subprocess.Popen(
@@ -1371,7 +1367,9 @@ def apply_boundary_feather(alpha_path, dest, scale, ramp_card=BOUNDARY_RAMP_CARD
             if not blob:
                 break
             plane = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 4).copy()
-            plane[:, :, 3] = feather_boundary_alpha(plane[:, :, 3], ramp_src)
+            raw_alpha = plane[:, :, 3].copy()
+            plane[:, :, 3] = feather_boundary_alpha(raw_alpha, ramp_src, shoulder_y, gain)
+            head_box_holds(raw_alpha, plane[:, :, 3], head_top, head_height)
             writer.stdin.write(plane.tobytes())
             frames += 1
         writer.stdin.close()
@@ -1442,7 +1440,11 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
         mean = bgr.mean(axis=(0, 1))
         popped["plate_tint"] = [int(round(float(mean[2]))), int(round(float(mean[1]))), int(round(float(mean[0])))]
     feathered = picture.with_name("person-pop-edge.mov")
-    apply_boundary_feather(alpha, feathered, popped["scale"])
+    # The measured head ends at the chin. The frame ramp starts there, under the face.
+    shoulder_y = float(popped["head_top"]) + float(popped["head_height"])
+    apply_boundary_feather(
+        alpha, feathered, popped["scale"], shoulder_y,
+        popped["head_top"], popped["head_height"])
     timeline["source"]["matte"] = str(feathered.resolve())
     print(
         f"pop-out face {popped['face_px']}px  crown {popped['median_above_px']}px"
