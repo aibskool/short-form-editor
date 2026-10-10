@@ -261,17 +261,17 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(layout["card_bottom"], 1.0)
         self.assertGreaterEqual(height, 0.25)
         self.assertLessEqual(height, 0.29)
-        self.assertAlmostEqual(layout["card_margin_x"] * 1080, 71, delta=1)
-        self.assertLess(layout["caption_split_y"], layout["card_top"])
-        self.assertGreater(layout["caption_split_y"], layout["stage_top"] + layout["stage_height"])
+        self.assertAlmostEqual(layout["card_margin_x"] * 1080, 0, delta=0.5)
+        self.assertGreater(layout["caption_split_y"], layout["card_top"])
+        self.assertLess(layout["caption_split_y"], 0.96)
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
-        self.assertAlmostEqual(stage_bottom, 1230, delta=2)
+        self.assertAlmostEqual(stage_bottom, 672, delta=2)
         self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
         card = card_state("split", "wide", 1080, 1920, layout, colors)
         self.assertEqual(card["top"], 1408)
         self.assertEqual(card["height"], 512)
-        self.assertGreaterEqual(card["left"], 60)
-        self.assertLessEqual(card["left"], 85)
+        self.assertEqual(card["left"], 0)
+        self.assertEqual(card["width"], 1080)
         self.assertEqual(card["borderRadius"], "31px 31px 0 0")
         self.assertEqual(card_state("full", "wide", 1080, 1920, layout, colors)["borderRadius"], 0)
         self.assertEqual(card_state("punch_in", "wide", 1080, 1920, layout, colors)["borderRadius"], 0)
@@ -819,12 +819,13 @@ class KallawayTests(unittest.TestCase):
         section, animations, _events = motif_markup(
             "phone_frame", stage, 0.0, 3.0, box, colors, "stage-4", "clip.mp4")
         geo = hero_phone_box(box["width"], box["height"])
-        self.assertGreaterEqual(geo["top"], 0)
         self.assertLessEqual(geo["left"] + geo["width"], box["width"] + 1)
-        self.assertLessEqual(geo["top"] + geo["height"], box["height"] + 1)
+        self.assertGreaterEqual(geo["left"], 0)
+        self.assertAlmostEqual(geo["height"] / geo["width"], 19.5 / 9, delta=0.08)
         self.assertIn(f'width:{geo["width"]}px', section)
         self.assertIn("object-fit:cover", section)
         self.assertGreaterEqual(geo["width"] / box["width"], 0.60)
+        self.assertLessEqual(geo["width"] / box["width"], 0.85)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
         self.assertIn("scale:1,", script)
@@ -902,13 +903,14 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(item["ok"] for item in joins), joins)
         self.assertEqual(joins[0]["consonant"], "s")
 
-    def test_pop_crop_clears_crown_and_raised_hand_without_covering_the_hero(self):
-        from kallaway_matte import cover_fit, frame_popout, parse_position, pop_limits, source_y_on_card
+    def test_pop_crop_sets_the_chin_on_the_card_and_leaves_the_head_out(self):
+        from kallaway_matte import CHIN_PAD_PX, chin_row, frame_popout, parse_position, source_y_on_card
+        from kallaway_style import graphic_stage_bottom
         theme, _, _, _ = load_theme("dark")
         layout = theme["layout"]
         card_w = (1 - 2 * layout["card_margin_x"]) * 1080
         card_h = (layout["card_bottom"] - layout["card_top"]) * 1920
-        limits = pop_limits(layout, 1920)
+        self.assertEqual(card_w, 1080)
         base = {
             "width": 1080, "height": 1920,
             "head_top": 331.0, "head_height": 420.0,
@@ -921,47 +923,36 @@ class KallawayTests(unittest.TestCase):
                 "output": {"width": 1080, "height": 1920},
                 "source": {"object_position": "50% 50%"},
                 "shots": [
-                    {"layout": "split", "crop": "wide"},
+                    {"layout": "split", "crop": "wide", "scale": 1.0},
                     {"layout": "full"},
                     {"layout": "punch_in"},
                 ],
             }
             frame_popout(timeline, head, theme)
             _x, pos_y = parse_position(timeline["shots"][0]["object_position"])
-            scale = float(layout["wide_scale"])
-            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y, scale=scale)
+            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y, scale=1)
+            chin = source_y_on_card(chin_row(head), 1080, 1920, card_w, card_h, pos_y, scale=1)
             self.assertNotIn("object_position", timeline["shots"][1])
             self.assertNotIn("object_position", timeline["shots"][2])
-            self.assertNotIn("caption_y", timeline["shots"][0])
             self.assertEqual(timeline["source"]["object_position"], timeline["shots"][0]["object_position"])
-            return crown, pos_y, timeline
+            return crown, chin, pos_y, timeline
 
-        crown, pos0, _timeline = place(base)
-        self.assertLess(crown, -40)
-        self.assertGreaterEqual(limits["card_top"] + crown, limits["baseline"] - 2)
-        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
+        crown, chin, pos_y, timeline = place(base)
+        self.assertAlmostEqual(chin, 0, delta=1.5)
+        self.assertAlmostEqual(chin_row(base), 331 + 420 + CHIN_PAD_PX)
+        self.assertLess(crown, -(base["head_height"] - 2))
+        # The popped crown sits above the graphic stage.
+        stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
+        self.assertLessEqual(stage_bottom, layout["card_top"] * 1920 + crown - 90)
 
+        # A raised hand does not drag the chin back into the card.
         raised = dict(base, hands=[{"at": 1.0, "top": 160.0}])
-        crown, pos_y, timeline = place(raised)
-        hand = source_y_on_card(160.0, 1080, 1920, card_w, card_h, pos_y, scale=float(layout["wide_scale"]))
-        self.assertLess(hand, -8)
-        self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)
-        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
-        self.assertLess(crown, 0)
-        self.assertLessEqual(timeline["source"]["popout"]["hand_above_px"], limits["hero_clear"] + 1)
-
-        # A hand that the crown crop leaves just inside the card breaks out.
-        fit = cover_fit(1080, 1920, card_w, card_h)
-        scale = float(layout["wide_scale"])
-        offset = pos0 * (card_h - 1920 * fit)
-        origin = 0.3 * card_h
-        edge_top = ((20 - origin) / scale + origin - offset) / fit
-        edge = dict(base, hands=[{"at": 1.2, "top": edge_top}])
-        crown, pos_y, _timeline = place(edge)
-        hand = source_y_on_card(edge_top, 1080, 1920, card_w, card_h, pos_y, scale=scale)
-        self.assertLessEqual(hand, -12)
-        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
-        self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)
+        crown2, chin2, pos2, timeline2 = place(raised)
+        self.assertAlmostEqual(pos2, pos_y, delta=0.002)
+        self.assertAlmostEqual(chin2, 0, delta=1.5)
+        self.assertGreater(timeline2["source"]["popout"]["hand_above_px"], -crown2)
+        hand_stage = graphic_stage_bottom(layout, 1920, timeline2["source"]["popout"])
+        self.assertLessEqual(hand_stage, layout["card_top"] * 1920 - timeline2["source"]["popout"]["hand_above_px"] - 90)
 
     def test_pop_crop_puts_the_crown_above_the_card(self):
         from kallaway_matte import cover_fit, solve_position_y, source_y_on_card

@@ -86,12 +86,12 @@ def _cue_time(block):
 def hero_phone_box(stage_w, stage_h):
     """Size the handset to 72% of the panel so the screen is readable.
 
-    A 9:19.5 device at that width is taller than the stage. The stage clips
-    the bezel. The width stays in the 60–85% band.
+    A 9:19.5 device at that width is taller than the stage. It stays centered
+    and the stage clips the bezel. The width stays in the 60–85% band.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
     phone_w = stage_w * 0.72
-    phone_h = min(stage_h * 0.98, phone_w / (9 / 19.5))
+    phone_h = phone_w / (9 / 19.5)
     pad = max(8, round(phone_w * 0.045))
     return {
         "screen": (float(phone_w - 2 * pad), float(phone_h - 2 * pad)),

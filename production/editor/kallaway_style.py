@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 
 from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
-from kallaway_matte import pop_geometry
+from kallaway_matte import CROWN_HEADROOM_PX, pop_geometry
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -52,6 +52,26 @@ def radius_css(value):
     if number == int(number):
         return f"{int(number)}px"
     return f"{number}px"
+
+
+def graphic_stage_bottom(layout_spec, height, popout=None):
+    """Canvas y where panel graphics stop, above the popped hair.
+
+    The theme bottom already clears a normal head. A taller measured crown,
+    or a hand above that crown, pulls the bottom up so the panels miss it.
+    """
+    stage_top = float(layout_spec["stage_top"]) * height
+    theme_bottom = stage_top + float(layout_spec["stage_height"]) * height
+    rise = 0.0
+    for key in ("high_above_px", "hand_above_px", "median_above_px"):
+        if popout and popout.get(key):
+            rise = max(rise, float(popout[key]))
+    if rise <= 0:
+        return theme_bottom
+    card_top = float(layout_spec["card_top"]) * height
+    cleared = card_top - rise - CROWN_HEADROOM_PX
+    floor = stage_top + 160
+    return max(floor, min(theme_bottom, cleared))
 
 
 def card_state(layout, crop, width, height, layout_spec, colors):
@@ -175,11 +195,13 @@ def build_kallaway(spec, spec_path, project):
         raise ValueError("kallaway timeline needs shots")
     first = card_state(shots[0].get("layout", "split"), shots[0].get("crop", "wide"),
                        width, height, layout_spec, colors)
+    stage_top_px = round(layout_spec["stage_top"] * height)
+    stage_bottom_px = graphic_stage_bottom(layout_spec, height, spec.get("source", {}).get("popout"))
     stage_box = {
         "left": round(layout_spec["stage_left"] * width),
-        "top": round(layout_spec["stage_top"] * height),
+        "top": stage_top_px,
         "width": round(layout_spec["stage_width"] * width),
-        "height": round(layout_spec["stage_height"] * height),
+        "height": max(160, round(stage_bottom_px - stage_top_px)),
     }
     for index, shot in enumerate(shots):
         start, end = float(shot["start"]), float(shot["end"])

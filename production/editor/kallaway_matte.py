@@ -20,11 +20,15 @@ from scipy import ndimage
 
 MODEL = "mediapipe-selfie-0.10.14-general-edge-v2"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
-# Median crown sits this far above the card, as a fraction of head height.
-# On the 512 px card that is about 90 px, inside the band under the caption.
+# Kept for the anchor record. The split crop no longer uses a fraction of the
+# head: the chin sits on the card top and the whole head is above it.
 POP_FRACTION = 0.32
 POP_FLOOR = 0.22
 POP_CAP = 0.42
+# Source pixels added under the estimated jaw so the chin stays above the card.
+CHIN_PAD_PX = 28
+# Canvas pixels of empty space kept above the hair, clear of titles and panels.
+CROWN_HEADROOM_PX = 96
 # A raised hand should clear the card edge by about this many pixels.
 HAND_CLEAR_PX = 16
 CROWN_MIN_PX = 28
@@ -671,12 +675,18 @@ def _shot_scale(shot, layout):
     return 1.0
 
 
-def pop_limits(layout, height):
-    """How far the pop may rise, in pixels above the card.
+def chin_row(head):
+    """Source row placed on the card's top edge, just under the jaw."""
+    if head.get("chin") is not None:
+        return float(head["chin"])
+    return float(head["head_top"]) + float(head["head_height"]) + CHIN_PAD_PX
 
-    The crown prefers the band between the caption baseline and the card.
-    A raised hand may cross that caption (captions paint above the pop) but
-    the highest point stays under the hero, which ends at the stage bottom.
+
+def pop_limits(layout, height):
+    """Stage and caption lines, in canvas pixels.
+
+    The split crop does not stop at these lines. The chin goes on the card
+    top, and the stage is raised so panels stay above the hair.
     """
     scale_y = height / 1920.0
     card_top = layout["card_top"] * height
@@ -694,52 +704,22 @@ def pop_limits(layout, height):
 
 
 def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
-    """object-position Y for one split scale.
+    """object-position Y that sets the chin on the card top.
 
-    The crown pops POP_FRACTION of the head, clipped into the caption band.
-    A hand that is crossing the card edge is lifted until it breaks out.
-    If that hand (or the crown) would cover the hero, the crop pulls back
-    so the highest point sits on the hero line.
+    Scale stays at 1. The full source width fills the card, and the rows under
+    the chin are the neck, shoulders, and chest. The whole head is above the
+    card. A raised hand does not pull the chin back down into the card.
     """
-    fit = cover_fit(video_w, video_h, card_w, card_h)
-    hero_clear = limits["hero_clear"]
-    natural = float(head["pop_fraction"]) * float(head["head_height"]) * fit * scale
-    crown_above = float(np.clip(natural, CROWN_MIN_PX * scale, min(limits["crown_cap"], hero_clear)))
-    pos = position_for_row(
-        head["head_top"], crown_above, video_w, video_h, card_w, card_h, scale=scale)
-    hands = [float(item["top"]) for item in (head.get("hands") or []) if item.get("top") is not None]
-    if not hands:
-        return pos
-    hand_top = min(hands)
-    hand_local = source_y_on_card(
-        hand_top, video_w, video_h, card_w, card_h, pos, scale=scale)
-    crown_local = source_y_on_card(
-        head["head_top"], video_w, video_h, card_w, card_h, pos, scale=scale)
-    # The highest source row is the one that can cover the hero.
-    if hand_local < crown_local and -hand_local > hero_clear + 0.5:
-        return position_for_row(
-            hand_top, hero_clear, video_w, video_h, card_w, card_h, scale=scale)
-    if -crown_local > hero_clear + 0.5:
-        return position_for_row(
-            head["head_top"], hero_clear, video_w, video_h, card_w, card_h, scale=scale)
-    # Lift only a hand that is already at the card edge, not one on the chest.
-    if -HAND_CLEAR_PX < hand_local < HAND_INSIDE_IGNORE_PX:
-        extra = hand_local + HAND_CLEAR_PX
-        room = max(0.0, hero_clear + crown_local)
-        hand_room = max(0.0, hero_clear + hand_local)
-        extra = min(extra, room, hand_room)
-        if extra > 0.5:
-            return position_for_row(
-                head["head_top"], -crown_local + extra, video_w, video_h, card_w, card_h, scale=scale)
-    return pos
+    del limits
+    return position_for_row(
+        chin_row(head), 0.0, video_w, video_h, card_w, card_h, scale=scale)
 
 
 def frame_popout(timeline, head, theme):
-    """Point split shots so the crown and a raised hand clear the card.
+    """Point split shots so the chin rests on the card and the head pops out.
 
-    Captions stay on the theme baseline (about y 1305). They paint above the
-    pop, and the stage box already ends above that band, so key graphic text
-    is not moved down onto the head.
+    Full and punch stay on the theme crop with the pop hidden. The stage is
+    raised from this measurement so panel graphics clear the hair.
     """
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
@@ -789,6 +769,7 @@ def frame_popout(timeline, head, theme):
     timeline["source"]["popout"] = {
         "object_position": label,
         "caption_y": caption_pct,
+        "chin_y": round(chin_row(head), 1),
         "head_top": head["head_top"],
         "head_height": head["head_height"],
         "pop_fraction": head["pop_fraction"],

@@ -2,7 +2,7 @@
   "id": "ai-builder-school",
   "name": "AI Builder School",
   "default_mode": "dark",
-  "measurement_note": "Split face card is y 1408 to 1920 (512 px, 26.7%), inset 71 px, flush to the bottom, top corners only at 31 px. Camera scale is 1.0 in every state so the picture fills the card or the frame. Head-to-chest framing is the object-position crop, and the pop-out uses that same scale so it continues the card pixels. The graphic stage starts at y 270, under the title, and ends at y 1230. Full-face captions sit just above y 1305 so they clear the lav pin.",
+  "measurement_note": "Split card is the full 1080x512 frame from y 1408 to 1920, flush to the bottom and to both side edges, top corners only at 31 px. Scale stays 1.0 so the 1080-wide source fills that card with no side bars and shows 512 source rows: neck, shoulders, and chest to about mid-chest. The matte places the chin on the card top, so the whole head pops out above it at the same scale. The graphic stage starts at y 270 and ends at y 672, leaving headroom above the hair. A taller measured crown pulls that bottom up. Split captions sit on the chest. Full-face captions sit just above y 1305 so they clear the lav pin.",
   "modes": {
     "dark": {
       "background": "#1A1A1A",
@@ -67,18 +67,18 @@
     }
   },
   "layout": {
-    "card_margin_x": 0.0657407407,
+    "card_margin_x": 0.0,
     "card_top": 0.7333333333,
     "card_bottom": 1.0,
     "card_radius": 31,
     "caption_baseline_px": 1305,
-    "caption_split_y": 0.651,
+    "caption_split_y": 0.9,
     "caption_full_y": 0.61909375,
     "title_top": 0.0520833333,
     "stage_left": 0.05,
     "stage_top": 0.140625,
     "stage_width": 0.9,
-    "stage_height": 0.5,
+    "stage_height": 0.209375,
     "caption_font_px": 54,
     "caption_split_px": 54,
     "caption_full_px": 67,
@@ -90,7 +90,7 @@
     "wide_scale": 1.0,
     "full_object_position": "50% 46%",
     "dot_spacing": 36,
-    "object_position": "50% 33%"
+    "object_position": "50% 70%"
   },
   "voice": {
     "plain_english": true,
