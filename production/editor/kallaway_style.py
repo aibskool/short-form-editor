@@ -314,8 +314,13 @@ def build_kallaway(spec, spec_path, project):
     word_index = 0
     for index, group in enumerate(groups):
         start = float(group[0]["start"])
-        end = float(group[-1]["end"]) if index + 1 == len(groups) else float(groups[index + 1][0]["start"])
-        end = min(duration, max(end, start + 0.08))
+        if index + 1 == len(groups):
+            end = min(duration, max(float(group[-1]["end"]), start + 0.08))
+        else:
+            # Stop on the next word. A minimum hold must not draw two lines in one frame.
+            end = min(duration, float(groups[index + 1][0]["start"]))
+            if end < start + 0.04:
+                end = start + 0.04 if start + 0.04 <= float(groups[index + 1][0]["start"]) else end
         spans = []
         for word in group:
             if word_index < len(style_at):
@@ -326,7 +331,7 @@ def build_kallaway(spec, spec_path, project):
             spans.append(
                 f'<span class="cap {style}">{escape(_caption_text(word, captions.get("omit_terminal_punctuation", True), keep_case))}</span>')
         parts.append(
-            f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.04, end-start):.4f}" '
+            f'<div id="cap-{index}" class="caption clip" data-start="{start:.4f}" data-duration="{max(0.0, end - start):.4f}" '
             f'data-track-index="5"><div id="capbox-{index}" class="caption-text">{" ".join(spans)}</div></div>')
         animations.append(
             f'tl.fromTo("#capbox-{index}",{{scale:0.9}},{{scale:1,duration:{3.0 / float(fps):.3f},ease:"power2.out"}},{start:.4f});')
@@ -353,7 +358,8 @@ def build_kallaway(spec, spec_path, project):
                     css = "payoff box"
                 else:
                     css = "payoff"
-                return f'<span class="{css}">{escape(token)}</span>'
+                token_id = f' id="hdr-{index}-key"' if payoff_style == "box" else ""
+                return f'<span{token_id} class="{css}">{escape(token)}</span>'
             return escape(token)
 
         if lines:
@@ -371,6 +377,10 @@ def build_kallaway(spec, spec_path, project):
         parts.append(
             f'<div id="hdr-{index}" class="header clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
             f'data-track-index="4">{inner}</div>')
+        if payoff_style == "box":
+            animations.append(
+                f'tl.fromTo("#hdr-{index}-key",{{scale:0}},{{scale:1,duration:0.22,ease:"back.out(2.2)",'
+                f'transformOrigin:"50% 60%"}},{start:.3f});')
 
     mono_family = theme["fonts"]["mono"]["family"]
     for index, notice in enumerate(spec.get("notices") or []):
@@ -491,6 +501,19 @@ def build_kallaway(spec, spec_path, project):
     .thumb{{position:relative;border-radius:{16*scale:.0f}px;overflow:hidden;transform:scale(0.8);display:flex;flex-direction:column;justify-content:flex-end;padding:{12*scale:.0f}px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{22*scale:.0f}px}}
     .thumb .mono{{position:absolute;top:{10*scale:.0f}px;left:{10*scale:.0f}px;color:{colors['muted']};font-size:{mono_px*0.8:.1f}px}}
     .thumb i{{position:absolute;right:{12*scale:.0f}px;bottom:{12*scale:.0f}px;color:{colors['muted']};font-style:normal;font-size:{16*scale:.0f}px}}
+    .thumb em{{display:block;font-style:normal;font-weight:650;font-size:{16*scale:.0f}px;line-height:1.2;color:{colors['muted']};margin-top:4px}}
+    .face{{position:absolute;left:8%;right:8%;top:16%;height:46%;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}}
+    .face.photo{{background:{colors['contrast']};border:1px solid {colors['border']};flex-direction:column;gap:4px;color:{colors['muted']};font-size:{14*scale:.0f}px}}
+    .face.contrast{{gap:6px}}
+    .face.contrast i{{position:static;width:42%;height:70%;border-radius:6px;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800}}
+    .face.button b{{padding:8px 18px;border-radius:999px;color:{colors['on_accent']};font-size:{18*scale:.0f}px}}
+    .face.lines{{flex-direction:column;gap:6px;align-items:stretch;padding:8px}}
+    .face.lines i{{position:static;height:8px;border-radius:4px;background:{colors['border']}}}
+    .face.lines i:first-child{{width:80%;background:{colors['text']}}}
+    .face.form i{{position:static;height:28%;width:80%;border-radius:6px;border:2px solid {colors['border']}}}
+    .face.focus{{border:3px solid {colors['accent']};box-shadow:0 0 0 4px {colors['accent']}33}}
+    .face.ok{{background:{colors['accent']}22;color:{colors['accent']};font-weight:800}}
+    .scan-beam{{position:absolute;left:8%;width:84%;height:3px;top:0;background:{colors['accent']};box-shadow:0 0 16px {colors['accent']};z-index:6;pointer-events:none}}
     .phone{{width:{430*scale:.0f}px;height:92%;margin:0 auto;background:{colors['contrast']};border-radius:{36*scale:.0f}px;padding:{12*scale:.0f}px;box-shadow:{colors['card_shadow']},0 0 48px {colors['accent']}55}}
     .phone-screen{{position:relative;height:100%;border-radius:{26*scale:.0f}px;overflow:hidden;background:{colors['surface']};border:1px solid {colors['border']}}}
     .phone-screen img,.broll-card img,.shotcard img,.phone-screen video,.broll-card video,.shotcard video{{width:100%;height:100%;object-fit:cover}}
@@ -518,6 +541,7 @@ def build_kallaway(spec, spec_path, project):
     .counter{{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}}
     .counter.dense{{justify-content:space-between;padding:1% 0 0}}
     .count-num{{font-family:'{caption}',sans-serif;font-weight:900;font-size:{210*scale:.0f}px;line-height:0.9;color:{colors['accent']};letter-spacing:-0.04em;text-shadow:0 0 36px {colors['accent']}88}}
+    .count-num.bad{{color:{colors['warning_text']};text-shadow:0 0 36px {colors['warning']}66}}
     .counter.dense .count-num{{font-size:{148*scale:.0f}px}}
     .count-label{{color:{colors['muted']};font-size:{mono_px:.1f}px;margin-top:8px}}
     .counter.range{{position:relative;justify-content:flex-start;gap:{10*scale:.0f}px;padding-top:1%}}
@@ -547,10 +571,24 @@ def build_kallaway(spec, spec_path, project):
     .page{{height:100%;background:{colors['surface']};border:1px solid {colors['border']};border-radius:12px;box-shadow:{colors['card_shadow']};padding:8% 8%;color:{colors['text']}}}
     .page-rule{{height:6px;width:100%;background:{colors['accent_strong']};margin-bottom:12px}}
     .page .mono{{color:{colors['muted']};font-size:{mono_px*0.85:.1f}px}}
-    .page-title{{font-family:'{display}',cursive;font-size:{36*scale:.0f}px;line-height:1.05;margin-top:10px}}
+    .page-title{{position:relative;font-family:'{display}',cursive;font-size:{36*scale:.0f}px;line-height:1.05;margin-top:10px}}
+    .page-copy{{margin-top:12px;font-family:'{caption}',sans-serif;font-weight:700;font-size:{22*scale:.0f}px;line-height:1.28;color:{colors['text']}}}
+    .page-copy span{{display:block;margin-top:8px}}
+    .page-sweep{{position:absolute;left:0;right:0;bottom:0.05em;height:0.42em;background:{_rgba(colors['accent'], 0.45)};transform:scaleX(0);transform-origin:0% 50%;z-index:-1}}
     .fan.stack .page-rot{{width:74%;height:90%;top:4%}}
     .fan.stack .page-title{{font-size:{56*scale:.0f}px}}
     .fan-tint{{position:absolute;inset:0;background:{colors['warning']};opacity:0;pointer-events:none;border-radius:12px}}
+    .hero-board{{height:100%;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:2% 4%;border-radius:28px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid {colors['border']};box-shadow:{colors['card_shadow']}}}
+    .hero-kicker{{color:{colors['accent']};letter-spacing:0.14em}}
+    .hero-num{{font-family:'{display}',cursive;font-size:{168*scale:.0f}px;line-height:0.85;color:{colors['warning_text']}}}
+    .hero-label{{color:{colors['muted']};letter-spacing:0.08em}}
+    .hero-beam{{height:4px;width:100%;background:{colors['accent']};transform:scaleX(0);transform-origin:0% 50%;box-shadow:0 0 12px {colors['accent']}}}
+    .hero-row{{display:flex;gap:{10*scale:.0f}px}}
+    .hero-cell{{flex:1;position:relative;min-height:{140*scale:.0f}px;border-radius:16px;background:{colors['contrast']};border:1px solid {colors['border']};padding:8px;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{16*scale:.0f}px}}
+    .hero-cell .face{{top:8px;height:58px}}
+    .hero-cell b{{position:absolute;left:8px;right:8px;bottom:22px}}
+    .hero-cell em{{position:absolute;left:8px;right:8px;bottom:6px;font-style:normal;color:{colors['muted']};font-size:{12*scale:.0f}px}}
+    .quote-under{{position:absolute;left:8%;right:8%;bottom:0.08em;height:0.18em;background:{_rgba(colors['accent'], 0.55)};transform:scaleX(0);transform-origin:0% 50%}}
     .window{{height:86%;border-radius:{18*scale:.0f}px;overflow:hidden;border:1px solid {colors['border']};background:{colors['contrast']};box-shadow:{colors['card_shadow']}}}
     .window.terminal{{height:100%;box-shadow:0 28px 64px rgba(0,0,0,0.5), 0 0 42px {colors['accent']}55, inset 0 1px 0 rgba(255,255,255,0.12)}}
     .window.terminal .win-body{{font-size:{36*scale:.0f}px;line-height:1.28}}

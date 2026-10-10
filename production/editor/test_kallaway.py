@@ -275,9 +275,11 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(height, 0.25)
         self.assertLessEqual(height, 0.29)
         self.assertAlmostEqual(layout["card_margin_x"] * 1080, 0, delta=0.5)
-        self.assertAlmostEqual(layout["caption_split_y"], layout["caption_full_y"], places=4)
         self.assertAlmostEqual(layout["caption_split_y"] * 1920, 1120, delta=2)
         self.assertLess(layout["caption_split_y"], layout["card_top"])
+        # Full-face sits below the lapel pin. Split stays above the card.
+        self.assertGreater(layout["caption_full_y"] * 1920, 1450)
+        self.assertLess(layout["caption_full_y"] * 1920, 1600)
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 672, delta=2)
         self.assertAlmostEqual(layout["caption_baseline_px"], 1120, delta=2)
@@ -917,6 +919,83 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(joins)
         self.assertTrue(all(item["ok"] for item in joins), joins)
         self.assertEqual(joins[0]["consonant"], "s")
+
+    def test_a_pause_after_the_word_keeps_the_release(self):
+        from kallaway_audio import refine_word_bounds
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = (t >= 0.20) & (t < 0.40)
+        burst = (t >= 0.52) & (t < 0.62)
+        nxt = (t >= 1.20) & (t < 1.40)
+        samples = _voiced(t, 220, 0.3, vowel | nxt) + _voiced(t, 2400, 0.12, burst)
+        words = [
+            {"word": "builds.", "start": 0.20, "end": 0.40},
+            {"word": "Scan", "start": 1.20, "end": 1.40},
+        ]
+        refined = refine_word_bounds(samples, rate, words)
+        self.assertGreater(refined[0]["end"], 0.58)
+        self.assertLess(refined[0]["end"], 0.80)
+        self.assertGreater(refined[1]["start"], 1.05)
+
+    def test_layout_cut_locks_to_the_picture_join(self):
+        from kallaway_beats import punch_short_jumps, snap_shot_edges
+        shots = [
+            {"id": "shot-00", "start": 0.0, "end": 26.033, "layout": "full"},
+            {"id": "shot-01", "start": 26.033, "end": 30.0, "layout": "split", "stage": {"motif": "phone_frame"}},
+        ]
+        snapped = snap_shot_edges(shots, [26.04], joins=[26.000])
+        self.assertAlmostEqual(snapped[0]["end"], 26.0, places=3)
+        self.assertAlmostEqual(snapped[1]["start"], 26.0, places=3)
+        full = [
+            {"id": "shot-00", "start": 22.9, "end": 26.2, "layout": "full", "scale": 1.0},
+            {"id": "shot-01", "start": 26.2, "end": 28.0, "layout": "split", "stage": {"motif": "phone_frame"}},
+        ]
+        punched = punch_short_jumps(full, [24.27])
+        self.assertEqual(punched[0]["layout"], "punch_in")
+        self.assertAlmostEqual(punched[0]["scale"], 1.12, places=2)
+        self.assertAlmostEqual(punched[0]["end"], 24.27, places=2)
+        self.assertEqual(punched[1]["layout"], "full")
+
+    def test_phone_after_a_face_cut_enters_with_the_whoosh(self):
+        words = [
+            {"word": "The", "start": 0.1, "end": 0.3},
+            {"word": "site", "start": 0.3, "end": 0.6},
+            {"word": "scan", "start": 2.2, "end": 2.5},
+            {"word": "about", "start": 2.5, "end": 2.9},
+        ]
+        plan = {
+            "schema": "kallaway-stage-plan/v1",
+            "omit_cta": True,
+            "beats": [
+                {"spoken": "The site", "layout": "full"},
+                {"spoken": "scan about", "layout": "split", "motif": "phone_frame"},
+            ],
+        }
+        timeline = plan_timeline(words, "/reels/face.mp4", "words.json", music=False, stage_plan=plan)
+        phone = next(shot for shot in timeline["shots"] if shot.get("layout") == "split")
+        self.assertEqual(phone["stage"].get("enter_after"), 0.20)
+        events = stage_events("phone_frame", phone["start"], phone["end"], phone["stage"])
+        whoosh = next(event for event in events if event["kind"] == "whoosh")
+        self.assertGreaterEqual(whoosh["at"], phone["start"] + 0.18)
+
+    def test_vault_pages_keep_body_lines_and_keep_moving(self):
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B",
+                  "on_accent": "#111", "warning_text": "#ECC94B"}
+        box = {"left": 0, "top": 0, "width": 900, "height": 400}
+        stage = {"motif": "doc_fan", "sweep": True, "pages": [
+            ["VAULT", "AI Business Idea Vault", "Thirty ideas. Each one is a scan you can sell."],
+            ["30+", "AI business ideas", "Find the errors. Show the owner. Sell the fix."],
+            ["A TO Z", "First client guide", "Comment WEBSITE. Start at the scan. End at the invoice."],
+        ]}
+        section, animations, _events = motif_markup(
+            "doc_fan", stage, 1.0, 5.0, box, colors, "stage-9")
+        self.assertIn("page-copy", section)
+        self.assertIn("Each one is a scan you can sell", section)
+        self.assertIn("Sell the fix", section)
+        script = "".join(animations)
+        self.assertIn("yoyo:true", script)
+        self.assertNotIn("opacity:0", script)
 
     def test_pop_crop_sets_the_chin_on_the_card_and_leaves_the_head_out(self):
         from kallaway_matte import CHIN_PAD_PX, chin_row, frame_popout, parse_position, source_y_on_card

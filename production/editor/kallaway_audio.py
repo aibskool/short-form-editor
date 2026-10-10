@@ -601,6 +601,9 @@ def refine_word_bounds(samples, rate, words, pad_in=_HEAD_PAD, pad_out=_TAIL_PAD
     _extend_stop_peak(refined, samples, rate)
     _keep_late_coda(refined, samples, rate)
     _hold_until_released(refined, samples, rate)
+    _claim_paused_coda(refined, samples, rate)
+    _bridge_short_phrase_gaps(refined, samples, rate)
+    _pad_opening_onset(refined, samples, rate)
     for index in range(len(refined) - 1):
         nxt = float(refined[index + 1]["start"])
         if float(refined[index]["end"]) > nxt - 0.004:
@@ -726,6 +729,101 @@ def _hold_until_released(refined, samples, rate):
                 break
         if cursor > end + 0.008:
             word["end"] = round(min(cursor, limit), 4)
+
+
+def _peak_db(samples, rate, moment, width=0.008):
+    a = int(max(0, (moment - width) * rate))
+    b = int(min(len(samples), (moment + width) * rate))
+    if b <= a:
+        return -80.0
+    return _db(float(np.max(np.abs(samples[a:b]))))
+
+
+def _rms_db(samples, rate, moment, width=0.015):
+    a = int(max(0, moment * rate))
+    b = int(min(len(samples), (moment + width) * rate))
+    if b <= a:
+        return -80.0
+    chunk = samples[a:b]
+    return _db(math.sqrt(float(np.dot(chunk, chunk)) / len(chunk)))
+
+
+def _claim_paused_coda(refined, samples, rate):
+    """Keep a /z/ or /d/ that sits in the pause after the vowel.
+
+    The next word can be a retake seconds later. The release is the burst
+    within a third of a second, and the air after that burst is what gets cut.
+    A low hum is not the release: the burst has to live in the speech or
+    fricative band.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    speech = _speech_band(samples, rate)
+    fricative = _fricative_band(samples, rate)
+    duration = len(samples) / float(rate)
+
+    def level_at(moment):
+        return max(_peak_db(speech, rate, moment), _peak_db(fricative, rate, moment))
+
+    for index, word in enumerate(refined):
+        end = float(word["end"])
+        nxt = float(refined[index + 1]["start"]) if index + 1 < len(refined) else duration
+        if nxt - end < 0.12:
+            continue
+        limit = min(nxt - 0.04, end + 0.38)
+        cursor = end
+        seen = False
+        quiet = 0.0
+        moment = end
+        while moment < limit:
+            moment = min(limit, moment + 0.01)
+            level = level_at(moment)
+            if level >= -42.0:
+                cursor = moment
+                seen = True
+                quiet = 0.0
+            else:
+                quiet += 0.01
+                if seen and quiet >= 0.03:
+                    break
+                if not seen and moment > end + 0.26:
+                    break
+        if cursor > end + 0.012:
+            word["end"] = round(min(cursor + 0.02, limit), 4)
+
+
+def _bridge_short_phrase_gaps(refined, samples, rate):
+    """A dip under 100 ms that is still up belongs to the phrase, not a cut."""
+    samples = np.asarray(samples, dtype=np.float64)
+    for index in range(len(refined) - 1):
+        end = float(refined[index]["end"])
+        nxt = float(refined[index + 1]["start"])
+        if not 0.02 < nxt - end < 0.10:
+            continue
+        if _rms_db(samples, rate, end, nxt - end) < -40.0:
+            continue
+        refined[index + 1]["start"] = round(end + 0.008, 4)
+
+
+def _pad_opening_onset(refined, samples, rate, max_pad=0.04):
+    """The first syllable's attack can start a few tens of milliseconds early."""
+    if not refined:
+        return
+    samples = np.asarray(samples, dtype=np.float64)
+    start = float(refined[0]["start"])
+    if start <= 0.015:
+        return
+    cursor = start
+    moment = start
+    floor = start - max_pad
+    while moment > floor:
+        moment = max(floor, moment - 0.005)
+        if _rms_db(samples, rate, moment) < -32.0:
+            break
+        cursor = moment
+        if moment <= floor:
+            break
+    if cursor < start - 0.008:
+        refined[0]["start"] = round(max(0.0, cursor), 4)
 
 
 def _claim_orphan_codas(refined, runs, peak, pad_out):
@@ -1187,6 +1285,53 @@ def trim_final_nonspeech(samples, rate, ranges, max_tail=0.12):
     return ranges
 
 
+def shorten_long_air(samples, rate, ranges, max_hole=0.15, keep=0.08):
+    """Cut booth air of 150 ms or more down to a short join.
+
+    A frame at or above -38 dB is still the word. The walk starts 50 ms after
+    that frame, so a consonant tail is not the air being removed.
+    """
+    samples = np.asarray(samples, dtype=np.float64)
+    if not ranges:
+        return list(ranges)
+    rebuilt = []
+    for begin, end in ranges:
+        begin, end = float(begin), float(end)
+        holes = []
+        last_hot = begin
+        quiet_at = None
+        moment = begin
+        while moment < end - 0.01:
+            level = _rms_db(samples, rate, moment)
+            if level >= -38.0:
+                last_hot = moment + 0.05
+                if quiet_at is not None:
+                    holes.append((quiet_at, moment))
+                    quiet_at = None
+            elif level <= -40.0 and moment >= last_hot:
+                if quiet_at is None:
+                    quiet_at = moment
+            elif quiet_at is not None:
+                holes.append((quiet_at, moment))
+                quiet_at = None
+            moment += 0.01
+        if quiet_at is not None:
+            holes.append((quiet_at, end))
+        long = [(q0, q1) for q0, q1 in holes if q1 - q0 >= max_hole]
+        if not long:
+            rebuilt.append((begin, end))
+            continue
+        cursor = begin
+        for q0, q1 in long:
+            keep_to = min(end, q0 + keep)
+            if keep_to - cursor > 0.02:
+                rebuilt.append((cursor, keep_to))
+            cursor = max(cursor, q1)
+        if end - cursor > 0.02:
+            rebuilt.append((cursor, end))
+    return rebuilt or [(float(begin), float(end)) for begin, end in ranges]
+
+
 def _map_tight_words(words, ranges):
     """Place each word on the tightened clock, even when a cut falls inside it.
 
@@ -1258,6 +1403,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
     # excise may open a hole inside one aligned word ("ends", "flow"). Put it back.
     ranges = seal_word_interiors(ranges, refined)
+    ranges = shorten_long_air(samples, RATE, ranges)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
     # Picture hard-cuts on the word boundary. The crossfade lives in the silence
     # after the safety tail, so it does not eat the fricative.

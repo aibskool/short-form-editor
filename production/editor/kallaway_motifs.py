@@ -9,7 +9,7 @@ MOTIFS = (
     "thumbnail_grid", "phone_frame", "broll_card", "numbered_list", "line_chart",
     "bar_chart", "counter", "highlight_box", "hand_circle", "doc_fan", "typing_ui",
     "mind_map", "logo_row", "quote_card", "offer_pair", "flow_line", "pill",
-    "cursor_mock", "vacuum_merge", "state_swap",
+    "cursor_mock", "vacuum_merge", "state_swap", "hero_board",
 )
 
 
@@ -260,10 +260,19 @@ def _stage_events(motif, start, end, stage=None):
     if motif not in MOTIFS:
         raise ValueError(f"unknown stage motif: {motif}")
     if motif == "thumbnail_grid":
-        count = max(4, min(8, int(stage.get("count", 8))))
+        items = stage.get("items") or []
+        count = int(stage.get("count") or (len(items) if items else 8))
+        count = max(1, min(8, count))
         return [{"at": t, "kind": "pop"} for t in _times(start, end, count, 1.35)]
+    if motif == "hero_board":
+        return [{"at": round(start, 3), "kind": "pop"},
+                {"at": round(start, 3), "kind": "whoosh"}]
     if motif in {"phone_frame", "broll_card"}:
-        events = [{"at": round(start, 3), "kind": "whoosh"}]
+        delay = 0.32 if stage.get("scan") else 0.0
+        if stage.get("enter_after"):
+            delay = max(delay, float(stage["enter_after"]))
+        whoosh_at = round(min(end - 0.15, start + delay), 3) if delay else round(start, 3)
+        events = [{"at": whoosh_at, "kind": "whoosh"}]
         if stage.get("callout"):
             events.append({"at": float(stage["callout"].get("at", start + ENTRANCE_SECONDS)), "kind": "marker"})
         if stage.get("highlight"):
@@ -296,9 +305,12 @@ def _stage_events(motif, start, end, stage=None):
             events.append({"at": _clamp(float(events[-1]["at"]) + 0.26, start, end), "kind": "error"})
         return events
     if motif == "counter":
-        ticks = _times(start, min(end, start + 0.9), 6, 0.8)
+        lock = stage.get("lock_at")
+        lock_at = float(lock) if lock is not None else min(end - 0.08, start + 0.9)
+        lock_at = min(max(lock_at, start + 0.12), end - 0.04)
+        ticks = _times(start, lock_at, 4, 0.8)
         events = [{"at": t, "kind": "ticking"} for t in ticks]
-        events.append({"at": round(min(end - 0.08, start + 0.95), 3), "kind": "ding"})
+        events.append({"at": round(lock_at, 3), "kind": "ding"})
         if stage.get("strike"):
             events.append({"at": _clamp(stage.get("strike_at", start + 0.45), start, end), "kind": "error"})
         return events
@@ -373,6 +385,26 @@ def _slide(selector, at):
             f'immediateRender:true}},{at});')
 
 
+def _card_face(label, fixed, accent, warning, border, muted, ink):
+    """A real swatch or control, so the card is not an empty label."""
+    token = str(label).lower()
+    if fixed:
+        return f'<div class="face ok"><b style="color:{accent}">FIXED</b><i></i><i></i></div>'
+    if "contrast" in token:
+        return f'<div class="face contrast"><i style="background:{border}"></i><i style="background:{muted};color:{border}">Aa</i></div>'
+    if "button" in token:
+        return f'<div class="face button"><b style="background:{warning};color:{ink}">Go</b></div>'
+    if "alt" in token or "text" in token:
+        return '<div class="face photo"><b>IMG</b><em>missing alt</em></div>'
+    if "head" in token:
+        return '<div class="face lines"><i></i><i></i><i></i></div>'
+    if "form" in token:
+        return '<div class="face form"><i></i><i></i></div>'
+    if "focus" in token:
+        return f'<div class="face focus" style="border-color:{accent}"></div>'
+    return '<div class="face lines"><i></i><i></i></div>'
+
+
 def _snap_in(selector, at, fro, to, duration, ease="back.out(1.7)", origin="50% 50%"):
     """Pop or wipe. Opacity is already 1 on both keys, so a hidden element snaps on."""
     if isinstance(at, (int, float)):
@@ -407,19 +439,27 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
 
     if motif == "thumbnail_grid":
         labels = list(stage.get("items") or ["Hook", "Proof", "Offer", "Cut", "List", "Chart", "Note", "CTA"])
+        notes = list(stage.get("notes") or [])
         count = len(events)
         labels = (labels + ["Shot"] * count)[:count]
-        cols = 4 if count >= 7 else 3
+        cols = 3 if count == 6 else (4 if count >= 7 else min(3, max(1, count)))
+        fixed = stage.get("variant") == "fixed"
         cards = []
         for index, label in enumerate(labels):
             card = f"{ident}-t{index}"
-            accent_edge = f"border-top:4px solid {accent};" if index == 0 else ""
+            note = notes[index] if index < len(notes) else ""
+            accent_edge = f"border-top:4px solid {accent};" if (fixed or index == 0) else ""
             cards.append(
                 f'<div id="{card}" class="thumb" style="background:linear-gradient(165deg,{surface},{contrast});'
-                f'border:1px solid {border};{accent_edge}"><span class="mono">{index+1:02d}</span>'
-                f'<b>{_esc(label)}</b><i>&#9654;</i></div>')
+                f'border:1px solid {border};{accent_edge}">'
+                f'{_card_face(label, fixed, accent, warning, border, muted, on_accent)}'
+                f'<span class="mono">{index+1:02d}</span>'
+                f'<b>{_esc(label)}</b>'
+                f'<em>{_esc(note)}</em></div>')
             animations.append(_pop(f"#{card}", events[index]["at"]))
-        body = f'<div class="thumb-grid" style="grid-template-columns:repeat({cols},1fr)">{"".join(cards)}</div>'
+        rows = 1 if count <= 3 else 2
+        body = (f'<div class="thumb-grid" style="grid-template-columns:repeat({cols},1fr);'
+                f'grid-template-rows:repeat({rows},1fr)">{"".join(cards)}</div>')
 
     elif motif == "phone_frame":
         chip = stage.get("chip")
@@ -468,14 +508,26 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         bar = ""
         if stage.get("progress"):
             bar = f'<div class="phone-bar"><div id="{ident}-prog"></div></div>'
+        scan = ""
+        if stage.get("scan"):
+            scan = f'<div id="{ident}-scan" class="scan-beam"></div>'
+            travel = max(48, int(geo["screen"][1]) - 36)
+            animations.append(
+                f'tl.fromTo("#{ident}-scan",{{y:10}},{{y:{travel},duration:0.9,ease:"none"}},{start + 0.18:.3f});')
         phone_style = (
             f'position:absolute;left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;'
             f'height:{geo["height"]}px;margin:0;padding:{geo["pad"]}px')
         body = (f'<div id="{ident}-phone" class="phone hero" style="{phone_style}">'
                 f'<div class="phone-screen" style="height:{int(geo["screen"][1])}px">'
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
-                f'{bar}{thumb}{cursor}</div></div>')
-        animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
+                f'{scan}{bar}{thumb}{cursor}</div></div>')
+        if stage.get("enter_after") or stage.get("scan"):
+            animations.append(f'tl.set("#{ident}-phone",{{y:360}},{start:.3f});')
+            animations.append(
+                f'tl.fromTo("#{ident}-phone",{{y:360}},{{y:0,duration:0.24,ease:"back.out(1.4)",'
+                f'immediateRender:false}},{events[0]["at"]});')
+        else:
+            animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
         origin = "50% 42%"
         callout = stage.get("callout") or {}
         frame = stage.get("frame") or {}
@@ -681,13 +733,22 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 animations.append(_pop(f"#{ident}-s{index}", at))
             grid = f'<div class="site-grid">{"".join(thumbs)}</div>' if thumbs else ""
             dense = " dense" if thumbs else ""
-            body = (f'<div class="counter{dense}"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
+            origin = int(stage.get("from") or 0)
+            tone = " bad" if stage.get("negative") else ""
+            body = (f'<div class="counter{dense}"><div id="{ident}-num" class="count-num{tone}">{_esc(stage.get("prefix") or "")}{origin}{_esc(stage.get("suffix") or "")}</div>'
                     f'{grid}{label_html}</div>')
+        origin = int(stage.get("from") or 0)
+        lock = float(stage.get("lock_at") or min(end - 0.08, start + 0.9))
+        lock = min(max(lock, start + 0.12), end - 0.04)
+        roll = max(0.12, lock - start - 0.08)
+        shown = json.dumps(f"{target:,}")
         animations.append(
-            f'const {variable}={{v:0}};'
-            f'tl.to({variable},{{v:{target},duration:0.9,ease:"power2.out",'
+            f'const {variable}={{v:{origin}}};'
+            f'tl.to({variable},{{v:{target},duration:{roll:.3f},ease:"power2.in",'
             f'onUpdate:()=>{{const el=document.getElementById("{ident}-num");'
-            f'if(el) el.textContent={prefix}+Math.round({variable}.v).toLocaleString("en-US")+{suffix};}}}},{start});')
+            f'if(el) el.textContent={prefix}+Math.round({variable}.v).toLocaleString("en-US")+{suffix};}},'
+            f'onComplete:()=>{{const el=document.getElementById("{ident}-num");'
+            f'if(el) el.textContent={prefix}+{shown}+{suffix};}}}},{start});')
         animations.append(_pop(f"#{ident}-num", start))
 
     elif motif == "highlight_box":
@@ -726,16 +787,40 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         spread = [-26, -13, 0, 13, 26]
         shifts = [-10, -5, 0, 5, 10]
         for index, page in enumerate(pages):
-            kicker, title = page
+            page = list(page)
+            kicker, title = page[0], page[1]
+            copy = page[2] if len(page) > 2 else ""
+            lines = [part.strip() for part in str(copy).replace("!", ".").split(".") if part.strip()]
+            copy_html = "".join(f"<span>{_esc(line)}</span>" for line in lines)
             rot = spread[index] if index < len(spread) else 0
             shift = shifts[index] if index < len(shifts) else 0
             left = (11 + shift) if stage.get("strike") else (16 + shift)
             fans.append(
                 f'<div class="page-rot" style="left:{left}%;transform:rotate({rot}deg)">'
                 f'<div id="{ident}-p{index}" class="page"><div class="page-rule"></div>'
-                f'<div class="mono">{_esc(kicker)}</div><div class="page-title">{_esc(title)}</div>'
+                f'<div class="mono">{_esc(kicker)}</div>'
+                f'<div class="page-title">{_esc(title)}'
+                f'<div id="{ident}-sweep{index}" class="page-sweep"></div></div>'
+                f'<div class="page-copy">{copy_html}</div>'
                 f'<div id="{ident}-tint{index}" class="fan-tint"></div></div></div>')
             animations.append(_pop(f"#{ident}-p{index}", paper[index]["at"]))
+            drift_at = min(end - 0.4, paper[index]["at"] + 0.28)
+            animations.append(
+                f'tl.fromTo("#{ident}-p{index}",{{y:0}},{{y:{-8 - index * 3},duration:0.9,yoyo:true,'
+                f'repeat:8,ease:"sine.inOut"}},{drift_at:.3f});')
+        if pages:
+            animations.append(
+                f'tl.fromTo("#{ident}-fan",{{rotation:-1.2}},{{rotation:1.6,duration:1.3,yoyo:true,'
+                f'repeat:8,ease:"sine.inOut"}},{start + 0.45:.3f});')
+        if stage.get("sweep") and pages:
+            for index in (0, min(2, len(pages) - 1)):
+                at = min(end - 0.25, paper[index]["at"] + 0.28)
+                animations.append(
+                    f'tl.fromTo("#{ident}-sweep{index}",{{scaleX:0}},{{scaleX:1,duration:0.45,ease:"power2.out",'
+                    f'transformOrigin:"0% 50%"}},{at:.3f});')
+                animations.append(
+                    f'tl.fromTo("#{ident}-sweep{index}",{{scaleX:1}},{{scaleX:0.72,duration:0.8,yoyo:true,'
+                    f'repeat:6,ease:"sine.inOut",transformOrigin:"0% 50%"}},{at + 0.5:.3f});')
         klass = "fan stack" if stage.get("strike") else "fan"
         body = f'<div id="{ident}-fan" class="{klass}">{"".join(fans)}</div>'
         if stage.get("strike"):
@@ -789,6 +874,31 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             animations.append(
                 f'tl.fromTo("#{ident}-l{index}",{{strokeDashoffset:400}},{{strokeDashoffset:0,duration:0.35,ease:"power2.out"}},{events[index+1]["at"]});')
             animations.append(_pop(f"#{ident}-{selector}", events[index + 1]["at"]))
+
+    elif motif == "hero_board":
+        value = stage.get("value") or "56"
+        kicker = stage.get("kicker") or "ADA SCAN"
+        label = stage.get("label") or "ACCESSIBILITY ERRORS"
+        rows = list(stage.get("items") or ["Missing alt text", "Low contrast", "The offer"])
+        notes = list(stage.get("notes") or ["", "", ""])
+        cells = []
+        for index, item in enumerate(rows[:3]):
+            note = notes[index] if index < len(notes) else ""
+            cells.append(
+                f'<div id="{ident}-h{index}" class="hero-cell">{_card_face(item, False, accent, warning, border, muted, on_accent)}'
+                f'<b>{_esc(item)}</b><em>{_esc(note)}</em></div>')
+            animations.append(_pop(f"#{ident}-h{index}", min(end - 0.1, start + 0.16 + index * 0.12)))
+        body = (
+            f'<div id="{ident}-hero" class="hero-board">'
+            f'<div class="mono hero-kicker">{_esc(kicker)}</div>'
+            f'<div id="{ident}-num" class="hero-num">{_esc(value)}</div>'
+            f'<div class="mono hero-label">{_esc(label)}</div>'
+            f'<div id="{ident}-beam" class="hero-beam"></div>'
+            f'<div class="hero-row">{"".join(cells)}</div></div>')
+        animations.append(_pop(f"#{ident}-hero", events[0]["at"]))
+        animations.append(
+            f'tl.fromTo("#{ident}-beam",{{scaleX:0}},{{scaleX:1,duration:0.7,ease:"power1.inOut",'
+            f'transformOrigin:"0% 50%"}},{start + 0.2:.3f});')
 
     elif motif == "logo_row":
         labels = list(stage.get("items") or ["Plan", "Build", "Ship"])[:3]
@@ -883,8 +993,16 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 animations.append(
                     f'tl.fromTo("#{ident}-strike",{{scaleX:0}},{{scaleX:1,duration:0.22,ease:"power2.out",'
                     f'transformOrigin:"0% 50%",immediateRender:false}},{at});')
-            body = (f'<div id="{ident}-quote" class="quote-card"><div class="quote-text">{_esc(quote)}{strike}</div></div>')
+            body = (f'<div id="{ident}-quote" class="quote-card"><div class="quote-text">{_esc(quote)}{strike}'
+                    f'<div id="{ident}-under" class="quote-under"></div></div></div>')
             animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
+            if stage.get("motion"):
+                animations.append(
+                    f'tl.fromTo("#{ident}-under",{{scaleX:0}},{{scaleX:1,duration:0.55,ease:"power2.out",'
+                    f'transformOrigin:"0% 50%"}},{events[0]["at"] + 0.12:.3f});')
+                drift = max(0.4, end - start - 0.35)
+                animations.append(
+                    f'tl.fromTo("#{ident}-quote",{{scale:1}},{{scale:1.045,duration:{drift:.2f},ease:"sine.inOut"}},{start + 0.2:.3f});')
 
     elif motif == "offer_pair":
         items = list(stage.get("items") or ["First offer", "Second offer"])[:2]

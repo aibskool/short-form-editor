@@ -152,8 +152,11 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         seed_path=str(source))
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
-    from kallaway_beats import lengthen_closing_face, snap_shot_edges
-    timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], _scene_times(leveled["output"]))
+    from kallaway_beats import lengthen_closing_face, output_join_times, punch_short_jumps, snap_shot_edges
+    joins = output_join_times(tightened.get("ranges") or [])
+    timeline["shots"] = snap_shot_edges(
+        timeline.get("shots") or [], _scene_times(leveled["output"]), joins=joins)
+    timeline["shots"] = punch_short_jumps(timeline["shots"], joins)
     # Scene snap can pull the last face back under a second and a half.
     timeline["shots"] = lengthen_closing_face(
         timeline["shots"], timeline.get("headers"), minimum=1.52)

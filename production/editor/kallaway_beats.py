@@ -23,7 +23,7 @@ STAGE_KEYS = (
     "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
     "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
-    "variant", "uncropped",
+    "variant", "uncropped", "scan", "notes", "from", "sweep", "motion", "lock_at", "negative",
 )
 
 # Full-screen and punch share scale 1 so the face is full bleed with no mid-shot jump.
@@ -169,6 +169,9 @@ def _title_word(token, first):
         return token
     if any(ch.isdigit() for ch in bare) or bare.startswith("$"):
         return token
+    # AI, ADA, and WCAG stay initials. WEBSITE stays capped when the line wrote it that way.
+    if bare.upper() in {"AI", "ADA", "WCAG"} or (bare.upper() == "WEBSITE" and bare.isupper()):
+        return bare.upper() + token[len(bare):]
     if not first and bare.lower() in _SMALL_WORDS:
         return bare.lower() + token[len(bare):]
     return bare[:1].upper() + bare[1:].lower() + token[len(bare):]
@@ -198,6 +201,10 @@ def _fit_header(header, width, height, layout):
     if payoff and (payoff[:1] == "$" or any(ch.isdigit() for ch in payoff)):
         # A price in the title is the bad offer. Amber, not a green payoff box.
         payoff_style = "amber"
+    if header.get("payoff_tone") == "amber":
+        payoff_style = "amber"
+    if header.get("payoff_style") in {"box", "marker", "amber"}:
+        payoff_style = header["payoff_style"]
     title_top = float(layout.get("title_top", 0.0520833333)) * height
     # 40–60 px between the title and the stage. The final card sits on that line.
     max_bottom = min(240.0, float(layout["stage_top"]) * height - 50.0)
@@ -226,25 +233,50 @@ def _fit_header(header, width, height, layout):
     return entry
 
 
-def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
+def output_join_times(ranges):
+    """Picture-cut times on the tightened clock. The concat hard-cuts at each range end."""
+    clock = 0.0
+    times = []
+    ordered = list(ranges or [])
+    for begin, end in ordered[:-1]:
+        clock += float(end) - float(begin)
+        times.append(round(clock, 3))
+    return times
+
+
+def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5, joins=None):
     """Move a layout cut onto a nearby picture cut so a 1–3 frame orphan cannot sit between them.
 
-    The picture change is the earliest scene inside the window. A one-frame
-    pull is kept even when a neighbor is already short: reverting it is what
-    leaves the stray frame of the previous take.
+    A tighten join within two frames wins, so the layout and the take change on
+    the same frame. Otherwise the picture change is the earliest scene inside
+    the window. A one-frame pull is kept even when a neighbor is already short:
+    reverting it is what leaves the stray frame of the previous take.
     """
-    if len(shots) < 2 or not scene_times:
+    if len(shots) < 2 or (not scene_times and not joins):
         return shots
     original = [float(shot["start"]) for shot in shots] + [float(shots[-1]["end"])]
     edges = list(original)
-    scenes = sorted(float(moment) for moment in scene_times)
+    scenes = sorted(float(moment) for moment in (scene_times or []))
+    join_times = sorted(float(moment) for moment in (joins or []))
+    locked = set()
     for index in range(1, len(edges) - 1):
+        if not join_times:
+            break
+        nearest = min(join_times, key=lambda moment: abs(moment - edges[index]))
+        if abs(nearest - edges[index]) <= 2.5 / 30.0:
+            edges[index] = nearest
+            locked.add(index)
+    for index in range(1, len(edges) - 1):
+        if index in locked or not scenes:
+            continue
         near = [moment for moment in scenes if abs(moment - edges[index]) <= window]
         if not near:
             continue
         before = [moment for moment in near if moment <= edges[index] + (1.0 / 30.0)]
         edges[index] = min(before) if before else min(near, key=lambda moment: abs(moment - edges[index]))
     for index in range(1, len(edges) - 1):
+        if index in locked:
+            continue
         moved = abs(edges[index] - original[index])
         short = edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum
         if short and moved > 0.15:
@@ -253,6 +285,50 @@ def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
         shot["start"] = round(start, 3)
         shot["end"] = round(end, 3)
     return shots
+
+
+def punch_short_jumps(shots, joins, scale=1.12, short=1.5):
+    """A picture join inside a full-face shot that leaves a piece under 1.5 s becomes a punch.
+
+    The jump stays in the take. The short side scales up, at most 15 percent,
+    so the cut is a punch instead of a naked jump.
+    """
+    join_times = [float(moment) for moment in (joins or [])]
+    if len(shots) < 1 or not join_times or scale <= 1.0 or scale > 1.15:
+        return shots
+    built = []
+    for shot in shots:
+        start, end = float(shot["start"]), float(shot["end"])
+        if shot.get("layout") != "full":
+            built.append(shot)
+            continue
+        inside = [moment for moment in join_times if start + 0.2 < moment < end - 0.2]
+        if not inside:
+            built.append(shot)
+            continue
+        cut = min(inside, key=lambda moment: min(moment - start, end - moment))
+        left, right = cut - start, end - cut
+        if min(left, right) >= short or min(left, right) < 0.5:
+            built.append(shot)
+            continue
+        opening = dict(shot)
+        opening["end"] = round(cut, 3)
+        closing = dict(shot)
+        closing["start"] = round(cut, 3)
+        if left <= right:
+            opening["layout"] = "punch_in"
+            opening["scale"] = round(float(scale), 3)
+            closing["layout"] = "full"
+            closing["scale"] = 1.0
+        else:
+            closing["layout"] = "punch_in"
+            closing["scale"] = round(float(scale), 3)
+            opening["layout"] = "full"
+            opening["scale"] = 1.0
+        built.extend((opening, closing))
+    for index, shot in enumerate(built):
+        shot["id"] = f"shot-{index:02d}"
+    return built
 
 
 def lengthen_closing_face(shots, headers=None, minimum=1.52):
@@ -491,6 +567,13 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                             stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
                     else:
                         stage["strike_at"] = round(min(end - 0.12, start + 0.35), 3)
+                if beat.get("lock_spoken"):
+                    at = float(ordered[locate(ordered, beat["lock_spoken"], item["index"])]["start"])
+                    if start - 0.02 <= at < end:
+                        stage["lock_at"] = round(at, 3)
+                if motif == "phone_frame" and shots and shots[-1].get("layout") in {"full", "punch_in"}:
+                    # The handset enters after the face cut. The whoosh rides that entrance.
+                    stage["enter_after"] = 0.20
                 shot["stage"] = stage
                 if motif in {"phone_frame", "broll_card"}:
                     resolve_annotations(stage, start, end, screen)
@@ -552,7 +635,11 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             entry = _fit_header(header, width, height, theme["layout"])
             entry["start"] = item["start"]
             entry["end"] = item["end"]
-            headers.append(entry)
+            # The same title across beats is one hold, not a new card that pops in again.
+            if headers and headers[-1].get("text") == entry.get("text") and abs(headers[-1]["end"] - entry["start"]) < 0.08:
+                headers[-1]["end"] = entry["end"]
+            else:
+                headers.append(entry)
         if beat.get("disclaimer"):
             notices.append({
                 "start": item["start"], "end": item["end"], "text": _clean(beat["disclaimer"]),

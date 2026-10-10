@@ -417,7 +417,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
                   width=1080, height=1920, fps=30, seed_path=None):
     if not words:
         raise ValueError("planning needs word timings")
-    if set(LIBRARY) != set(MOTIFS) - {"doc_fan"}:
+    if set(LIBRARY) != set(MOTIFS) - {"doc_fan", "hero_board"}:
         raise ValueError("motif rotation is missing a library entry")
     theme, _colors, mode, path = load_theme(theme_mode, theme_path)
     ordered = sorted(words, key=lambda word: float(word["start"]))

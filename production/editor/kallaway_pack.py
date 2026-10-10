@@ -320,10 +320,14 @@ def decorate_events(motif, events, stage, start, end):
                 "file": BELL_5, "combo": "25", "label": "Number Counter",
                 "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
                 "band": "high",
+            })
+            if stage.get("lock_at") is None:
                 # The pop already lands on the counter. The bell sits a second later
                 # with nothing new on screen.
-                "mute": True, "mute_reason": "no visual",
-            })
+                event["mute"] = True
+                event["mute_reason"] = "no visual"
+            else:
+                event["lands_on"] = event.get("lands_on") or "counter lock"
             event["bed"] = {
                 "kind": "ticking", "at": ticks[0]["at"] if ticks else event["at"],
                 "file": UI_30, "combo": "25", "label": "Number Counter bed",
@@ -368,7 +372,8 @@ def decorate_events(motif, events, stage, start, end):
         if _money(stage):
             card.update({
                 "file": KA_CHING, "combo": "42", "label": "Money Shot", "kind": "pop",
-                "fixed_file": True, "under_db": 10.0, "sound_at": round(float(card["at"]), 3),
+                "fixed_file": True, "under_db": 10.0,
+                "sound_at": _land(card["at"], end, 0.18),
                 "band": "high",
             })
         else:
@@ -477,12 +482,13 @@ def decorate_events(motif, events, stage, start, end):
                     "file": CLICK_10, "combo": "click", "label": "Mouse click",
                     "fixed_file": True, "band": "high",
                 })
-    if motif in {"thumbnail_grid", "mind_map", "logo_row", "pill"}:
+    if motif in {"thumbnail_grid", "mind_map", "logo_row", "pill", "hero_board"}:
         for event in events:
             if event["kind"] == "pop":
                 event.setdefault("combo", "19")
                 event.setdefault("label", "Word Pop")
-                event.setdefault("sound_at", _land(event["at"], end, 0.26))
+                delay = 2.0 / 30.0 if motif == "pill" else 0.0
+                event.setdefault("sound_at", _land(event["at"], end, delay))
     defaults = {
         "pop": (None, "19", "Word Pop"),
         "whoosh": (None, "8", "Panel slide"),
