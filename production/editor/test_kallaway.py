@@ -682,6 +682,86 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(item["ok"] for item in joins), joins)
         self.assertEqual(joins[0]["consonant"], "s")
 
+    def test_pop_crop_puts_the_crown_above_the_card(self):
+        from kallaway_matte import cover_fit, solve_position_y, source_y_on_card
+        theme, _, _, _ = load_theme("dark")
+        layout = theme["layout"]
+        card_w = (1 - 2 * layout["card_margin_x"]) * 1080
+        card_h = (layout["card_bottom"] - layout["card_top"]) * 1920
+        head_top, head_height = 420.0, 280.0
+        pos_y = solve_position_y(head_top, head_height, 0.15, 1080, 1920, card_w, card_h, scale=1)
+        local = source_y_on_card(head_top, 1080, 1920, card_w, card_h, pos_y, scale=1)
+        expected = -0.15 * head_height * cover_fit(1080, 1920, card_w, card_h)
+        self.assertAlmostEqual(local, expected, delta=1.5)
+        self.assertLess(local, -0.10 * head_height * cover_fit(1080, 1920, card_w, card_h))
+        self.assertGreater(local, -0.20 * head_height * cover_fit(1080, 1920, card_w, card_h))
+
+    def test_matte_hole_check_rejects_an_enclosed_gap(self):
+        from kallaway_matte import large_holes
+        solid = np.zeros((120, 80), dtype=np.uint8)
+        solid[10:110, 15:65] = 255
+        self.assertEqual(large_holes(solid), [])
+        punched = solid.copy()
+        punched[40:70, 30:55] = 0
+        holes = large_holes(punched, fraction=0.002)
+        self.assertTrue(holes)
+        self.assertGreater(holes[0]["area"], holes[0]["limit"])
+
+    def test_popout_layer_sits_above_the_card_and_full_screen_hides_it(self):
+        from edit import build
+        from check_kallaway_style import check
+        words = words_for(6, 0.45)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "talk.mp4"
+            subprocess.run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi", "-i", "color=c=0x224466:s=320x568:d=6:r=30",
+                "-f", "lavfi", "-i", "sine=frequency=220:duration=6",
+                "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(source)],
+                check=True)
+            mask = root / "mask.mp4"
+            frame = np.full((90, 64), 40, dtype=np.uint8)
+            yy, xx = np.ogrid[:90, :64]
+            frame[((yy - 40) / 28) ** 2 + ((xx - 32) / 16) ** 2 <= 1] = 220
+            raw = root / "mask.raw"
+            raw.write_bytes(frame.tobytes() * 12)
+            subprocess.run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "gray", "-s", "64x90", "-r", "30", "-i", str(raw),
+                "-frames:v", "12", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(mask)],
+                check=True)
+            timeline = plan_timeline(words, str(source), "words.json", music=False, keyword="VAULT",
+                                     title="This one change")
+            timeline["source"]["segments"] = [{"start": 0, "end": words[-1]["end"]}]
+            timeline["source"]["matte"] = str(mask)
+            timeline["source"]["matte_mask"] = str(mask)
+            (root / "words.json").write_text(json.dumps(words))
+            spec = root / "timeline.json"
+            spec.write_text(json.dumps(timeline))
+            write_sfx_library(root / "sfx")
+            project = root / "composition"
+            build(spec, project)
+            html = (project / "index.html").read_text()
+            self.assertIn('id="speaker-pop"', html)
+            self.assertIn('id="pop-camera"', html)
+            self.assertIn("z-index:6", html)
+            self.assertIn('"visibility": "hidden"', html)
+            self.assertIn("z-index:2", html)
+            self.assertIn("z-index:8", html)
+            report = check(project / "timeline.json", project / "mapped-words.json", project)
+            self.assertTrue(report["ok"], report)
+            broken = frame.copy()
+            broken[35:55, 24:40] = 0
+            raw.write_bytes(broken.tobytes() * 12)
+            subprocess.run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "gray", "-s", "64x90", "-r", "30", "-i", str(raw),
+                "-frames:v", "12", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(mask)],
+                check=True)
+            failed = check(project / "timeline.json", project / "mapped-words.json", project)
+            self.assertTrue(any(error.startswith("matte:") for error in failed["errors"]), failed)
+
 
 if __name__ == "__main__":
     unittest.main()

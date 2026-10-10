@@ -11,6 +11,7 @@ from pathlib import Path
 
 EDITOR = Path(__file__).resolve().parent / "editor"
 sys.path.insert(0, str(EDITOR))
+from kallaway_matte import inspect_matte  # noqa: E402
 from kallaway_motifs import ENTRANCE_SECONDS, motion_window, stage_events, stage_windows  # noqa: E402
 from kallaway_targets import box_in_viewport  # noqa: E402
 from kallaway_style import DEFAULT_THEME, load_theme  # noqa: E402
@@ -235,6 +236,22 @@ def check(timeline_path, words_path=None, project=None):
                 errors.append(f"brand: font {family} is not used in the composition")
     else:
         warnings.append("brand: no built index.html was scanned for palette and fonts")
+
+    source = data.get("source") or {}
+    matte_raw = source.get("matte_mask") or source.get("matte")
+    if matte_raw:
+        matte_path = Path(matte_raw)
+        if not matte_path.is_absolute():
+            matte_path = path.parent / matte_path
+        if not matte_path.is_file():
+            errors.append(f"matte: person matte is missing ({matte_path.name})")
+        else:
+            try:
+                errors.extend(inspect_matte(matte_path))
+            except Exception as exc:
+                errors.append(f"matte: could not read the person matte ({exc})")
+        if html_path and "speaker-pop" not in html_path.read_text():
+            errors.append("popout: the split composite is missing the head pop-out layer")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings, "theme": theme["id"], "theme_mode": mode}
 

@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE.parent))
 from edit import build  # noqa: E402
 from hyperframes_cli import run as run_hyperframes  # noqa: E402
 from kallaway_audio import mix_voice_sfx, process_voice, tighten_video, write_bed, write_sfx_library  # noqa: E402
+from kallaway_matte import attach_popout  # noqa: E402
 from kallaway_plan import plan_timeline  # noqa: E402
 from kallaway_style import load_theme  # noqa: E402
 from check_kallaway_style import check as check_style  # noqa: E402
@@ -148,6 +149,9 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
             })
     timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
     timeline["joins"] = tightened.get("joins") or []
+    attach_popout(
+        timeline, source, tightened.get("ranges") or [],
+        timeline["source"]["path"], theme)
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)

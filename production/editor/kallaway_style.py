@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 
 from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
+from kallaway_matte import pop_geometry
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -130,14 +131,21 @@ def build_kallaway(spec, spec_path, project):
         raise ValueError("run npm ci in production/editor before building")
     shutil.copy2(gsap, assets / "gsap.min.js")
 
-    parts, animations, audio = [], [], []
+    parts, animations, audio, pop_parts = [], [], [], []
     source = media(str(source_path))
+    video_stream = next(item for item in source_info["streams"] if item.get("codec_type") == "video")
+    video_w, video_h = int(video_stream["width"]), int(video_stream["height"])
+    matte_src = media(spec["source"]["matte"]) if spec["source"].get("matte") else None
     has_audio = any(stream.get("codec_type") == "audio" for stream in source_info["streams"])
     cursor = 0.0
     for index, segment in enumerate(segments):
         length = float(segment["end"]) - float(segment["start"])
         timing = f'data-start="{cursor:.6f}" data-duration="{length:.6f}" data-media-start="{segment["start"]}"'
         parts.append(f'<video id="aroll-{index}" class="aroll clip" src="{source}" {timing} data-track-index="0" muted playsinline></video>')
+        if matte_src:
+            pop_parts.append(
+                f'<video id="pop-{index}" class="pop-aroll clip" src="{matte_src}" {timing} '
+                f'data-track-index="1" muted playsinline></video>')
         if has_audio:
             audio.append(f'<audio id="voice-{index}" src="{source}" {timing} data-track-index="10" data-volume="1"></audio>')
         cursor += length
@@ -173,6 +181,17 @@ def build_kallaway(spec, spec_path, project):
         if shot.get("object_position"):
             animations.append(
                 f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
+        if matte_src:
+            if layout == "split":
+                geo = pop_geometry(
+                    state, video_w, video_h,
+                    shot.get("object_position") or position, height)
+                animations.append(
+                    f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{start});')
+                animations.append(
+                    f'tl.set("#speaker-pop",{json.dumps({"visibility": "visible", "clipPath": geo["clipPath"]})},{start});')
+            else:
+                animations.append(f'tl.set("#speaker-pop",{json.dumps({"visibility": "hidden"})},{start});')
         caption_y = layout_spec["caption_split_y"] if layout == "split" else layout_spec["caption_full_y"]
         animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%"}},{start});')
         if layout == "split" and shot.get("stage"):
@@ -329,6 +348,9 @@ def build_kallaway(spec, spec_path, project):
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{first['borderRadius']}px;box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
     #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
+    #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden}}
+    #pop-camera{{position:absolute}}
+    .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
     #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
@@ -466,6 +488,20 @@ def build_kallaway(spec, spec_path, project):
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     speaker = f'<div id="speaker-card"><div id="presenter-camera" data-layout-allow-overflow>{"".join(part for part in parts if part.startswith("<video"))}</div></div>'
+    if pop_parts:
+        opening = shots[0]
+        if opening.get("layout") == "split":
+            geo = pop_geometry(
+                first, video_w, video_h, opening.get("object_position") or position, height)
+            pop_style = f'style="visibility:visible;clip-path:{geo["clipPath"]}"'
+            cam_style = (
+                f'style="left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;height:{geo["height"]}px"')
+        else:
+            pop_style = 'style="visibility:hidden"'
+            cam_style = ""
+        speaker += (
+            f'<div id="speaker-pop" data-layout-allow-overflow {pop_style}>'
+            f'<div id="pop-camera" {cam_style}>{"".join(pop_parts)}</div></div>')
     rest = [part for part in parts if not part.startswith("<video")]
     slide = (
         "function kallawaySlide(t){var x1=0.25,y1=1,x2=0.5,y2=1,cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;"
@@ -490,7 +526,8 @@ def build_kallaway(spec, spec_path, project):
         "project": str(project), "style": "kallaway", "theme": theme["id"], "theme_mode": mode,
         "theme_path": str(theme_path), "duration": duration, "width": width, "height": height, "fps": fps,
         "words": len(words), "caption_groups": len(groups), "shots": len(shots),
-        "original_audio_preserved": has_audio, "music_count": len(spec.get("music", [])),
+        "original_audio_preserved": has_audio, "popout": bool(pop_parts),
+        "music_count": len(spec.get("music", [])),
         "sfx_count": len(spec.get("sfx", [])), "media_transfer": "local hardlink or copy; no upload", "rendered": False,
     }
     (project / "build-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
