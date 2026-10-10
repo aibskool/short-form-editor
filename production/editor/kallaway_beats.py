@@ -247,7 +247,6 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         item["end"] = round(end, 3)
 
     shots = []
-    split_index = 0
     screen = _phone_screen(theme, width, height)
     for item in resolved:
         beat = item["beat"]
@@ -276,7 +275,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                 motif = beat.get("motif")
                 if not motif:
                     raise ValueError(f"split beat {beat['spoken']!r} needs a motif")
-                crop = beat.get("crop") or ("tight" if split_index % 2 else "wide")
+                crop = beat.get("crop") or "wide"
                 shot["crop"] = crop
                 only_split = piece_index == 0
                 stage = _stage_from(beat, motif)
@@ -313,7 +312,6 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
                             resolve_annotations(overlay, overlay["start"], overlay["end"], screen)
                     shot["overlays"] = overlays
                 split_pieces.append(shot)
-                split_index += 1
             shots.append(shot)
         # A callout that belongs to a later word stays on the split piece above.
         del split_pieces

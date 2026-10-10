@@ -20,10 +20,16 @@ from scipy import ndimage
 
 MODEL = "mediapipe-selfie-0.10.14-general-edge-v2"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
-# Median head sits this far above the card, as a fraction of head height.
-POP_FRACTION = 0.15
-POP_FLOOR = 0.10
-POP_CAP = 0.20
+# Median crown sits this far above the card, as a fraction of head height.
+# On the 512 px card that is about 90 px, inside the band under the caption.
+POP_FRACTION = 0.32
+POP_FLOOR = 0.22
+POP_CAP = 0.42
+# A raised hand should clear the card edge by about this many pixels.
+HAND_CLEAR_PX = 16
+CROWN_MIN_PX = 28
+# A hand this far inside the card is on the chest. Do not lift the crop for it.
+HAND_INSIDE_IGNORE_PX = 48
 HOLE_AREA_FRACTION = 0.004
 # The pop layer overlaps the card by this many pixels so the clip does not
 # land on the card edge. The overlap is opaque chest, so it does not draw a line.
@@ -137,12 +143,25 @@ def solve_position_y(head_top, head_height, pop_fraction, video_w, video_h, card
     return float(np.clip(offset_y / denom, 0.02, 0.98))
 
 
-def choose_anchor(head_tops, head_height):
-    """Aim the median head at 15% above the card, and keep lower heads at least 10% out.
+def position_for_row(source_y, above_px, video_w, video_h, card_w, card_h, scale=1.0, origin_y=0.3):
+    """object-position Y that places `source_y` `above_px` above the card top."""
+    fit = cover_fit(video_w, video_h, card_w, card_h)
+    target = -float(above_px)
+    origin = origin_y * card_h
+    offset_y = (target - origin * (1 - scale) - source_y * fit * scale) / scale
+    denom = card_h - video_h * fit
+    if abs(denom) < 1e-6:
+        return 0.5
+    return float(np.clip(offset_y / denom, 0.02, 0.98))
 
-    A single crop cannot track a lean. The median is the look; the lower head
-    only pulls the crop further when that still leaves the typical head under
-    about 20% out.
+
+def choose_anchor(head_tops, head_height):
+    """Aim the median crown at POP_FRACTION of the head above the card.
+
+    A single crop cannot track a lean. The lower head pulls the crop up when
+    it would otherwise clear less than POP_FLOOR, and that pull stops at POP_CAP.
+    frame_popout then keeps the crown under the caption and a raised hand
+    under the hero.
     """
     tops = np.sort(np.asarray(head_tops, dtype=np.float64))
     if tops.size == 0:
@@ -655,14 +674,82 @@ def _shot_scale(shot, layout):
     return float(layout.get("wide_scale", 1))
 
 
+def pop_limits(layout, height):
+    """How far the pop may rise, in pixels above the card.
+
+    The crown prefers the band between the caption baseline and the card.
+    A raised hand may cross that caption (captions paint above the pop) but
+    the highest point stays under the hero, which ends at the stage bottom.
+    """
+    scale_y = height / 1920.0
+    card_top = layout["card_top"] * height
+    baseline = float(layout.get("caption_baseline_px", 1305)) * scale_y
+    stage_bottom = (layout["stage_top"] + layout["stage_height"]) * height
+    hero_clear = max(24.0, card_top - stage_bottom - 4)
+    crown_cap = max(CROWN_MIN_PX, min(hero_clear, card_top - baseline - 6))
+    return {
+        "card_top": card_top,
+        "baseline": baseline,
+        "stage_bottom": stage_bottom,
+        "hero_clear": hero_clear,
+        "crown_cap": crown_cap,
+    }
+
+
+def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
+    """object-position Y for one split scale.
+
+    The crown pops POP_FRACTION of the head, clipped into the caption band.
+    A hand that is crossing the card edge is lifted until it breaks out.
+    If that hand (or the crown) would cover the hero, the crop pulls back
+    so the highest point sits on the hero line.
+    """
+    fit = cover_fit(video_w, video_h, card_w, card_h)
+    hero_clear = limits["hero_clear"]
+    natural = float(head["pop_fraction"]) * float(head["head_height"]) * fit * scale
+    crown_above = float(np.clip(natural, CROWN_MIN_PX * scale, min(limits["crown_cap"], hero_clear)))
+    pos = position_for_row(
+        head["head_top"], crown_above, video_w, video_h, card_w, card_h, scale=scale)
+    hands = [float(item["top"]) for item in (head.get("hands") or []) if item.get("top") is not None]
+    if not hands:
+        return pos
+    hand_top = min(hands)
+    hand_local = source_y_on_card(
+        hand_top, video_w, video_h, card_w, card_h, pos, scale=scale)
+    crown_local = source_y_on_card(
+        head["head_top"], video_w, video_h, card_w, card_h, pos, scale=scale)
+    # The highest source row is the one that can cover the hero.
+    if hand_local < crown_local and -hand_local > hero_clear + 0.5:
+        return position_for_row(
+            hand_top, hero_clear, video_w, video_h, card_w, card_h, scale=scale)
+    if -crown_local > hero_clear + 0.5:
+        return position_for_row(
+            head["head_top"], hero_clear, video_w, video_h, card_w, card_h, scale=scale)
+    # Lift only a hand that is already at the card edge, not one on the chest.
+    if -HAND_CLEAR_PX < hand_local < HAND_INSIDE_IGNORE_PX:
+        extra = hand_local + HAND_CLEAR_PX
+        room = max(0.0, hero_clear + crown_local)
+        hand_room = max(0.0, hero_clear + hand_local)
+        extra = min(extra, room, hand_room)
+        if extra > 0.5:
+            return position_for_row(
+                head["head_top"], -crown_local + extra, video_w, video_h, card_w, card_h, scale=scale)
+    return pos
+
+
 def frame_popout(timeline, head, theme):
-    """Point split shots so the crown clears the card, and lift captions off the head."""
+    """Point split shots so the crown and a raised hand clear the card.
+
+    Captions stay on the theme baseline (about y 1305). They paint above the
+    pop, and the stage box already ends above that band, so key graphic text
+    is not moved down onto the head.
+    """
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
     height = int(timeline.get("output", {}).get("height", 1920))
     card_w = (1 - 2 * layout["card_margin_x"]) * width
     card_h = (layout["card_bottom"] - layout["card_top"]) * height
-    card_top = layout["card_top"] * height
+    limits = pop_limits(layout, height)
     video_w, video_h = head["width"], head["height"]
     groups = {}
     for shot in timeline.get("shots") or []:
@@ -670,38 +757,40 @@ def frame_popout(timeline, head, theme):
             continue
         scale = round(_shot_scale(shot, layout), 4)
         groups.setdefault(scale, []).append(shot)
+    if not groups:
+        return timeline
     positions = {}
     for scale, shots in groups.items():
-        pos_y = solve_position_y(
-            head["head_top"], head["head_height"], head["pop_fraction"],
-            video_w, video_h, card_w, card_h, scale=scale)
+        pos_y = solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits)
         positions[scale] = pos_y
         label = f"50% {pos_y * 100:.2f}%"
         for shot in shots:
             shot["object_position"] = label
-    wide = positions.get(round(float(layout.get("wide_scale", 1)), 4), next(iter(positions.values()), 0.5))
+    wide_scale = round(float(layout.get("wide_scale", 1)), 4)
+    if wide_scale in positions:
+        measure_scale = wide_scale
+        wide = positions[wide_scale]
+    else:
+        measure_scale, wide = next(iter(positions.items()))
+    label = f"50% {wide * 100:.2f}%"
+    timeline.setdefault("source", {})["object_position"] = label
     high_y = source_y_on_card(
-        head["head_high"], video_w, video_h, card_w, card_h, wide, scale=1)
-    font = layout["caption_font_px"] * (width / 1080)
-    text_h = font * 1.02
-    # The higher head (smaller source y) is the one captions have to clear.
-    head_canvas = card_top + high_y
-    # Sit the caption line above the higher head. It may overlap the lower
-    # graphic panel; it must not sit on the crown. The title band stays clear.
-    caption_top = head_canvas - 18 - text_h
-    floor = (layout["stage_top"] + 0.12) * height
-    caption_top = max(floor, caption_top)
-    caption_pct = round(caption_top / height * 100, 2)
-    for shot in timeline.get("shots") or []:
-        if shot.get("layout") == "split":
-            shot["caption_y"] = caption_pct
+        head.get("head_high", head["head_top"]), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
     low_y = source_y_on_card(
-        head["head_low"], video_w, video_h, card_w, card_h, wide, scale=1)
+        head.get("head_low", head["head_top"]), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
     median_y = source_y_on_card(
-        head["head_top"], video_w, video_h, card_w, card_h, wide, scale=1)
+        head["head_top"], video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+    hand_above = None
+    hands = head.get("hands") or []
+    hand_tops = [item["top"] for item in hands if item.get("top") is not None]
+    if hand_tops:
+        hand_y = source_y_on_card(
+            min(hand_tops), video_w, video_h, card_w, card_h, wide, scale=measure_scale)
+        hand_above = round(-hand_y, 1)
     head_px = head["head_height"] * cover_fit(video_w, video_h, card_w, card_h)
+    caption_pct = round(float(layout["caption_split_y"]) * 100, 2)
     timeline["source"]["popout"] = {
-        "object_position": f"50% {wide * 100:.2f}%",
+        "object_position": label,
         "caption_y": caption_pct,
         "head_top": head["head_top"],
         "head_height": head["head_height"],
@@ -709,9 +798,12 @@ def frame_popout(timeline, head, theme):
         "median_above_px": round(-median_y, 1),
         "low_above_px": round(-low_y, 1),
         "high_above_px": round(-high_y, 1),
+        "hand_above_px": hand_above,
+        "hero_clear_px": round(limits["hero_clear"], 1),
+        "crown_cap_px": round(limits["crown_cap"], 1),
         "head_px": round(head_px, 1),
         "samples": head["samples"],
-        "hands": head.get("hands") or [],
+        "hands": hands,
     }
     return timeline
 

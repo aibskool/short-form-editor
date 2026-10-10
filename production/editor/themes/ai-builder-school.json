@@ -2,7 +2,7 @@
   "id": "ai-builder-school",
   "name": "AI Builder School",
   "default_mode": "dark",
-  "measurement_note": "The split speaker card is 41% of the canvas (card_top 0.575 through card_bottom 0.985) so a selfie shows headroom, shoulders, and upper chest. Captions sit just above the card. The wide split crop is 1.0 (no punch-in). Tight alternation inside split is +8%. object_position 50% 38% puts the eyes about a third of the way down that card.",
+  "measurement_note": "Split face card is y 1408 to 1920 (512 px, 26.7%), inset 71 px, flush to the bottom, top corners only at 31 px. The graphic stage ends at y 1230 so hero text stays above the popped head. Caption baseline is y 1305 in both states. Wide split scale is 1.0 so a selfie fills the card width (head to upper chest, crown above the card). An explicit crop tight is +8%. Fallback object_position 50% 33% is replaced per source by the matte solver.",
   "modes": {
     "dark": {
       "background": "#1A1A1A",
@@ -67,17 +67,18 @@
     }
   },
   "layout": {
-    "card_margin_x": 0.065,
-    "card_top": 0.575,
-    "card_bottom": 0.985,
-    "card_radius": 28,
-    "caption_split_y": 0.522,
-    "caption_full_y": 0.68,
-    "title_top": 0.042,
+    "card_margin_x": 0.0657407407,
+    "card_top": 0.7333333333,
+    "card_bottom": 1.0,
+    "card_radius": 31,
+    "caption_baseline_px": 1305,
+    "caption_split_y": 0.651,
+    "caption_full_y": 0.64409375,
+    "title_top": 0.0520833333,
     "stage_left": 0.05,
-    "stage_top": 0.155,
+    "stage_top": 0.1291666667,
     "stage_width": 0.9,
-    "stage_height": 0.35,
+    "stage_height": 0.5114583333,
     "caption_font_px": 54,
     "caption_split_px": 54,
     "caption_full_px": 67,
@@ -88,7 +89,7 @@
     "tight_scale": 1.08,
     "wide_scale": 1.0,
     "dot_spacing": 36,
-    "object_position": "50% 38%"
+    "object_position": "50% 33%"
   },
   "voice": {
     "plain_english": true,

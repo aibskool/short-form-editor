@@ -44,16 +44,28 @@ def font_faces(theme, media):
     return "".join(rules)
 
 
+def radius_css(value):
+    """CSS border-radius. A number is one radius; a string is used as written."""
+    if isinstance(value, str):
+        return value
+    number = float(value)
+    if number == int(number):
+        return f"{int(number)}px"
+    return f"{number}px"
+
+
 def card_state(layout, crop, width, height, layout_spec, colors):
     if layout == "split":
         margin = layout_spec["card_margin_x"] * width
         top = layout_spec["card_top"] * height
         bottom = layout_spec["card_bottom"] * height
         scale = layout_spec["tight_scale"] if crop == "tight" else layout_spec["wide_scale"]
+        radius = round(layout_spec["card_radius"] * width / 1080)
+        # Flush bottom. Only the top corners are rounded. Full and punch stay square.
         return {
             "left": round(margin), "top": round(top),
             "width": round(width - 2 * margin), "height": round(bottom - top),
-            "borderRadius": round(layout_spec["card_radius"] * width / 1080),
+            "borderRadius": f"{radius}px {radius}px 0 0",
             "boxShadow": colors["card_shadow"], "scale": scale,
         }
     if layout == "punch_in":
@@ -376,10 +388,11 @@ def build_kallaway(spec, spec_path, project):
     caption_px = layout_spec["caption_font_px"] * scale
     title_px = layout_spec["title_font_px"] * scale
     mono_px = layout_spec["mono_font_px"] * scale
+    card_radius_css = radius_css(first["borderRadius"])
     css = f'''{font_faces(theme, media)}
     *{{box-sizing:border-box}} body{{margin:0;background:{colors['background']}}}
     #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;{background}}}
-    #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{first['borderRadius']}px;box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
+    #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{card_radius_css};box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
     #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}

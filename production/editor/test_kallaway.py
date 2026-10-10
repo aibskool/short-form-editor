@@ -17,7 +17,7 @@ from kallaway_audio import (
 )
 from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
-from kallaway_style import _caption_text, load_theme
+from kallaway_style import _caption_text, card_state, load_theme
 
 
 def words_for(duration=16, step=0.34):
@@ -128,13 +128,32 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(refined[0]["end"], 0.68)
 
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
-        theme, _, _, _ = load_theme("dark")
+        theme, colors, _, _ = load_theme("dark")
         layout = theme["layout"]
         height = layout["card_bottom"] - layout["card_top"]
-        self.assertGreaterEqual(height, 0.38)
-        self.assertLessEqual(height, 0.42)
+        self.assertAlmostEqual(layout["card_top"] * 1920, 1408, delta=2)
+        self.assertAlmostEqual(layout["card_bottom"], 1.0)
+        self.assertGreaterEqual(height, 0.25)
+        self.assertLessEqual(height, 0.29)
+        self.assertAlmostEqual(layout["card_margin_x"] * 1080, 71, delta=1)
         self.assertLess(layout["caption_split_y"], layout["card_top"])
         self.assertGreater(layout["caption_split_y"], layout["stage_top"] + layout["stage_height"])
+        stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
+        self.assertAlmostEqual(stage_bottom, 1230, delta=2)
+        self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
+        card = card_state("split", "wide", 1080, 1920, layout, colors)
+        self.assertEqual(card["top"], 1408)
+        self.assertEqual(card["height"], 512)
+        self.assertGreaterEqual(card["left"], 60)
+        self.assertLessEqual(card["left"], 85)
+        self.assertEqual(card["borderRadius"], "31px 31px 0 0")
+        self.assertEqual(card_state("full", "wide", 1080, 1920, layout, colors)["borderRadius"], 0)
+        self.assertEqual(card_state("punch_in", "wide", 1080, 1920, layout, colors)["borderRadius"], 0)
+        words = words_for()
+        timeline = plan_timeline(words, "/reels/silent.mp4", "words.json", music=False, keyword="VAULT")
+        splits = [shot for shot in timeline["shots"] if shot["layout"] == "split"]
+        self.assertTrue(splits)
+        self.assertTrue(all(shot.get("crop") == "wide" for shot in splits))
         self.assertEqual(layout["wide_scale"], 1.0)
         self.assertAlmostEqual(layout["tight_scale"], 1.08)
         self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.02)
@@ -714,6 +733,64 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(item["ok"] for item in joins), joins)
         self.assertEqual(joins[0]["consonant"], "s")
 
+    def test_pop_crop_clears_crown_and_raised_hand_without_covering_the_hero(self):
+        from kallaway_matte import cover_fit, frame_popout, parse_position, pop_limits, source_y_on_card
+        theme, _, _, _ = load_theme("dark")
+        layout = theme["layout"]
+        card_w = (1 - 2 * layout["card_margin_x"]) * 1080
+        card_h = (layout["card_bottom"] - layout["card_top"]) * 1920
+        limits = pop_limits(layout, 1920)
+        base = {
+            "width": 1080, "height": 1920,
+            "head_top": 331.0, "head_height": 420.0,
+            "head_low": 400.0, "head_high": 280.0,
+            "pop_fraction": 0.32, "samples": 4, "hands": [],
+        }
+
+        def place(head):
+            timeline = {
+                "output": {"width": 1080, "height": 1920},
+                "source": {"object_position": "50% 50%"},
+                "shots": [
+                    {"layout": "split", "crop": "wide"},
+                    {"layout": "full"},
+                    {"layout": "punch_in"},
+                ],
+            }
+            frame_popout(timeline, head, theme)
+            _x, pos_y = parse_position(timeline["shots"][0]["object_position"])
+            crown = source_y_on_card(head["head_top"], 1080, 1920, card_w, card_h, pos_y)
+            self.assertNotIn("object_position", timeline["shots"][1])
+            self.assertNotIn("object_position", timeline["shots"][2])
+            self.assertNotIn("caption_y", timeline["shots"][0])
+            self.assertEqual(timeline["source"]["object_position"], timeline["shots"][0]["object_position"])
+            return crown, pos_y, timeline
+
+        crown, pos0, _timeline = place(base)
+        self.assertLess(crown, -40)
+        self.assertGreaterEqual(limits["card_top"] + crown, limits["baseline"] - 2)
+        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
+
+        raised = dict(base, hands=[{"at": 1.0, "top": 160.0}])
+        crown, pos_y, timeline = place(raised)
+        hand = source_y_on_card(160.0, 1080, 1920, card_w, card_h, pos_y)
+        self.assertLess(hand, -8)
+        self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)
+        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
+        self.assertLess(crown, 0)
+        self.assertLessEqual(timeline["source"]["popout"]["hand_above_px"], limits["hero_clear"] + 1)
+
+        # A hand that the crown crop leaves just inside the card breaks out.
+        fit = cover_fit(1080, 1920, card_w, card_h)
+        offset = pos0 * (card_h - 1920 * fit)
+        edge_top = (20 - offset) / fit
+        edge = dict(base, hands=[{"at": 1.2, "top": edge_top}])
+        crown, pos_y, _timeline = place(edge)
+        hand = source_y_on_card(edge_top, 1080, 1920, card_w, card_h, pos_y)
+        self.assertLessEqual(hand, -12)
+        self.assertGreaterEqual(limits["card_top"] + crown, limits["stage_bottom"] - 1)
+        self.assertGreaterEqual(limits["card_top"] + hand, limits["stage_bottom"] - 1)
+
     def test_pop_crop_puts_the_crown_above_the_card(self):
         from kallaway_matte import cover_fit, solve_position_y, source_y_on_card
         theme, _, _, _ = load_theme("dark")
@@ -779,6 +856,8 @@ class KallawayTests(unittest.TestCase):
             build(spec, project)
             html = (project / "index.html").read_text()
             self.assertIn('id="speaker-pop"', html)
+            self.assertIn("31px 31px 0 0", html)
+            self.assertNotIn("0 0px", html)
             self.assertIn('id="pop-camera"', html)
             self.assertIn("z-index:6", html)
             self.assertIn('"autoAlpha": 0', html)

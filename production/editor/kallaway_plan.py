@@ -401,7 +401,7 @@ def plan_timeline(words, source_path, words_path, theme_mode="dark", title=None,
                 motif = "doc_fan"
             else:
                 motif = _rotate(seed, split_index, previous_motif)
-            shot["crop"] = "tight" if split_index % 2 else "wide"
+            shot["crop"] = "wide"
             shot["stage"] = _stage_for(motif, covered, theme, keyword)
             previous_motif = motif
             split_index += 1

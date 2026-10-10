@@ -1,6 +1,6 @@
 # Kallaway-style talking-head edits
 
-Use this path for a new raw talking-head. It is the default for that job: hard cuts only, a split graphic stage with a floating speaker card, full-screen and punch-in camera states, one-word lowercase captions, and a comment CTA. Colors and fonts come from the AI Builder School preset, not from Kallaway's red-and-black look.
+Use this path for a new raw talking-head. It is the default for that job: hard cuts only, a split graphic stage over a bottom face card with the head popped above it, full-screen and punch-in camera states, one-word lowercase captions, and a comment CTA. Colors and fonts come from the AI Builder School preset, not from Kallaway's red-and-black look.
 
 The presenter-first house style stays on its own path. A timeline whose `style` value is an object (or is omitted) is a house-style edit: full-size presenter, kinetic type, no music. A timeline with `"style": "kallaway"` is this preset. The string is the flag. It is not a house-style override, and the house-style builder never sees it.
 
@@ -189,13 +189,13 @@ The house-style build gate still rejects music. A Kallaway timeline leaves the b
 
 ## Known gaps
 
-- No face tracking. The crop is a fixed `object-position` (default `50% 38%`, eyes about a third of the way down the split card) plus a wide split scale of 1.0, a tight split scale of 1.08, a full-screen scale of 1.13, and one punch 12% tighter on the key word of a full-screen stretch. That punch is held to the end of the stretch. Neither piece is shorter than 0.8 s, and the camera does not punch back out inside the phrase. `track_face.py` belongs to the house style.
+- No face tracking. The split crop is a fixed `object-position`. The theme fallback is `50% 33%`, and the matte solver replaces it so the crown clears the card into the band under the captions and a raised hand clears the card without covering the hero. Wide split scale is 1.0. An authored `crop` of `tight` is 1.08. Full-screen scale is 1.13, and one punch is 12% tighter on the key word of a full-screen stretch. That punch is held to the end of the stretch. Neither piece is shorter than 0.8 s, and the camera does not punch back out inside the phrase. `track_face.py` belongs to the house style.
 - Motifs are stylized recreations, not his After Effects projects. Mind maps and dashed logo connectors are simple.
 - The automatic motif picker rotates. It does not read the sentence. Pass `--stage-plan` and real screenshots when the graphic should match the line.
 - Full-screen movie B-roll is not a default. B-roll stays in a card or phone.
 - Slow push-ins stay off.
 - The spring is GSAP `back.out`, which approximates an 80% to 110% to 100% pop. The slide ease is the spec cubic-bezier.
-- The split speaker card is 41% of the canvas. The graphic stage is the band above the captions, which sit just above the card.
+- The split face card runs from y 1408 to y 1920 (512 px, about 27% of the frame), inset about 71 px, flush to the bottom, with only the top corners rounded. The graphic stage ends near y 1230 so hero text stays above the popped head. Caption baseline is y 1305 in both the split and the full-face states.
 - The bed is off unless `--music` is passed. That bed is a CC0 lo-fi loop at about 105 BPM. SFX are the local Viral Reels SFX Pack (`SFX_PACK_DIR`), unprocessed except trim, a short fade, and clip gain. Levels are momentary loudness versus the voice's short-term loudness (`sfx_under_db`), baked into the voice. Sources are in `THIRD_PARTY_NOTICES.md`. A reach reel can set `omit_cta` so the style check does not require a Comment header. Phone and b-roll motifs play an mp4 (`media_start`, `playback_rate`). A phone screen fills about 80-90% of the panel. The bezel runs off the top and bottom of the panel, the recording stays full width so text is not cropped on the sides, and the camera pushes toward a callout before the circle draws. `target_text` can be measured on a video frame via `poster_time` or `target_time`, or on `target_still`. A stage `chip` with `"place": "bottom"` is the article credit. `@bjmeaux` is on every frame. `quote_card` variants `receipt` and `browser` are the dense invoice and offline-page compositions.
 - Whisper is optional and not installed by this repo.
 - `sample_talking_head.py` builds a synthetic proof take (espeak-ng, Pillow, numpy). Do not ship its output.
