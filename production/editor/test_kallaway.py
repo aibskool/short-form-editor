@@ -1187,8 +1187,28 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(below, above + 0.04)
         self.assertLess(below, 0.75)
 
-
-    def test_graphic_entrances_survive_the_density_budget(self):
+    def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
+        from kallaway_matte import blur_cover_plate
+        height, width = 240, 120
+        foliage = np.zeros((height, width, 3), np.uint8)
+        foliage[:, :] = (70, 110, 55)
+        foliage[:70] = (80, 130, 60)
+        # A hard light/dark split in the real leaves. The blur has to erase it.
+        foliage[:, :40] = (40, 70, 30)
+        person = np.zeros((height, width), np.uint8)
+        person[60:, 15:105] = 255
+        frame = foliage.copy()
+        frame[person > 0] = (190, 40, 40)
+        frames = [frame, frame]
+        masks = [person, person]
+        plate = blur_cover_plate(frames, masks, 120, 64, sigma=20, darken=0.12)
+        self.assertEqual(plate.shape, (64, 120, 3))
+        # The red shirt must not survive as a ghost behind the card.
+        self.assertLess(float(plate[:, :, 0].mean()), float(plate[:, :, 1].mean()))
+        # Neighboring columns stay close. A tile seam would jump.
+        columns = plate.mean(axis=(0, 2))
+        self.assertLess(float(np.max(np.abs(np.diff(columns)))), 8.0)
+        self.assertLess(float(plate.mean()), float(foliage[:70].mean()) * 0.95)
         from kallaway_pack import _limit_density
         cues = []
 

@@ -14,6 +14,7 @@ same frames as the picture.
 import hashlib
 import os
 import subprocess
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -38,11 +39,14 @@ CROWN_POP_TARGET_PX = 70
 CROWN_POP_MIN_PX = 50
 CROWN_POP_MAX_PX = 100
 # Kallaway's face on the card is about this tall. Brandon films close, so the
-# speaker is scaled down to land here and the empty sides are a foliage plate.
+# speaker is scaled down and a blurred cover of the same frame fills the card.
 FACE_TARGET_PX = 215
 FACE_MIN_PX = 200
 FACE_MAX_PX = 230
-PLATE_RECIPE = "foliage-quilt-v2"
+# Sigma is in card pixels. 25-40 reads as shallow depth of field, not a smear.
+PLATE_SIGMA = 32.0
+PLATE_DARKEN = 0.12
+PLATE_RECIPE = "blur-cover-v1"
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -870,7 +874,7 @@ def placed_local_y(source_y, head_top, pop_px, scale):
 def placed_pop_geometry(card, video_w, video_h, head_top, pop_px, scale):
     """Full-frame alpha placement. The crown sits `pop_px` above the card.
 
-    The video is smaller than the card, so the sides are the foliage plate.
+    The video is smaller than the card, so the sides are the blurred plate.
     The layer is not clipped at the card top: the same matte draws the crown
     and the chest, and the canvas clips the rest.
     """
@@ -1029,7 +1033,7 @@ def frame_popout(timeline, head, theme):
     """Scale the split speaker so the face is about 215 px and the crown pops ~70 px.
 
     Head, neck, and shoulders sit in the card. The sides that scaling opens are
-    filled later by the foliage plate. Full and punch stay on the theme crop
+    filled later by the blurred plate. Full and punch stay on the theme crop
     with the pop hidden. A per-take full-face baseline places that caption.
     """
     layout = theme["layout"]
@@ -1130,123 +1134,101 @@ def _frame_mask(path, when, width, height):
     return np.frombuffer(raw[:frame], dtype=np.uint8).reshape(height, width)
 
 
-def _quilt(width, height, atlas, seed=7):
-    """Fill a card with the foliage atlas. Sampling is 1:1, then a soft warp.
-
-    The atlas is already at the speaker's scale, so a leaf is the same size
-    as the leaves that sat beside him. Nothing is stretched.
-    """
-    atlas = np.asarray(atlas, dtype=np.float32)
-    if atlas.ndim != 3 or atlas.shape[0] < 8 or atlas.shape[1] < 8:
-        tone = atlas.reshape(-1, 3).mean(axis=0) if atlas.size else np.array([70, 80, 55], np.float32)
-        return np.broadcast_to(tone, (height, width, 3)).copy()
-    tile = np.concatenate([atlas, atlas[:, ::-1]], axis=1)
-    tile = np.concatenate([tile, tile[::-1]], axis=0)
-    yy, xx = np.mgrid[0:height, 0:width]
-    phase = (int(seed) % 17) * 0.37
-    warp_x = 16.0 * np.sin(yy / 41.0 + phase) + 9.0 * np.sin(xx / 57.0)
-    warp_y = 12.0 * np.sin(xx / 47.0 + phase) + 7.0 * np.cos(yy / 33.0)
-    sx = np.mod(xx + warp_x, tile.shape[1] - 1).astype(np.float32)
-    sy = np.mod(yy + warp_y, tile.shape[0] - 1).astype(np.float32)
-    x0 = np.floor(sx).astype(np.int32)
-    y0 = np.floor(sy).astype(np.int32)
-    x1 = x0 + 1
-    y1 = y0 + 1
-    fx = (sx - x0)[..., None]
-    fy = (sy - y0)[..., None]
-    return (
-        tile[y0, x0] * (1 - fx) * (1 - fy)
-        + tile[y0, x1] * fx * (1 - fy)
-        + tile[y1, x0] * (1 - fx) * fy
-        + tile[y1, x1] * fx * fy
-    )
-
-
-def _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px):
-    """Card-sized plate. Real background where the frame has it, quilted leaves elsewhere."""
+def _background_grain(rgb, mask):
+    """High-frequency level of real background, so the blur can keep a little grain."""
     import cv2
 
-    card_w, card_h = int(round(card_w)), int(round(card_h))
+    bg = np.asarray(mask) < 48
+    if int(bg.sum()) < 400:
+        return 1.4
+    smooth = cv2.GaussianBlur(np.asarray(rgb, dtype=np.float32), (0, 0), 1.1)
+    resid = (np.asarray(rgb, dtype=np.float32) - smooth)[bg]
+    return float(np.clip(np.std(resid), 0.4, 6.0))
+
+
+def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PLATE_DARKEN):
+    """One card-sized plate: the source covers the card, then a strong blur.
+
+    The speaker is removed before the blur, so he does not leave a ghost.
+    Cover crops; it does not tile, mirror, or stretch. ``sigma`` is in card pixels.
+    """
+    import cv2
+
+    frames = [np.asarray(frame, dtype=np.uint8) for frame in frames]
+    masks = [np.asarray(mask, dtype=np.uint8) for mask in masks]
+    if not frames:
+        raise ValueError("blur plate needs at least one frame")
+    height, width = frames[0].shape[:2]
+    card_w, card_h = int(card_w), int(card_h)
+    stack = np.stack([frame.astype(np.float32) for frame in frames], axis=0)
+    bg = np.stack([mask < 48 for mask in masks], axis=0)
+    known_count = bg.sum(axis=0)
+    stack = np.where(bg[..., None], stack, np.nan)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        clean = np.nanmedian(stack, axis=0)
+    known = known_count > 0
+    clean = np.nan_to_num(clean, nan=0.0)
+    hole = np.where(known, np.uint8(0), np.uint8(255))
+    if hole.any():
+        # A tiny inpaint fills a close-up silhouette from the real leaves.
+        # The card-scale blur that follows removes the upsample.
+        tiny_w = max(24, width // 8)
+        tiny_h = max(24, height // 8)
+        tiny = cv2.resize(np.clip(clean, 0, 255).astype(np.uint8), (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        hole_tiny = cv2.resize(hole, (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        painted = cv2.inpaint(tiny, hole_tiny, 6, cv2.INPAINT_TELEA)
+        filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+        clean = np.where(known[..., None], clean, filled)
+    cover = max(card_w / float(width), card_h / float(height))
+    src_sigma = max(1.0, float(sigma) / cover)
+    blurred = cv2.GaussianBlur(clean, (0, 0), src_sigma)
+    new_w = max(card_w, int(round(width * cover)))
+    new_h = max(card_h, int(round(height * cover)))
+    interp = cv2.INTER_AREA if cover < 1.0 else cv2.INTER_LINEAR
+    covered = cv2.resize(blurred, (new_w, new_h), interpolation=interp)
+    x0 = max(0, (new_w - card_w) // 2)
+    y0 = max(0, (new_h - card_h) // 2)
+    crop = covered[y0:y0 + card_h, x0:x0 + card_w]
+    if crop.shape[0] != card_h or crop.shape[1] != card_w:
+        crop = cv2.resize(covered, (card_w, card_h), interpolation=cv2.INTER_AREA)
+    darkened = np.clip(crop * (1.0 - float(darken)), 0, 255)
+    grain = _background_grain(frames[0], masks[0])
+    rng = np.random.default_rng(7)
+    noise = rng.normal(0.0, grain * 0.45, darkened.shape).astype(np.float32)
+    noise = cv2.GaussianBlur(noise, (0, 0), 0.55)
+    return np.clip(darkened + noise, 0, 255).astype(np.uint8)
+
+
+def _build_blur_plate(source, matte, card_w, card_h):
+    """Sample the take, drop the speaker, and blur a cover of that clean frame."""
     facts = _video_facts(source)
     video_w, video_h = int(facts["width"]), int(facts["height"])
     duration = min(float(facts["duration"]), float(_video_facts(matte)["duration"]))
-    times = np.linspace(0.4, max(0.5, duration - 0.4), 6)
-    head_top = float(head["head_top"])
-    scale = float(scale)
-    # Uniform downscale. INTER_AREA averages; it does not stretch one axis.
-    atlas_parts = []
-    real = np.zeros((card_h, card_w, 3), dtype=np.float32)
-    weight = np.zeros((card_h, card_w), dtype=np.float32)
-    placed_w = video_w * scale
-    placed_h = video_h * scale
-    origin_x = (card_w - placed_w) / 2.0
-    # Source row at the card's top edge.
-    row0 = head_top + float(pop_px) / scale
+    times = np.linspace(0.4, max(0.5, duration - 0.4), 8)
+    frames, masks = [], []
     for when in times:
-        rgb = _frame_rgb(source, when, video_w, video_h)
-        mask = _frame_mask(matte, when, video_w, video_h)
-        bg = mask < 96
-        # Only the clean leaves above the hair. A row that includes the head
-        # would tile as a dark band.
-        clean = 0
-        limit = max(8, int(head_top) - 8)
-        for row in range(limit):
-            if float(bg[row].mean()) < 0.92:
-                break
-            clean = row + 1
-        if clean > 24:
-            strip = rgb[:clean].astype(np.float32)
-            small_w = max(8, int(round(strip.shape[1] * scale)))
-            small_h = max(8, int(round(strip.shape[0] * scale)))
-            atlas_parts.append(cv2.resize(strip, (small_w, small_h), interpolation=cv2.INTER_AREA))
-        # Real background that lands inside the card, accumulated over the take.
-        ys = np.arange(card_h, dtype=np.float32)
-        xs = np.arange(card_w, dtype=np.float32)
-        src_y = row0 + ys / scale
-        src_x = (xs - origin_x) / scale
-        valid_y = (src_y >= 0) & (src_y < video_h - 1)
-        valid_x = (src_x >= 0) & (src_x < video_w - 1)
-        if not valid_y.any() or not valid_x.any():
-            continue
-        y_i = np.clip(src_y.astype(np.int32), 0, video_h - 1)
-        x_i = np.clip(src_x.astype(np.int32), 0, video_w - 1)
-        yy, xx = np.meshgrid(y_i, x_i, indexing="ij")
-        sample = rgb[yy, xx]
-        known = bg[yy, xx] & valid_y[:, None] & valid_x[None, :]
-        real[known] += sample[known]
-        weight[known] += 1.0
-    if atlas_parts:
-        atlas = np.concatenate(atlas_parts, axis=0)
-    else:
-        atlas = np.full((32, 32, 3), (72, 84, 58), np.float32)
-    plate = _quilt(card_w, card_h, atlas, seed=int(head_top))
-    plate = cv2.GaussianBlur(plate, (0, 0), 0.9)
-    known = weight > 0
-    if known.any():
-        real[known] /= weight[known, None]
-        leaf = real[known].mean(axis=0)
-        quilt_mean = plate.mean(axis=(0, 1))
-        plate = np.clip(plate + (leaf - quilt_mean) * 0.45, 0, 255)
-        alpha = ndimage.gaussian_filter(known.astype(np.float32), 16.0)
-        plate = plate * (1.0 - alpha[..., None]) + real * alpha[..., None]
-    return np.clip(plate, 0, 255).astype(np.uint8)
+        frames.append(_frame_rgb(source, when, video_w, video_h))
+        masks.append(_frame_mask(matte, when, video_w, video_h))
+    return blur_cover_plate(frames, masks, card_w, card_h)
 
 
 def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, dest):
-    """One static foliage plate per source. A re-render reuses it."""
+    """One static blurred plate per source. A re-render reuses it."""
     import cv2
 
+    del head, scale, pop_px
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
-    token = f"{PLATE_RECIPE}|{float(scale):.4f}|{float(pop_px):.2f}|{int(card_w)}x{int(card_h)}"
+    token = f"{PLATE_RECIPE}|sigma={PLATE_SIGMA:.1f}|darken={PLATE_DARKEN:.2f}|{int(card_w)}x{int(card_h)}"
     if dest.is_file() and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
-    print("extending the foliage plate", flush=True)
-    plate = _build_foliage_plate(source, matte, head, card_w, card_h, scale, pop_px)
+    print("building the blurred background plate", flush=True)
+    plate = _build_blur_plate(source, matte, card_w, card_h)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 97])
     if not ok:
-        raise RuntimeError(f"could not write the foliage plate to {dest}")
+        raise RuntimeError(f"could not write the background plate to {dest}")
     recipe.write_text(token + "\n")
     return dest
 
@@ -1287,6 +1269,11 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
         popped["card_width"], popped["card_height"],
         popped["scale"], popped["pop_px"], plate)
     popped["plate"] = str(plate.resolve())
+    import cv2
+    bgr = cv2.imread(str(plate), cv2.IMREAD_COLOR)
+    if bgr is not None:
+        mean = bgr.mean(axis=(0, 1))
+        popped["plate_tint"] = [int(round(float(mean[2]))), int(round(float(mean[1]))), int(round(float(mean[0])))]
     print(
         f"pop-out face {popped['face_px']}px  crown {popped['median_above_px']}px"
         f"  scale {popped['scale']}  captions at {popped['caption_y']}%",

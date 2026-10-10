@@ -448,7 +448,7 @@ def check(timeline_path, words_path=None, project=None):
             continue
         errors.append(
             f"fill: {shot.get('id')} scale {scale} letterboxes the face; "
-            "full bleed stays at scale 1, and a split shrink needs the foliage plate")
+            "full bleed stays at scale 1, and a split shrink needs the blurred plate")
     if placed:
         face_px = float(popout["face_px"])
         pop_px = float(popout.get("pop_px") or popout.get("median_above_px") or 0)
