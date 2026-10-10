@@ -46,7 +46,12 @@ FACE_MAX_PX = 230
 # Sigma is in card pixels. 25-40 reads as shallow depth of field, not a smear.
 PLATE_SIGMA = 32.0
 PLATE_DARKEN = 0.12
+# Edge darkening on the plate, so a shoulder fade reads as depth.
+PLATE_VIGNETTE = 0.12
 PLATE_RECIPE = "blur-cover-v1"
+# Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
+BOUNDARY_RAMP_CARD_PX = 64.0
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v1"
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
 CROWN_HEADROOM_PX = 96
 # The caption baseline sits this far above the crown. 25-50 is the allowed band.
@@ -1146,7 +1151,59 @@ def _background_grain(rgb, mask):
     return float(np.clip(np.std(resid), 0.4, 6.0))
 
 
-def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PLATE_DARKEN):
+def _smoothstep(values):
+    t = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def feather_boundary_alpha(alpha, ramp_px, touch_px=3):
+    """Ease alpha to 0 where the matte is cut by the source frame.
+
+    A row fades only when opaque pixels meet the left or right edge, and a
+    column fades only when they meet the bottom. The crown and any organic
+    edge inside the frame keep the matte's own feather. ``ramp_px`` is in
+    the same pixels as ``alpha``.
+    """
+    alpha = np.asarray(alpha)
+    if alpha.ndim != 2:
+        raise ValueError("boundary feather expects one alpha plane")
+    height, width = alpha.shape
+    ramp = max(1.0, float(ramp_px))
+    edge = max(1, int(touch_px))
+    opaque = alpha > 16
+    touch_left = opaque[:, :edge].any(axis=1)
+    touch_right = opaque[:, -edge:].any(axis=1)
+    touch_bottom = opaque[-edge:, :].any(axis=0)
+    if not (touch_left.any() or touch_right.any() or touch_bottom.any()):
+        return np.ascontiguousarray(alpha)
+    gain = np.ones((height, width), dtype=np.float32)
+    xs = np.arange(width, dtype=np.float32)
+    ys = np.arange(height, dtype=np.float32)
+    if touch_left.any():
+        gain[touch_left] *= _smoothstep(xs / ramp)
+    if touch_right.any():
+        gain[touch_right] *= _smoothstep((width - 1 - xs) / ramp)
+    if touch_bottom.any():
+        gain[:, touch_bottom] *= _smoothstep((height - 1 - ys) / ramp)[:, None]
+    faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)
+    return np.ascontiguousarray(faded.astype(np.uint8))
+
+
+def _radial_vignette(image, strength):
+    """Darken the plate toward the corners. The center stays put."""
+    image = np.asarray(image, dtype=np.float32)
+    height, width = image.shape[:2]
+    yy, xx = np.ogrid[0:height, 0:width]
+    nx = (xx - (width - 1) / 2.0) / max(width / 2.0, 1.0)
+    ny = (yy - (height - 1) / 2.0) / max(height / 2.0, 1.0)
+    radius = np.sqrt(nx * nx + ny * ny)
+    t = _smoothstep((radius - 0.55) / 0.75)
+    factor = (1.0 - float(strength) * t)[..., None]
+    return np.clip(image * factor, 0, 255)
+
+
+def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PLATE_DARKEN,
+                     vignette=PLATE_VIGNETTE):
     """One card-sized plate: the source covers the card, then a strong blur.
 
     The speaker is removed before the blur, so he does not leave a ghost.
@@ -1193,6 +1250,8 @@ def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PL
     if crop.shape[0] != card_h or crop.shape[1] != card_w:
         crop = cv2.resize(covered, (card_w, card_h), interpolation=cv2.INTER_AREA)
     darkened = np.clip(crop * (1.0 - float(darken)), 0, 255)
+    if vignette:
+        darkened = _radial_vignette(darkened, vignette)
     grain = _background_grain(frames[0], masks[0])
     rng = np.random.default_rng(7)
     noise = rng.normal(0.0, grain * 0.45, darkened.shape).astype(np.float32)
@@ -1220,7 +1279,9 @@ def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, 
     del head, scale, pop_px
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
-    token = f"{PLATE_RECIPE}|sigma={PLATE_SIGMA:.1f}|darken={PLATE_DARKEN:.2f}|{int(card_w)}x{int(card_h)}"
+    token = (
+        f"{PLATE_RECIPE}|sigma={PLATE_SIGMA:.1f}|darken={PLATE_DARKEN:.2f}"
+        f"|vignette={PLATE_VIGNETTE:.2f}|{int(card_w)}x{int(card_h)}")
     if dest.is_file() and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
     print("building the blurred background plate", flush=True)
@@ -1229,6 +1290,70 @@ def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, 
     ok = cv2.imwrite(str(dest), cv2.cvtColor(plate, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 97])
     if not ok:
         raise RuntimeError(f"could not write the background plate to {dest}")
+    recipe.write_text(token + "\n")
+    return dest
+
+
+def apply_boundary_feather(alpha_path, dest, scale, ramp_card=BOUNDARY_RAMP_CARD_PX):
+    """Bake an eased ramp into alpha that meets the left, right, or bottom edge.
+
+    The source matte stays cached. This file is the one the card composites,
+    so a change of ramp does not re-run Robust Video Matting. ``ramp_card``
+    is pixels on the placed card; the source ramp is that divided by scale.
+    """
+    dest = Path(dest)
+    recipe = dest.with_suffix(".recipe")
+    token = f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|scale={float(scale):.4f}"
+    if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
+        return dest
+    facts = _video_facts(alpha_path)
+    width, height = int(facts["width"]), int(facts["height"])
+    fps = float(facts["fps"])
+    ramp_src = float(ramp_card) / max(float(scale), 1e-3)
+    print(f"feathering frame-cut edges over {float(ramp_card):.0f}px at card scale", flush=True)
+    frame_bytes = width * height * 4
+    reader = subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-i", str(alpha_path),
+         "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    partial = dest.with_name(dest.stem + ".partial.mov")
+    writer = subprocess.Popen(
+        ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
+         "-s", f"{width}x{height}", "-r", f"{fps:.6f}", "-i", "pipe:0",
+         "-c:v", "qtrle", "-pix_fmt", "argb", "-an", str(partial)],
+        stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    frames = 0
+    try:
+        while True:
+            blob = _read_exact(reader, frame_bytes)
+            if not blob:
+                break
+            plane = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 4).copy()
+            plane[:, :, 3] = feather_boundary_alpha(plane[:, :, 3], ramp_src)
+            writer.stdin.write(plane.tobytes())
+            frames += 1
+        writer.stdin.close()
+        writer.stdin = None
+        write_code = writer.wait(timeout=900)
+        read_code = reader.wait(timeout=120)
+        if write_code or read_code or frames < 1:
+            err = b""
+            if writer.stderr:
+                err += writer.stderr.read() or b""
+            if reader.stderr:
+                err += reader.stderr.read() or b""
+            raise RuntimeError(
+                f"boundary feather failed ({read_code}/{write_code}, {frames} frames): {err[-500:]!r}")
+    finally:
+        if writer.stdin:
+            writer.stdin.close()
+        if writer.poll() is None:
+            writer.kill()
+        if reader.poll() is None:
+            reader.kill()
+        if reader.stdout:
+            reader.stdout.close()
+    partial.replace(dest)
     recipe.write_text(token + "\n")
     return dest
 
@@ -1274,6 +1399,9 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     if bgr is not None:
         mean = bgr.mean(axis=(0, 1))
         popped["plate_tint"] = [int(round(float(mean[2]))), int(round(float(mean[1]))), int(round(float(mean[0])))]
+    feathered = picture.with_name("person-pop-edge.mov")
+    apply_boundary_feather(alpha, feathered, popped["scale"])
+    timeline["source"]["matte"] = str(feathered.resolve())
     print(
         f"pop-out face {popped['face_px']}px  crown {popped['median_above_px']}px"
         f"  scale {popped['scale']}  captions at {popped['caption_y']}%",

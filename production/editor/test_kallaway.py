@@ -278,7 +278,7 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(layout["caption_full_px"], 67, delta=0.1)
         self.assertAlmostEqual(layout["caption_split_px"], 54, delta=0.1)
         self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
-        # Graphics end at y 1072. The split line sits just above the crown, near y 1264.
+        # Theme fallback ends at y 1072. A measured caption drops the stage below that.
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 1072, delta=2)
         self.assertGreater(layout["caption_split_y"] * 1920, stage_bottom)
@@ -968,8 +968,12 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(-crown, pop["pop_px"], delta=0.6)
         self.assertGreater(chin, 40)
         self.assertAlmostEqual(chin_row(base), 331 + 420 + CHIN_PAD_PX)
-        stage_bottom = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
-        self.assertAlmostEqual(stage_bottom, 1072, delta=2)
+        from kallaway_style import STAGE_GAP_ABOVE_CAPTION_PX
+        caption_top_shot = timeline["shots"][0]["caption_y"] / 100 * 1920
+        stage_bottom = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], timeline["shots"][0]["caption_y"])
+        self.assertAlmostEqual(caption_top_shot - stage_bottom, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        self.assertGreater(stage_bottom, 1072)
         from kallaway_matte import CAPTION_GAP_ABOVE_CROWN_PX, SPLIT_CAP_FACTOR
         crown_canvas = layout["card_top"] * 1920 + high
         caption_top = timeline["shots"][0]["caption_y"] / 100 * 1920
@@ -1034,8 +1038,16 @@ class KallawayTests(unittest.TestCase):
             top = shot["caption_y"] / 100 * 1920
             cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
             self.assertAlmostEqual(top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
-        stage = graphic_stage_bottom(layout, 1920, timeline["source"]["popout"])
-        self.assertLessEqual(stage, high_shot["caption_y"] / 100 * 1920)
+        from kallaway_style import STAGE_GAP_ABOVE_CAPTION_PX
+        stage = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], high_shot["caption_y"])
+        self.assertAlmostEqual(
+            high_shot["caption_y"] / 100 * 1920 - stage, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        low_stage = graphic_stage_bottom(
+            layout, 1920, timeline["source"]["popout"], low_shot["caption_y"])
+        self.assertAlmostEqual(
+            low_shot["caption_y"] / 100 * 1920 - low_stage, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
+        self.assertGreater(low_stage, stage)
 
     def test_green_spill_leaves_the_edge_and_not_the_skin(self):
         from kallaway_matte import despill_green
@@ -1187,6 +1199,24 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(below, above + 0.04)
         self.assertLess(below, 0.75)
 
+    def test_boundary_feather_softens_frame_cuts_and_keeps_the_head(self):
+        from kallaway_matte import feather_boundary_alpha
+        alpha = np.zeros((80, 100), np.uint8)
+        alpha[8:24, 40:60] = 255
+        alpha[30:38, 20:80] = 255
+        alpha[40:, :] = 255
+        out = feather_boundary_alpha(alpha, ramp_px=16)
+        self.assertTrue(np.array_equal(out[8:24, 40:60], alpha[8:24, 40:60]))
+        self.assertTrue(np.array_equal(out[30:38, 20:80], alpha[30:38, 20:80]))
+        self.assertEqual(int(out[50, 0]), 0)
+        self.assertEqual(int(out[50, 99]), 0)
+        self.assertEqual(int(out[50, 50]), 255)
+        self.assertGreater(int(out[50, 4]), int(out[50, 0]))
+        self.assertGreater(int(out[50, 12]), int(out[50, 4]))
+        self.assertEqual(int(out[79, 50]), 0)
+        self.assertAlmostEqual(int(out[71, 50]), 127, delta=2)
+        self.assertEqual(int(out[40, 50]), 255)
+
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate
         height, width = 240, 120
@@ -1209,6 +1239,8 @@ class KallawayTests(unittest.TestCase):
         columns = plate.mean(axis=(0, 2))
         self.assertLess(float(np.max(np.abs(np.diff(columns)))), 8.0)
         self.assertLess(float(plate.mean()), float(foliage[:70].mean()) * 0.95)
+        # A light radial vignette. Corners sit under the center.
+        self.assertLess(float(plate[0, 0].mean()), float(plate[32, 60].mean()) * 0.97)
         from kallaway_pack import _limit_density
         cues = []
 

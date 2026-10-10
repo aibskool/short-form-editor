@@ -54,25 +54,42 @@ def radius_css(value):
     return f"{number}px"
 
 
-def graphic_stage_bottom(layout_spec, height, popout=None):
-    """Canvas y where panel graphics stop, above the caption and the popped hair.
+# Air between the bottom of a split graphic and the top of its caption.
+# Kallaway's panels end near y 1072. These captions sit lower, so the stage
+# grows down until about 50 px of that air is left (the band is 40-60).
+STAGE_GAP_ABOVE_CAPTION_PX = 50
 
-    The theme bottom already clears a normal head. A taller measured crown,
-    or a hand above that crown, pulls the bottom up so the caption band
-    between the panels and the hair stays empty.
+
+def graphic_stage_bottom(layout_spec, height, popout=None, caption_pct=None):
+    """Canvas y where this shot's graphics stop, just above the caption.
+
+    The theme line (y 1072 at 1920) is the fallback before a crown is measured.
+    A measured split caption sits lower than that line. The stage then ends
+    about 50 px above the caption so the panel uses the open space. Pass
+    ``caption_pct`` for one shot. Without it, the take's highest caption
+    (the one stored on the pop-out) is the limit.
     """
     stage_top = float(layout_spec["stage_top"]) * height
     theme_bottom = stage_top + float(layout_spec["stage_height"]) * height
-    rise = 0.0
-    for key in ("high_above_px", "hand_above_px", "median_above_px"):
-        if popout and popout.get(key):
-            rise = max(rise, float(popout[key]))
-    if rise <= 0:
-        return theme_bottom
-    card_top = float(layout_spec["card_top"]) * height
-    cleared = card_top - rise - caption_band_px(layout_spec, height)
+    scale = float(height) / 1920.0
+    pct = caption_pct
+    if pct is None and popout and popout.get("caption_y") is not None:
+        pct = popout.get("caption_y")
+    if pct is None:
+        rise = 0.0
+        for key in ("high_above_px", "hand_above_px", "median_above_px"):
+            if popout and popout.get(key):
+                rise = max(rise, float(popout[key]))
+        if rise <= 0:
+            return theme_bottom
+        card_top = float(layout_spec["card_top"]) * height
+        cleared = card_top - rise - caption_band_px(layout_spec, height)
+        floor = stage_top + 160
+        return max(floor, min(theme_bottom, cleared))
+    caption_top = float(pct) / 100.0 * float(height)
+    target = caption_top - STAGE_GAP_ABOVE_CAPTION_PX * scale
     floor = stage_top + 160
-    return max(floor, min(theme_bottom, cleared))
+    return max(floor, target)
 
 
 def card_state(layout, crop, width, height, layout_spec, colors):
@@ -201,13 +218,18 @@ def build_kallaway(spec, spec_path, project):
     first = card_state(shots[0].get("layout", "split"), shots[0].get("crop", "wide"),
                        width, height, layout_spec, colors)
     stage_top_px = round(layout_spec["stage_top"] * height)
-    stage_bottom_px = graphic_stage_bottom(layout_spec, height, spec.get("source", {}).get("popout"))
-    stage_box = {
-        "left": round(layout_spec["stage_left"] * width),
-        "top": stage_top_px,
-        "width": round(layout_spec["stage_width"] * width),
-        "height": max(160, round(stage_bottom_px - stage_top_px)),
-    }
+
+    def stage_box_for(caption_pct):
+        bottom = graphic_stage_bottom(layout_spec, height, popout, caption_pct)
+        return {
+            "left": round(layout_spec["stage_left"] * width),
+            "top": stage_top_px,
+            "width": round(layout_spec["stage_width"] * width),
+            "height": max(160, round(bottom - stage_top_px)),
+        }
+
+    opening_caption = shots[0].get("caption_y") if shots[0].get("layout") == "split" else None
+    stage_box = stage_box_for(opening_caption)
     for index, shot in enumerate(shots):
         start, end = float(shot["start"]), float(shot["end"])
         if not 0 <= start < end <= duration + 0.05:
@@ -268,18 +290,19 @@ def build_kallaway(spec, spec_path, project):
         animations.append(
             f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%",'
             f'fontSize:"{caption_px_shot:.1f}px"}},{start});')
+        shot_stage = stage_box_for(shot.get("caption_y") if layout == "split" else None)
         if layout == "split" and shot.get("stage"):
             stage = dict(shot["stage"])
             media_url = media(stage["media"]) if stage.get("media") else None
             section, motion, _events = motif_markup(
-                stage.get("motif", "thumbnail_grid"), stage, start, end, stage_box, colors, f"stage-{index}", media_url)
+                stage.get("motif", "thumbnail_grid"), stage, start, end, shot_stage, colors, f"stage-{index}", media_url)
             parts.append(section)
             animations.extend(motion)
         for overlay_index, overlay in enumerate(shot.get("overlays") or []):
             overlay_media = media(overlay["media"]) if overlay.get("media") else None
             section, motion, _events = motif_markup(
                 overlay.get("motif"), overlay, float(overlay["start"]), float(overlay["end"]),
-                stage_box, colors, f"over-{index}-{overlay_index}", overlay_media, track_index=3)
+                shot_stage, colors, f"over-{index}-{overlay_index}", overlay_media, track_index=3)
             parts.append(section)
             animations.extend(motion)
 
@@ -500,7 +523,6 @@ def build_kallaway(spec, spec_path, project):
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position};{aroll_open}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
     #pop-camera{{position:absolute}}
-    #pop-camera.placed-edge{{mask-image:linear-gradient(to right,transparent 0,#000 10px,#000 calc(100% - 10px),transparent 100%);-webkit-mask-image:linear-gradient(to right,transparent 0,#000 10px,#000 calc(100% - 10px),transparent 100%)}}
     #speaker-pop.wrapped{{filter:drop-shadow(0 0 10px rgba({tint_r},{tint_g},{tint_b},0.55)) drop-shadow(0 10px 18px rgba(0,0,0,0.28))}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
@@ -693,11 +715,10 @@ def build_kallaway(spec, spec_path, project):
         else:
             pop_style = 'style="opacity:0;visibility:hidden;clip-path:inset(100% 0px 0px 0px)"'
             cam_style = ""
-        edge = ' class="placed-edge"' if placed else ""
         wrap = ' class="wrapped"' if placed else ""
         speaker += (
             f'<div id="speaker-pop"{wrap} data-layout-allow-overflow {pop_style}>'
-            f'<div id="pop-camera"{edge} {cam_style}>{"".join(pop_parts)}</div></div>')
+            f'<div id="pop-camera" {cam_style}>{"".join(pop_parts)}</div></div>')
     rest = [part for part in parts if not part.startswith("<video")]
     slide = (
         "function kallawaySlide(t){var x1=0.25,y1=1,x2=0.5,y2=1,cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;"
