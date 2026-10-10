@@ -267,7 +267,8 @@ def decorate_events(motif, events, stage, start, end):
                 "fixed_file": True, "under_db": 10.0, "band": "mid",
             })
             event["also"] = [{
-                "kind": "pop", "at": event["at"], "combo": "19", "label": "Page pop",
+                "kind": "pop", "at": event["at"], "combo": "19",
+                "label": "Graphic entrance" if index == 0 else "Page pop",
                 "sound_at": event["at"], "band": "high",
             }]
             if index:
@@ -351,7 +352,7 @@ def decorate_events(motif, events, stage, start, end):
             })
         else:
             card.update({
-                "combo": "19", "label": "Word Pop", "band": "high",
+                "combo": "19", "label": "Graphic entrance", "band": "high",
                 "sound_at": _land(card["at"], end, 0.26),
             })
         tick_n = 0
@@ -578,11 +579,9 @@ def _density_rank(cue):
         return 0
     if combo == "42":
         return 1
-    if cue.get("label") == "Chapter header":
+    if cue.get("label") in {"Chapter header", "Chart entrance", "Graphic entrance"}:
         return 2
-    if cue.get("label") == "Chart entrance":
-        return 2
-    if combo == "8":
+    if combo == "8" or cue.get("label") == "Number Counter":
         return 3
     if combo in {"23", "25", "36"}:
         return 4
@@ -614,7 +613,7 @@ def _limit_density(flat):
     ]
     if len(audible) <= budget:
         return
-    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
+    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "graphic": 4, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
     ranked = sorted(audible, key=lambda index: (
         _density_rank(flat[index]),
         float(flat[index].get("sound_at", flat[index]["at"])),
@@ -645,6 +644,8 @@ def _limit_density(flat):
         cue = flat[index]
         if cue.get("label") == "Chapter header":
             slot = "chapter"
+        elif cue.get("label") == "Graphic entrance":
+            slot = "graphic"
         else:
             slot = str(cue.get("combo") or "")
         cap = caps.get(slot)

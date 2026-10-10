@@ -1076,6 +1076,34 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(below, 0.75)
 
 
+    def test_graphic_entrances_survive_the_density_budget(self):
+        from kallaway_pack import _limit_density
+        cues = []
+
+        def add(at, combo, label, kind):
+            cues.append({
+                "at": at, "sound_at": at, "combo": combo, "label": label,
+                "kind": kind, "under_db": 10,
+            })
+
+        add(0.0, "2", "Cold Slam", "bass")
+        add(0.0, "8", "Panel slide", "whoosh")
+        add(4.2, "8", "Panel slide", "whoosh")
+        add(6.6, "25", "Number Counter", "ding")
+        add(11.5, "19", "Graphic entrance", "pop")
+        add(12.7, "8", "Panel slide", "whoosh")
+        add(16.1, "8", "Chapter header", "whoosh")
+        add(18.8, "19", "Graphic entrance", "pop")
+        add(22.5, "8", "Panel slide", "whoosh")
+        _limit_density(cues)
+        heard = [cue["label"] for cue in cues if not cue.get("mute")]
+        self.assertLessEqual(len(heard), 7)
+        self.assertEqual(heard.count("Graphic entrance"), 2)
+        self.assertIn("Number Counter", heard)
+        self.assertIn("Cold Slam", heard)
+        self.assertIn("Chapter header", heard)
+        self.assertTrue(cues[-1].get("mute"))
+
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
@@ -1091,6 +1119,9 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all(
             any(extra.get("kind") == "pop" for extra in (event.get("also") or []))
             for event in pages))
+        self.assertEqual(pages[0]["also"][0]["label"], "Graphic entrance")
+        quote = stage_events("quote_card", 1.0, 2.4, {"text": "Better design = more money?"})
+        self.assertEqual(quote[0]["label"], "Graphic entrance")
         money = stage_events("quote_card", 1.0, 2.4, {"variant": "receipt", "text": "$2,000", "items": ["JAN"]})
         self.assertEqual(money[0]["combo"], "42")
         self.assertIn("Ka Ching", money[0]["file"])
