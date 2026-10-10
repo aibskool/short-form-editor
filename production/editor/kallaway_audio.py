@@ -1063,7 +1063,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
          "-filter_complex_script", str(graph), "-map", "[vout]", "-map", audio_label,
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
          "-g", "15", "-keyint_min", "15",
-         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
+         "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", str(output)],
         check=True)
     mapped = _map_tight_words(refined, video)
     joins = measure_joins(samples, RATE, ranges, refined)
@@ -1103,7 +1103,7 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
          "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-af", effect,
-         "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(output)],
+         "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", str(output)],
         check=True)
     return {"output": str(output), "measurement": measured, "target_lufs": target_lufs}
 
@@ -1407,7 +1407,7 @@ def mix_voice_sfx(source, output, cues, library=None):
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
          "-f", "f32le", "-ar", str(RATE), "-ac", "1", "-i", "pipe:0",
          "-i", str(source), "-map", "1:v:0", "-map", "0:a:0",
-         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000",
          "-movflags", "+faststart", str(output)],
         input=pcm.tobytes(), check=True)
     return {"output": str(output), "peak": round(peak, 4), "trim_db": round(trim_db, 3), "cues": report}

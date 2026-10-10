@@ -173,6 +173,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
                 "file": row["file"],
                 "body_at": row["body_at"],
             })
+    _write_sfx_log(timeline, project)
     timeline["source"]["segments"] = [{"start": 0, "end": round(float(words[-1]["end"]), 3)}]
     timeline["joins"] = tightened.get("joins") or []
     attach_popout(
@@ -219,8 +220,25 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
                      "--codec-headroom-db", str(codec_headroom_db)])
     subprocess.run(finalize, check=True, env=env)
     report["output"] = str(final)
+    report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
     (project / "style-check.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
+
+
+def _write_sfx_log(timeline, project, output=None):
+    """Placement log for gate G9: time, pack file, and the picture the hit lands on."""
+    from kallaway_plan import sfx_placement_rows
+    rows = sfx_placement_rows(timeline.get("sfx"))
+    timeline["sfx_log"] = rows
+    payload = {"schema": "kallaway-sfx-log/v1", "cues": rows}
+    text = json.dumps(payload, indent=2) + "\n"
+    path = Path(project) / "sfx-placement.json"
+    path.write_text(text)
+    if output is not None:
+        side = Path(output).with_name(Path(output).stem + "-sfx-log.json")
+        side.write_text(text)
+        return side
+    return path
 
 
 def main():

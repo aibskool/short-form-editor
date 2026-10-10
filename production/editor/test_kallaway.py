@@ -1181,6 +1181,78 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(whoosh_info["clip_gain_db"], 0.0)
         self.assertLess(float(np.max(np.abs(whoosh - raw))), 1e-4)
 
+    def test_sfx_log_names_the_picture_and_stays_out_of_pauses(self):
+        from kallaway_plan import anchor_sfx, gap_at, sfx_placement_rows, word_gaps
+        words = [
+            {"word": "sell", "start": 0.0, "end": 0.40},
+            {"word": "pages.", "start": 0.52, "end": 0.90},
+        ]
+        cues = [
+            {"at": 0.52, "sound_at": 0.45, "file": "03 Whooshes/Fast Whip.wav",
+             "label": "Graphic entrance", "lands_on": "phone_frame: offer", "kind": "whoosh"},
+            {"at": 0.46, "sound_at": 0.46, "file": "03 Whooshes/Cool Whoosh.wav",
+             "label": "Loop Close", "kind": "whoosh"},
+            {"at": 0.05, "sound_at": 0.46, "file": "01 Impacts/Gap.wav",
+             "lands_on": "phone_frame: offer", "label": "Gap pop", "kind": "pop"},
+        ]
+        anchor_sfx(cues, words)
+        self.assertEqual(cues[0]["sound_at"], 0.52)
+        self.assertFalse(cues[0].get("mute"))
+        self.assertTrue(cues[1].get("mute"))
+        self.assertEqual(cues[1].get("mute_reason"), "no visual")
+        self.assertTrue(cues[2].get("mute"))
+        self.assertEqual(cues[2].get("mute_reason"), "gap")
+        rows = sfx_placement_rows(cues)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["time"], 0.52)
+        self.assertEqual(rows[0]["file"], "Fast Whip.wav")
+        self.assertEqual(rows[0]["pack_file"], "03 Whooshes/Fast Whip.wav")
+        self.assertEqual(rows[0]["lands_on"], "phone_frame: offer")
+        planned = plan_timeline(words_for(), "voice.mp4", "words.json", music=False, keyword="VAULT")
+        self.assertTrue(planned["sfx_log"])
+        gaps = word_gaps(words_for())
+        for row in planned["sfx_log"]:
+            self.assertTrue(row["file"], row)
+            self.assertTrue(row["lands_on"], row)
+            self.assertNotEqual(row["label"], "Loop Close")
+            self.assertIsNone(gap_at(row["time"], gaps), row)
+        for cue in planned["sfx"]:
+            if cue.get("label") == "Loop Close":
+                self.assertTrue(cue.get("mute"))
+
+    def test_graphic_entrances_pop_or_slide(self):
+        colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
+                  "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B",
+                  "on_accent": "#111"}
+        box = {"left": 0, "top": 0, "width": 400, "height": 700}
+        stages = [
+            ("phone_frame", {"callout": {"at": 1.2, "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.2},
+                             "highlight": {"at": 1.6}}),
+            ("cursor_mock", {"label": "Publish"}),
+            ("quote_card", {"variant": "browser", "text": "Down", "strike": True}),
+            ("quote_card", {"variant": "receipt", "text": "$500", "strike": True, "items": ["JAN"]}),
+            ("bar_chart", {"heights": [80, 8], "negative": True}),
+            ("line_chart", {}),
+            ("flow_line", {"items": ["From", "To"]}),
+            ("state_swap", {"items": ["Wrong", "Right"]}),
+            ("highlight_box", {"label": "the line"}),
+            ("broll_card", {}),
+            ("typing_ui", {"text": "Hello"}),
+        ]
+        fade = re.compile(r"fromTo\([^;]*\{[^}]*opacity:0[,}]")
+        for motif, stage in stages:
+            _section, animations, _events = motif_markup(motif, stage, 0.2, 2.6, box, colors, "stage-0")
+            script = "\n".join(animations)
+            self.assertIsNone(fade.search(script), motif)
+
+    def test_deliverable_audio_is_256k(self):
+        audio = (Path(__file__).parent / "kallaway_audio.py").read_text()
+        final = (Path(__file__).resolve().parents[1] / "finalize_render.py").read_text()
+        self.assertNotIn('"192k"', audio)
+        self.assertIn('"256k"', audio)
+        self.assertNotIn('"192k"', final)
+        self.assertIn('"256k"', final)
+
 
 if __name__ == "__main__":
     unittest.main()

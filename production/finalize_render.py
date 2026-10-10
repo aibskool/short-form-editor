@@ -57,7 +57,7 @@ def main():
               # after resampling so an AAC timestamp gap cannot truncate the tail.
               f"aresample=48000,asetpts=N/SR/TB,atrim=duration={video_duration}")
     run(["ffmpeg", "-hide_banner", "-v", "error", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0",
-         "-c:v", "copy", "-af", effect, "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         "-c:v", "copy", "-af", effect, "-c:a", "aac", "-b:a", "256k", "-ar", "48000",
          "-t", str(video_duration), "-movflags", "+faststart", str(output)])
     decoded = run(["ffmpeg", "-hide_banner", "-v", "error", "-i", str(output), "-f", "null", "-"])
     if decoded.stderr.strip():

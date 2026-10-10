@@ -11,7 +11,8 @@ import re
 
 from kallaway_motifs import resolve_annotations
 from kallaway_plan import (
-    NEGATIVE, _cover_sfx, _slot_words, _spoken, _token, caption_phrases, plain_text,
+    NEGATIVE, _cover_sfx, _lands_on, _slot_words, _spoken, _token, anchor_sfx,
+    caption_phrases, plain_text, sfx_placement_rows,
 )
 
 
@@ -584,10 +585,25 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
     for moment in bass_at:
         key = ("bass", round(moment, 3))
         if key not in present:
-            sfx.append({
-                "kind": "bass", "at": key[1],
+            landing = ""
+            for shot in shots:
+                if shot.get("layout") != "split" or not shot.get("stage"):
+                    continue
+                if float(shot["start"]) - 0.05 <= key[1] <= float(shot["end"]) + 0.02:
+                    landing = _lands_on(shot["stage"].get("motif"), shot["stage"])
+                    break
+            from kallaway_pack import BOOM_14
+            cue = {
+                "kind": "bass", "at": key[1], "file": BOOM_14, "combo": "2",
                 "under_db": float(unders.get("bass", UNDER_DB["bass"])),
-            })
+                "lands_on": landing, "label": "Music return",
+                "fixed_file": True, "fixed_lead": True,
+            }
+            if not landing:
+                cue["mute"] = True
+                cue["mute_reason"] = "no visual"
+            sfx.append(cue)
+    sfx = anchor_sfx(sfx, ordered)
     sfx.sort(key=lambda item: (item["at"], item["kind"]))
 
     title = headers[0]["text"] if headers else plain_text(keyword)
@@ -643,5 +659,6 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             "phrases": caption_phrases(ordered, styles), "omit_terminal_punctuation": True,
         },
         "sfx": sfx,
+        "sfx_log": sfx_placement_rows(sfx),
         "speaker_reveal": float(stage_plan["speaker_reveal"]) if stage_plan.get("speaker_reveal") else None,
     }

@@ -192,6 +192,33 @@ def check(timeline_path, words_path=None, project=None):
                     break
     if shots and not sfx:
         errors.append("sfx: no sound effects were scheduled")
+    from kallaway_plan import gap_at, word_gaps
+    gaps = word_gaps(words or [])
+    played = [cue for cue in sfx if not cue.get("mute")]
+    logged = data.get("sfx_log")
+    if played and not isinstance(logged, list):
+        errors.append("sfx: placement log is missing; gate G9 needs time, pack file, and what it lands on")
+    for cue in played:
+        label = cue.get("label") or cue.get("kind") or "sfx"
+        landing = str(cue.get("lands_on") or "").strip()
+        heard = float(cue.get("sound_at", cue.get("at", 0)))
+        if not landing:
+            errors.append(f"sfx: {label} at {heard:.3f}s has no visual to land on")
+        covered = gap_at(heard, gaps) if words else None
+        if covered is not None:
+            errors.append(
+                f"sfx: {label} at {heard:.3f}s covers the pause after {covered.get('word')}; "
+                "pauses come from word alignment and stay clear of SFX")
+        if isinstance(logged, list):
+            hit = any(
+                abs(float(row.get("time", -99)) - heard) <= 0.001
+                and str(row.get("lands_on") or "") == landing
+                and str(row.get("file") or "")
+                for row in logged
+            )
+            if landing and not hit:
+                errors.append(
+                    f"sfx: placement log has no row for {label} at {heard:.3f}s on {landing}")
     for join in data.get("joins") or []:
         if join.get("ok") is False:
             errors.append(
@@ -312,6 +339,8 @@ def check(timeline_path, words_path=None, project=None):
         for family in ("Permanent Marker", "Inter", "IBM Plex Mono"):
             if family not in html:
                 errors.append(f"brand: font {family} is not used in the composition")
+        if re.search(r"fromTo\([^;]*\{[^}]*opacity:0[,}]", html):
+            errors.append("entrance: a graphic fades in; use a pop or a slide")
     else:
         warnings.append("brand: no built index.html was scanned for palette and fonts")
 

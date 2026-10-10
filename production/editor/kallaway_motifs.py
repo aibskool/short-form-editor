@@ -363,9 +363,18 @@ def _pop(selector, at):
 
 
 def _slide(selector, at):
-    # Slide up with a slight overshoot, fast enough to read as formed on the cut.
-    return (f'tl.fromTo("{selector}",{{y:72,opacity:0}},{{y:0,opacity:1,duration:0.24,ease:"back.out(1.4)",'
-            f'immediateRender:false}},{at});')
+    # Slide up from below the panel. The stage clips the offset, so the entrance
+    # does not fade in.
+    return (f'tl.fromTo("{selector}",{{y:72}},{{y:0,duration:0.24,ease:"back.out(1.4)",'
+            f'immediateRender:true}},{at});')
+
+
+def _snap_in(selector, at, fro, to, duration, ease="back.out(1.7)", origin="50% 50%"):
+    """Pop or wipe. Opacity is already 1 on both keys, so a hidden element snaps on."""
+    if isinstance(at, (int, float)):
+        at = f"{float(at):.3f}"
+    return (f'tl.fromTo("{selector}",{{{fro},opacity:1}},{{{to},opacity:1,duration:{float(duration):.2f},'
+            f'ease:"{ease}",transformOrigin:"{origin}",immediateRender:false}},{at});')
 
 
 def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, track_index=2):
@@ -501,8 +510,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             draw = float(stage["callout"].get("draw") or DRAW_SECONDS)
             # A cursor and a pulse so the mock is not frozen until the oval draws.
             animations.append(
-                f'tl.fromTo("#{ident}-cursor",{{x:140,y:90,opacity:0}},{{x:8,y:4,opacity:1,'
-                f'duration:0.42,ease:"power2.out",immediateRender:false}},{start + 0.32:.3f});')
+                f'tl.fromTo("#{ident}-cursor",{{x:140,y:90}},{{x:8,y:4,'
+                f'duration:0.42,ease:"power2.out",immediateRender:true}},{start + 0.32:.3f});')
             animations.append(
                 f'tl.to("#{ident}-phone",{{scale:1.04,duration:0.42,yoyo:true,repeat:3,'
                 f'ease:"sine.inOut",transformOrigin:"{origin}"}},{start + 0.48:.3f});')
@@ -512,9 +521,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'{{strokeDashoffset:0,duration:{draw:.2f},ease:"power1.inOut"}},{at:.3f});')
         if stage.get("highlight"):
             at = float(stage["highlight"]["at"])
-            animations.append(
-                f'tl.fromTo("#{ident}-hl",{{opacity:0,scaleX:0}},{{opacity:1,scaleX:1,duration:0.28,'
-                f'ease:"power2.out",transformOrigin:"0% 50%",immediateRender:false}},{at:.3f});')
+            animations.append(_snap_in(
+                f"#{ident}-hl", f"{at:.3f}", "scaleX:0", "scaleX:1", 0.28,
+                ease="power2.out", origin="0% 50%"))
 
     elif motif == "broll_card":
         if media_url:
@@ -585,9 +594,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(
             f'tl.fromTo("#{ident}-path",{{strokeDashoffset:1400}},{{strokeDashoffset:0,duration:0.95,ease:"power2.out"}},{start});')
         for index in range(3):
-            animations.append(
-                f'tl.fromTo("#{ident}-n{index}",{{scale:0.4,opacity:0}},{{scale:1,opacity:1,duration:0.28,'
-                f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{events[index + 1]["at"]});')
+            animations.append(_snap_in(
+                f"#{ident}-n{index}", events[index + 1]["at"], "scale:0", "scale:1", 0.28))
 
     elif motif == "bar_chart":
         heights = list(stage.get("heights") or [42, 68, 38, 88])
@@ -620,9 +628,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                     f'{drop_at:.3f});')
         drop = next((event for event in events if event["kind"] == "error"), None)
         if drop:
-            animations.append(
-                f'tl.fromTo("#{ident}-x{count - 1}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.2,'
-                f'ease:"back.out(2)",transformOrigin:"50% 50%",immediateRender:false}},{drop["at"]});')
+            animations.append(_snap_in(
+                f"#{ident}-x{count - 1}", drop["at"], "scale:0", "scale:1", 0.2, ease="back.out(2)"))
         body = (
             f'<div class="chart-frame"><div class="y-axis"><span>100</span><span>50</span><span>0</span></div>'
             f'<div class="bars">{"".join(bars)}</div></div>')
@@ -688,9 +695,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<div id="{ident}-hl" class="hl-line">{_esc(line)}</div>'
                 f'<div class="fake-line" style="width:66%"></div></div>')
         animations.append(_slide(f"#{ident}-shot", events[0]["at"]))
-        animations.append(
-            f'tl.fromTo("#{ident}-hl",{{opacity:0,scaleX:0}},{{opacity:1,scaleX:1,duration:0.28,'
-            f'ease:"power2.out",transformOrigin:"0% 50%",immediateRender:false}},{events[1]["at"]});')
+        animations.append(_snap_in(
+            f"#{ident}-hl", events[1]["at"], "scaleX:0", "scaleX:1", 0.28,
+            ease="power2.out", origin="0% 50%"))
 
     elif motif == "hand_circle":
         phrase = stage.get("label") or "this"
@@ -804,10 +811,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             if stage.get("strike"):
                 stamp = f'<div id="{ident}-stamp" class="paid-stamp">PAID</div>'
                 at = next(event["at"] for event in events if event["kind"] == "error")
-                animations.append(
-                    f'tl.fromTo("#{ident}-stamp",{{scale:1.6,rotation:-20,opacity:0}},'
-                    f'{{scale:1,rotation:-12,opacity:1,duration:0.22,ease:"back.out(2)",'
-                    f'transformOrigin:"50% 50%",immediateRender:false}},{at});')
+                animations.append(_snap_in(
+                    f"#{ident}-stamp", at, "scale:1.45,rotation:-18", "scale:1,rotation:-12",
+                    0.22, ease="back.out(2)"))
             body = (
                 f'<div id="{ident}-quote" class="receipt"><div class="receipt-glow"></div>'
                 f'<div class="mono receipt-kicker">INVOICE · WEBSITE BUILD</div>'
@@ -825,10 +831,9 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             animations.append(_slide(f"#{ident}-quote", events[0]["at"]))
             if stage.get("strike"):
                 at = next(event["at"] for event in events if event["kind"] == "error")
-                animations.append(f'tl.to("#{ident}-live",{{opacity:0,duration:0.06}},{at:.3f});')
-                animations.append(
-                    f'tl.fromTo("#{ident}-dead",{{opacity:0,y:10}},{{opacity:1,y:0,duration:0.18,'
-                    f'ease:"power2.out",immediateRender:false}},{at:.3f});')
+                animations.append(f'tl.set("#{ident}-live",{{opacity:0}},{at:.3f});')
+                animations.append(_snap_in(
+                    f"#{ident}-dead", f"{at:.3f}", "y:36", "y:0", 0.18, ease="power2.out"))
                 animations.append(
                     f'tl.fromTo("#{ident}-quote",{{x:0}},{{x:7,duration:0.04,yoyo:true,repeat:5,'
                     f'ease:"none"}},{at:.3f});')
@@ -883,8 +888,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(_pop(f"#{ident}-f0", events[0]["at"]))
         animations.append(_pop(f"#{ident}-f1", events[1]["at"]))
         animations.append(
-            f'tl.fromTo("#{ident}-dash",{{scaleX:0,opacity:0}},{{scaleX:1,opacity:1,duration:0.35,ease:"power2.out",'
-            f'transformOrigin:"0% 50%",immediateRender:false}},{events[1]["at"]});')
+            f'tl.fromTo("#{ident}-dash",{{scaleX:0}},{{scaleX:1,duration:0.35,ease:"power2.out",'
+            f'transformOrigin:"0% 50%",immediateRender:true}},{events[1]["at"]});')
 
     elif motif == "pill":
         label = stage.get("label") or stage.get("text") or "Comment"
@@ -898,8 +903,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(_slide(f"#{ident}-ui", events[0]["at"]))
         click_at = events[1]["at"]
         animations.append(
-            f'tl.fromTo("#{ident}-cursor",{{x:86,y:48,opacity:0}},{{x:8,y:6,opacity:1,duration:0.32,'
-            f'ease:"power2.out",immediateRender:false}},{events[0]["at"] + 0.08:.3f});')
+            f'tl.fromTo("#{ident}-cursor",{{x:86,y:48}},{{x:8,y:6,duration:0.32,'
+            f'ease:"power2.out",immediateRender:true}},{events[0]["at"] + 0.08:.3f});')
         animations.append(
             f'tl.to("#{ident}-btn",{{scale:0.94,duration:0.08,yoyo:true,repeat:1,ease:"power1.inOut"}},{click_at:.3f});')
 
@@ -956,9 +961,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(
             f'tl.fromTo("#{ident}-line",{{strokeDashoffset:320}},{{strokeDashoffset:0,duration:0.7,'
             f'ease:"power2.out"}},{float(good):.3f});')
-        animations.append(
-            f'tl.fromTo("#{ident}-dot",{{scale:0.4,opacity:0}},{{scale:1,opacity:1,duration:0.2,'
-            f'ease:"back.out(1.7)",transformOrigin:"50% 50%",immediateRender:false}},{float(good) + 0.55:.3f});')
+        animations.append(_snap_in(
+            f"#{ident}-dot", f"{float(good) + 0.55:.3f}", "scale:0", "scale:1", 0.2))
 
     else:
         raise ValueError(f"unknown stage motif: {motif}")

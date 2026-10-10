@@ -772,10 +772,12 @@ def finish_sfx(cues, fps, unders, under_db):
         for extra in companions:
             extra = dict(extra)
             extra.setdefault("at", item["at"])
+            extra.setdefault("lands_on", item.get("lands_on"))
             flat.append(extra)
         if bed:
             bed = dict(bed)
             bed.setdefault("at", item["at"])
+            bed.setdefault("lands_on", item.get("lands_on"))
             flat.append(bed)
     for cue in flat:
         resolve_frames(cue, fps)
@@ -847,12 +849,18 @@ def finish_sfx(cues, fps, unders, under_db):
     pop_turn = 0
     heard = sorted(
         (index for index, cue in enumerate(flat)
-         if not cue.get("mute") and cue.get("kind") == "pop" and str(cue.get("combo")) in {"19", "callout"}),
+         if not cue.get("mute") and cue.get("kind") == "pop"
+         and str(cue.get("combo")) in {"19", "20", "callout"}),
         key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
     )
     for index in heard:
         flat[index]["file"] = POP_CYCLE[pop_turn % len(POP_CYCLE)]
         pop_turn += 1
+    for cue in flat:
+        if cue.get("mute") or cue.get("file"):
+            continue
+        options = KIND_FILES.get(cue.get("kind")) or [POP_3]
+        cue["file"] = options[0]
     cleaned = []
     for cue in flat:
         item = {key: value for key, value in cue.items() if key not in _DROP and value is not None}
