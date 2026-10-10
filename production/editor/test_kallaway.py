@@ -18,7 +18,7 @@ from kallaway_audio import (
 )
 from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
-from kallaway_style import _caption_text, card_state, load_theme
+from kallaway_style import _caption_text, _word_style, card_state, load_theme
 
 
 def _voiced(t, freq, amp, mask):
@@ -135,6 +135,10 @@ class KallawayTests(unittest.TestCase):
         refined = refine_word_bounds(first + second, rate, [{"word": "reactivation", "start": 0.22, "end": 0.92}])
         self.assertLess(refined[0]["start"], 0.24)
         self.assertGreater(refined[0]["end"], 0.85)
+
+    def test_planned_emphasis_beats_a_color_baked_on_the_word(self):
+        self.assertEqual(_word_style({"word": "five", "display": "$500", "style": "green"}, {"five": "amber"}), "amber")
+        self.assertEqual(_word_style({"word": "grand", "style": "green"}, {"grand": "normal"}), "normal")
 
     def test_phone_chip_defaults_to_the_bottom_of_the_mock(self):
         from kallaway_beats import _stage_from

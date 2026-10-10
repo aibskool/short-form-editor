@@ -437,6 +437,13 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
         begin = 0 if index == 0 else item["index"]
         stop = nxt["index"] if nxt else len(ordered)
         spans.append((begin, stop))
+    # Colors baked onto the transcript join the cap. A plan entry already in
+    # ``styles`` keeps its color, so an amber price is not put back to green.
+    for word in ordered:
+        baked = word.get("style")
+        token = _token(word)
+        if baked in {"marker", "green", "amber"} and token not in styles:
+            styles[token] = baked
     _cap_emphasis(ordered, styles, spans)
     full_scale = float(stage_plan.get("full_scale") or theme["layout"].get("full_scale") or FULL_SCALE)
     step = float(stage_plan.get("punch_step") or PUNCH_STEP)

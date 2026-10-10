@@ -94,10 +94,17 @@ def _caption_text(word, omit_punct=True, keep_case=()):
 
 
 def _word_style(word, styles):
+    """The planned map wins. A color baked onto the word is only the fallback.
+
+    Source transcripts often arrive with an old green on a price. The beat cap
+    and the stage plan have already decided, and that decision is ``styles``.
+    """
+    token = "".join(ch for ch in str(word.get("word", word.get("text", ""))).lower() if ch.isalnum() or ch == "'")
+    if token in styles:
+        return styles[token]
     if word.get("style") in {"normal", "marker", "green", "amber"}:
         return word["style"]
-    token = "".join(ch for ch in str(word.get("word", word.get("text", ""))).lower() if ch.isalnum() or ch == "'")
-    return styles.get(token, "normal")
+    return "normal"
 
 
 def build_kallaway(spec, spec_path, project):
