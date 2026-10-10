@@ -632,6 +632,10 @@ def _density_rank(cue):
         return 1
     if cue.get("label") in {"Chapter header", "Chart entrance", "Graphic entrance"}:
         return 2
+    # The terminal's typing line is the sound for that card. It stays ahead of
+    # a strike buzzer and a highlight pop when the reel is on the density line.
+    if cue.get("label") == "Typewriter Line" or combo == "21":
+        return 3
     if combo == "8" or cue.get("label") == "Number Counter":
         return 3
     if combo in {"23", "25", "36"}:
@@ -756,7 +760,7 @@ def _limit_density(flat):
     ]
     if len(audible) <= budget:
         return
-    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "graphic": 4, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
+    caps = {"2": 1, "42": 2, "8": 4, "chapter": 1, "graphic": 6, "23": 1, "25": 1, "24": 1, "22": 1, "19": 1, "20": 1, "47": 0, "callout": 0}
     ranked = sorted(audible, key=lambda index: (
         _density_rank(flat[index]),
         float(flat[index].get("sound_at", flat[index]["at"])),
