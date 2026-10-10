@@ -1,24 +1,26 @@
 Reel 08 v8, measured on the published file.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 53.60s, H.264, AAC 48 kHz, 88 MB.
-SHA-256: 2a7eb1ec769ceee908b4afdc9559a7f92ddda7d1447bd23ca4e3dd5889a61165
-Loudness: I=-14.1 LUFS, LRA=2.4 LU, true peak=-1.7 dBTP. No music.
+1080x1920, 30 fps, 53.60s, H.264, AAC 48 kHz, 95,364,527 bytes.
+SHA-256: 88f9d6b51f3fcd00a432edc3d584459b1a81f66c338f91e5eff5f66dc7bba1e7
+Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.73 dBTP. No music.
 Style check passed. output_short_shots on the output frames is empty.
 
 Framing
-The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408 (low sample 51.0, high sample 119.3), scale 0.3555, foliage plate on. YuNet boxes on the output split frames read 189 px at 0.90s, 198 px at 3.10s, then 207, 215, 222, 224, and 228 px on the later samples. The placed scale does not change; the box moves with the nod. Card side bands at y1500–1800 have foliage variance (left about 1300, right about 1040), not a flat bar.
-The punch at the "great" join starts at 5.500, the frame that already shows the new take. That frame differs from the tightened a-roll by the 1.12 scale. The frame before it does not.
+The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The plate is the source frame scaled to cover the card, blurred (sigma about 32), darkened about 12%, with a light radial vignette. A fixed 64 px eased ramp at card scale fades the source-frame edges below the measured head into that plate. On the 3.1s frame the side-plate column jump stays under 1.7 gray levels, and the plate file itself stays under 0.5. The face row at y1480 is one continuous tone across the head. The punch at the "great" join starts at 5.500, on the frame that already shows the new take. The closing punch starts at 52.900.
 
 Captions
-Split captions are one Inter Black line at 54 px, above the head. The lowest split line (shot 16) is planned at 63.27% (top about y1215). Near-white ink on that frame (38.3s) sits at y1235–1263. The hook split (3.1s) ink sits at y1318–1346, above the card at y1408.
-Full-face captions are Inter Black at 67 px, placed per shot from the chin. Shot 11 is 48.43% (top about y930). Ink on the 25.5s frame sits at y945–1063, between the beard and the lapel pin.
+Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.27% (top about y1215). That shot's stage ends at y1165, 50 px above the line. Hook ink on the 3.1s frame sits around y1310–1360, above the card at y1408.
+Full-face captions are Inter Black at 67 px, placed per shot from the chin, between the beard and the lapel pin. The 25.5s frame shows that line on the chest, with the whole face in frame.
 
 Panel and phone
-The stage runs y270–y1072. The handset is left 170, top 8, 632×736 inside the 972×802 stage: 65% of the stage width, centered (phone center and stage center both at x540). The bottom of the handset is y1014. Screen content on the 11.2s frame runs x370–712 (center 541) and y311–969, inside the bezel.
+Each split stage starts at y270 and ends about 50 px above that shot's caption. Stage heights run from 895 px (bottom y1165) to 974 px (bottom y1244). Every handset is 632 px wide, 65% of the 972 px stage, left 170, centered at x540, top 8, and ends on that shot's stage bottom. The 11.2s proof is a 632×947 handset inside a 972×955 stage. The glass on that frame reaches the bottom of the bezel (bottom 80 px mean gray 40, max 194).
+
+Mocks
+The 3.1s hero board shows 56 and three filled cells. The 8.2s counter shows 56 with three labeled rows. The 15.7s thumbnails show three cards with interior marks. The quote, the offer pair, and the document fan each have interior structure above the flat charcoal floor.
 
 Audio
-Whisper base.en on the output hears "If you build websites", "cloud browser", "it's clean", "compliance pass", "AI builds fast", "about $6,500", "attorney fees", "all the errors", and "first client".
+This voice stream is the same mix as the measured take (MD5 828847784e181293b6b51e3295cfaf17). Whisper base.en hears "If you build websites", "cloud browser", "it's clean", "compliance pass", "AI builds fast", "about $6,500", "attorney fees", "all the errors", and "first client".
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
