@@ -182,6 +182,11 @@ def build_kallaway(spec, spec_path, project):
             animations.append(
                 f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
         if matte_src:
+            # Same timestamp as #speaker-card. HyperFrames sets each [data-start] video
+            # to visibility:visible, and a visible child paints through a hidden parent,
+            # so visibility alone leaves the popped crown on full and punch frames.
+            # autoAlpha 0 flattens the subtree (opacity) and the closed clip is the
+            # second lock. Full and punch stay off; split matches the card on this frame.
             if layout == "split":
                 geo = pop_geometry(
                     state, video_w, video_h,
@@ -189,9 +194,10 @@ def build_kallaway(spec, spec_path, project):
                 animations.append(
                     f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{start});')
                 animations.append(
-                    f'tl.set("#speaker-pop",{json.dumps({"visibility": "visible", "clipPath": geo["clipPath"]})},{start});')
+                    f'tl.set("#speaker-pop",{json.dumps({"autoAlpha": 1, "clipPath": geo["clipPath"]})},{start});')
             else:
-                animations.append(f'tl.set("#speaker-pop",{json.dumps({"visibility": "hidden"})},{start});')
+                animations.append(
+                    f'tl.set("#speaker-pop",{json.dumps({"autoAlpha": 0, "clipPath": "inset(100% 0px 0px 0px)"})},{start});')
         caption_y = layout_spec["caption_split_y"] if layout == "split" else layout_spec["caption_full_y"]
         animations.append(f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%"}},{start});')
         if layout == "split" and shot.get("stage"):
@@ -348,7 +354,7 @@ def build_kallaway(spec, spec_path, project):
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{first['borderRadius']}px;box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
     #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position}}}
-    #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden}}
+    #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
     #pop-camera{{position:absolute}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
@@ -493,11 +499,11 @@ def build_kallaway(spec, spec_path, project):
         if opening.get("layout") == "split":
             geo = pop_geometry(
                 first, video_w, video_h, opening.get("object_position") or position, height)
-            pop_style = f'style="visibility:visible;clip-path:{geo["clipPath"]}"'
+            pop_style = f'style="opacity:1;visibility:visible;clip-path:{geo["clipPath"]}"'
             cam_style = (
                 f'style="left:{geo["left"]}px;top:{geo["top"]}px;width:{geo["width"]}px;height:{geo["height"]}px"')
         else:
-            pop_style = 'style="visibility:hidden"'
+            pop_style = 'style="opacity:0;visibility:hidden;clip-path:inset(100% 0px 0px 0px)"'
             cam_style = ""
         speaker += (
             f'<div id="speaker-pop" data-layout-allow-overflow {pop_style}>'

@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -746,9 +747,27 @@ class KallawayTests(unittest.TestCase):
             self.assertIn('id="speaker-pop"', html)
             self.assertIn('id="pop-camera"', html)
             self.assertIn("z-index:6", html)
-            self.assertIn('"visibility": "hidden"', html)
+            self.assertIn('"autoAlpha": 0', html)
+            self.assertNotIn('"visibility": "hidden"', html)
             self.assertIn("z-index:2", html)
             self.assertIn("z-index:8", html)
+            pop_sets = re.findall(r'tl\.set\("#speaker-pop",(\{.*?\}),([0-9.]+)\);', html)
+            card_sets = re.findall(r'tl\.set\("#speaker-card",(\{.*?\}),([0-9.]+)\);', html)
+            self.assertTrue(pop_sets and card_sets)
+            card_at = {}
+            for payload, at in card_sets:
+                card_at.setdefault(at, []).append(json.loads(payload))
+            for payload, at in pop_sets:
+                state = json.loads(payload)
+                self.assertIn(at, card_at)
+                card = card_at[at][-1]
+                full_canvas = card["left"] == 0 and card["top"] == 0 and card["borderRadius"] == 0
+                if full_canvas:
+                    self.assertEqual(state.get("autoAlpha"), 0)
+                    self.assertIn("inset(100%", state.get("clipPath", ""))
+                else:
+                    self.assertEqual(state.get("autoAlpha"), 1)
+                    self.assertNotIn("inset(100%", state.get("clipPath", ""))
             report = check(project / "timeline.json", project / "mapped-words.json", project)
             self.assertTrue(report["ok"], report)
             broken = frame.copy()
