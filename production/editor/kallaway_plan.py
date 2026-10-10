@@ -280,13 +280,15 @@ def gap_at(moment, gaps):
     return None
 
 
-def anchor_sfx(cues, words):
+def anchor_sfx(cues, words, fps=30):
     """Keep every audible hit on a picture, and off every aligned pause.
 
-    A whoosh that only leads into the pause is pulled onto the visual time.
-    A hit with nothing to land on, or whose only slot is the pause, is muted.
+    A whoosh or riser leads its visual by 3–4 frames. That lead is the hit,
+    so it is not pulled back onto the picture. Any other hit that only lands
+    in a pause is muted.
     """
     gaps = word_gaps(words)
+    lead = 4.0 / float(fps or 30)
     for cue in cues:
         if cue.get("mute"):
             continue
@@ -295,9 +297,14 @@ def anchor_sfx(cues, words):
             cue["mute_reason"] = "no visual"
             continue
         heard = float(cue.get("sound_at", cue.get("at", 0)))
+        visual = float(cue.get("at", heard))
+        kind = cue.get("kind")
+        if kind in {"whoosh", "riser"} or cue.get("rotate") == "whoosh":
+            if gap_at(visual, gaps) is None:
+                cue["sound_at"] = round(max(0.0, visual - lead), 3)
+                continue
         if gap_at(heard, gaps) is None:
             continue
-        visual = float(cue.get("at", heard))
         if gap_at(visual, gaps) is None and abs(visual - heard) <= 0.35:
             cue["sound_at"] = round(visual, 3)
             continue

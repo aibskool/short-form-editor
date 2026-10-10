@@ -614,7 +614,13 @@ def build_kallaway(spec, spec_path, project):
     .browser-live{{flex:1;display:flex;flex-direction:column;justify-content:center;gap:{10*scale:.0f}px;padding:8%;color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{28*scale:.0f}px}}
     .browser-live b{{font-family:'{display}',cursive;font-weight:400;font-size:{64*scale:.0f}px}}
     .browser-live span{{display:inline-block;margin-right:{10*scale:.0f}px;padding:0.2em 0.5em;border-radius:999px;background:{colors['surface']};border:1px solid {colors['border']};font-size:{18*scale:.0f}px}}
-    .browser-dead{{position:absolute;left:0;right:0;top:{54*scale:.0f}px;bottom:0;padding:8% 6%;font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95;color:{colors['text']};opacity:0}}
+    .browser-dead{{position:absolute;left:0;right:0;top:{54*scale:.0f}px;bottom:0;padding:8% 6%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{12*scale:.0f}px;font-family:'{display}',cursive;font-size:{48*scale:.0f}px;line-height:0.95;color:{colors['text']};text-align:center;opacity:0}}
+    .page-rows{{display:flex;flex-direction:column;gap:{8*scale:.0f}px;margin-top:{12*scale:.0f}px}}
+    .page-rows i{{display:block;height:{14*scale:.0f}px;border-radius:7px;background:{colors['surface']};border:1px solid {colors['border']}}}
+    .page-rows i:nth-child(2){{width:72%}} .page-rows i:nth-child(3){{width:48%}}
+    .offline-mark{{width:{92*scale:.0f}px;height:{92*scale:.0f}px;border-radius:50%;border:{6*scale:.0f}px solid {colors['warning']};color:{colors['warning']};display:flex;align-items:center;justify-content:center;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1}}
+    .offline-sub{{font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;color:{colors['muted']}}}
+    .term-result{{display:inline-block;margin-top:{18*scale:.0f}px;padding:{10*scale:.0f}px {16*scale:.0f}px;border-radius:12px;background:{colors['accent']};color:{colors['on_accent']};font-family:'{display}',cursive;font-size:{36*scale:.0f}px;transform:scale(0)}}
     .quote-strike{{position:absolute;left:-4%;right:-4%;top:46%;height:{14*scale:.0f}px;background:{colors['warning']};z-index:3;transform:scaleX(0);transform-origin:0 50%;box-shadow:0 0 0 1px {colors['warning']}}}
     .offer-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .offer-kicker{{color:{colors['muted']};font-size:{mono_px:.1f}px}}

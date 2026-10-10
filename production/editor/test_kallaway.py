@@ -253,6 +253,19 @@ class KallawayTests(unittest.TestCase):
         mapped = _map_tight_words(refined, cut)
         self.assertLessEqual(mapped[1]["start"] - mapped[0]["end"], 0.045)
 
+    def test_a_cut_inside_an_aligned_word_is_sealed(self):
+        from kallaway_audio import interior_cuts, missing_script_words, seal_word_interiors
+        words = [{"word": "ends", "start": 1.00, "end": 1.46}, {"word": "it", "start": 1.55, "end": 1.70}]
+        ranges = [(0.2, 1.10), (1.38, 1.70)]
+        self.assertTrue(interior_cuts(ranges, words))
+        sealed = seal_word_interiors(ranges, words)
+        self.assertFalse(interior_cuts(sealed, words))
+        self.assertTrue(any(begin <= 1.2 <= end for begin, end in sealed))
+        self.assertEqual(missing_script_words(
+            [{"word": "One"}, {"word": "payment"}, {"word": "is"}, {"word": "it"}],
+            [{"word": "One"}, {"word": "payment"}, {"word": "ends"}, {"word": "it"}],
+        ), ["ends"])
+
     def test_split_card_is_tall_and_sfx_are_recorded_variants(self):
         theme, colors, _, _ = load_theme("dark")
         layout = theme["layout"]
@@ -262,11 +275,12 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(height, 0.25)
         self.assertLessEqual(height, 0.29)
         self.assertAlmostEqual(layout["card_margin_x"] * 1080, 0, delta=0.5)
-        self.assertGreater(layout["caption_split_y"], layout["card_top"])
-        self.assertLess(layout["caption_split_y"], 0.96)
+        self.assertAlmostEqual(layout["caption_split_y"], layout["caption_full_y"], places=4)
+        self.assertAlmostEqual(layout["caption_split_y"] * 1920, 1120, delta=2)
+        self.assertLess(layout["caption_split_y"], layout["card_top"])
         stage_bottom = (layout["stage_top"] + layout["stage_height"]) * 1920
         self.assertAlmostEqual(stage_bottom, 672, delta=2)
-        self.assertAlmostEqual(layout["caption_baseline_px"], 1305, delta=2)
+        self.assertAlmostEqual(layout["caption_baseline_px"], 1120, delta=2)
         card = card_state("split", "wide", 1080, 1920, layout, colors)
         self.assertEqual(card["top"], 1408)
         self.assertEqual(card["height"], 512)
@@ -824,8 +838,9 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(geo["height"] / geo["width"], 19.5 / 9, delta=0.08)
         self.assertIn(f'width:{geo["width"]}px', section)
         self.assertIn("object-fit:cover", section)
-        self.assertGreaterEqual(geo["width"] / box["width"], 0.60)
+        self.assertGreaterEqual(geo["width"] / box["width"], 0.74)
         self.assertLessEqual(geo["width"] / box["width"], 0.85)
+        self.assertLessEqual(geo["top"] + geo["height"], box["height"] - 40)
         self.assertGreaterEqual(stage["callout"]["at"], stage["motion"]["push_end"])
         script = "".join(animations)
         self.assertIn("scale:1,", script)
@@ -1187,7 +1202,7 @@ class KallawayTests(unittest.TestCase):
              "lands_on": "phone_frame: offer", "label": "Gap pop", "kind": "pop"},
         ]
         anchor_sfx(cues, words)
-        self.assertEqual(cues[0]["sound_at"], 0.52)
+        self.assertAlmostEqual(cues[0]["sound_at"], 0.387, places=3)
         self.assertFalse(cues[0].get("mute"))
         self.assertTrue(cues[1].get("mute"))
         self.assertEqual(cues[1].get("mute_reason"), "no visual")
@@ -1195,7 +1210,7 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(cues[2].get("mute_reason"), "gap")
         rows = sfx_placement_rows(cues)
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["time"], 0.52)
+        self.assertAlmostEqual(rows[0]["time"], 0.387, places=3)
         self.assertEqual(rows[0]["file"], "Fast Whip.wav")
         self.assertEqual(rows[0]["pack_file"], "03 Whooshes/Fast Whip.wav")
         self.assertEqual(rows[0]["lands_on"], "phone_frame: offer")
@@ -1206,7 +1221,17 @@ class KallawayTests(unittest.TestCase):
             self.assertTrue(row["file"], row)
             self.assertTrue(row["lands_on"], row)
             self.assertNotEqual(row["label"], "Loop Close")
-            self.assertIsNone(gap_at(row["time"], gaps), row)
+            covered = gap_at(row["time"], gaps)
+            if covered is not None:
+                visual = next(
+                    float(cue.get("at", row["time"]))
+                    for cue in planned["sfx"]
+                    if abs(float(cue.get("sound_at", cue.get("at", -1))) - float(row["time"])) < 0.001
+                    and not cue.get("mute")
+                )
+                self.assertGreaterEqual(visual - float(row["time"]), 0.05)
+                self.assertLessEqual(visual - float(row["time"]), 0.16)
+                self.assertIsNone(gap_at(visual, gaps))
         for cue in planned["sfx"]:
             if cue.get("label") == "Loop Close":
                 self.assertTrue(cue.get("mute"))

@@ -205,7 +205,14 @@ def check(timeline_path, words_path=None, project=None):
         if not landing:
             errors.append(f"sfx: {label} at {heard:.3f}s has no visual to land on")
         covered = gap_at(heard, gaps) if words else None
-        if covered is not None:
+        visual = float(cue.get("at", heard))
+        lead = visual - heard
+        whoosh_lead = (
+            cue.get("kind") in {"whoosh", "riser"}
+            and 0.05 <= lead <= 0.16
+            and (gap_at(visual, gaps) is None if words else True)
+        )
+        if covered is not None and not whoosh_lead:
             errors.append(
                 f"sfx: {label} at {heard:.3f}s covers the pause after {covered.get('word')}; "
                 "pauses come from word alignment and stay clear of SFX")
@@ -219,6 +226,13 @@ def check(timeline_path, words_path=None, project=None):
             if landing and not hit:
                 errors.append(
                     f"sfx: placement log has no row for {label} at {heard:.3f}s on {landing}")
+    tighten_ranges = data.get("source_ranges") or []
+    source_words = data.get("source_words") or []
+    if tighten_ranges and source_words:
+        from kallaway_audio import interior_cuts
+        for hit in interior_cuts(tighten_ranges, source_words):
+            errors.append(
+                f"cut: keep range {hit['edge']} at {hit['at']}s falls inside \"{hit['word']}\"")
     for join in data.get("joins") or []:
         if join.get("ok") is False:
             errors.append(

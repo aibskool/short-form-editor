@@ -84,7 +84,7 @@ def _scene_times(video):
     """Picture-cut times. A layout boundary near one of these is the same cut."""
     result = subprocess.run(
         ["ffmpeg", "-hide_banner", "-i", str(video),
-         "-filter:v", "select='gt(scene,0.28)',showinfo", "-f", "null", "-"],
+         "-filter:v", "select='gt(scene,0.16)',showinfo", "-f", "null", "-"],
         capture_output=True, text=True)
     times = []
     for line in result.stderr.splitlines():
@@ -154,6 +154,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         timeline["audio_policy"]["user_opt_out"] = music_note
     from kallaway_beats import snap_shot_edges
     timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], _scene_times(leveled["output"]))
+    timeline["source_ranges"] = [
+        [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
+    ]
+    timeline["source_words"] = [
+        {"word": str(word.get("word") or word.get("text") or ""),
+         "start": float(word["start"]), "end": float(word["end"])}
+        for word in (tightened.get("aligned") or raw_words)
+    ]
     if timeline.get("sfx"):
         baked = project / "voice-sfx.mp4"
         mixed = mix_voice_sfx(leveled["output"], baked, timeline["sfx"], project / "sfx")

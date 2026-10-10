@@ -84,21 +84,25 @@ def _cue_time(block):
 
 
 def hero_phone_box(stage_w, stage_h):
-    """Size the handset to 72% of the panel so the screen is readable.
+    """Size the handset to at least 65% of the 1080 frame.
 
-    A 9:19.5 device at that width is taller than the stage. It stays centered
-    and the stage clips the bezel. The width stays in the 60–85% band.
+    The stage is 90% of that frame, so the handset is 75% of the stage.
+    A 9:19.5 device at that width is taller than the stage. The bottom sits
+    above the chip strip so the last field stays visible, and the stage clips
+    the top bezel.
     """
     stage_w, stage_h = float(stage_w), float(stage_h)
-    phone_w = stage_w * 0.72
+    phone_w = stage_w * 0.75
     phone_h = phone_w / (9 / 19.5)
     pad = max(8, round(phone_w * 0.045))
+    chip_band = 58.0
+    top = (stage_h - chip_band) - phone_h
     return {
         "screen": (float(phone_w - 2 * pad), float(phone_h - 2 * pad)),
         "width": round(phone_w),
         "height": round(phone_h),
         "left": round((stage_w - phone_w) / 2),
-        "top": round((stage_h - phone_h) / 2),
+        "top": round(top),
         "pad": pad,
     }
 
@@ -745,18 +749,25 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
     elif motif == "typing_ui":
         typed = stage.get("text") or "Turn the lesson into a client brief."
         title = stage.get("label") or "NOTES"
+        result = stage.get("result") or ""
         window_class = "window terminal" if stage.get("label") else "window"
+        result_html = (
+            f'<div id="{ident}-result" class="term-result">{_esc(result)}</div>' if result else "")
         body = (f'<div id="{ident}-win" class="{window_class}"><div class="chrome"><i></i><i></i><i></i>'
                 f'<span class="mono">{_esc(title)}</span></div><div class="win-body">'
-                f'<span id="{ident}-type"></span><span id="{ident}-caret" class="caret">|</span></div></div>')
+                f'<span id="{ident}-type"></span><span id="{ident}-caret" class="caret">|</span>'
+                f'{result_html}</div></div>')
         payload = json.dumps(typed)
         variable = ident.replace("-", "_") + "c"
         type_at = events[0]["at"]
+        type_span = min(1.15, max(0.4, duration - 0.3))
         animations.append(_slide(f"#{ident}-win", start))
         animations.append(
-            f'const {variable}={{n:0}};tl.to({variable},{{n:{len(typed)},duration:{min(1.15, max(0.4, duration-0.3)):.3f},'
+            f'const {variable}={{n:0}};tl.to({variable},{{n:{len(typed)},duration:{type_span:.3f},'
             f'ease:"none",onUpdate:()=>{{const el=document.getElementById("{ident}-type");'
             f'if(el) el.textContent={payload}.slice(0,Math.floor({variable}.n));}}}},{type_at});')
+        if result:
+            animations.append(_pop(f"#{ident}-result", min(end - 0.4, type_at + type_span + 0.08)))
         animations.append(
             f'tl.to("#{ident}-caret",{{opacity:0,duration:0.12,ease:"none"}},{max(start, end - 0.12):.3f});')
 
@@ -826,32 +837,44 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<div id="{ident}-quote" class="browser"><div class="chrome"><i></i><i></i><i></i>'
                 f'<span class="mono">client-site.com</span></div>'
                 f'<div id="{ident}-live" class="browser-live"><b>Client site</b>'
-                f'<span>Home</span><span>Work</span><span>Contact</span></div>'
-                f'<div id="{ident}-dead" class="browser-dead">{_esc(quote)}</div></div>')
+                f'<span>Home</span><span>Work</span><span>Contact</span>'
+                f'<div id="{ident}-rows" class="page-rows"><i></i><i></i><i></i></div></div>'
+                f'<div id="{ident}-dead" class="browser-dead"><div id="{ident}-mark" class="offline-mark">!</div>'
+                f'<div>{_esc(quote)}</div><div class="offline-sub">client-site.com</div></div></div>')
             animations.append(_slide(f"#{ident}-quote", events[0]["at"]))
             if stage.get("strike"):
                 at = next(event["at"] for event in events if event["kind"] == "error")
+                animations.append(
+                    f'tl.fromTo("#{ident}-live",{{y:0,scale:1}},{{y:70,scale:0.82,duration:0.28,'
+                    f'ease:"power2.in",transformOrigin:"50% 0%"}},{at - 0.12:.3f});')
                 animations.append(f'tl.set("#{ident}-live",{{opacity:0}},{at:.3f});')
                 animations.append(_snap_in(
-                    f"#{ident}-dead", f"{at:.3f}", "y:36", "y:0", 0.18, ease="power2.out"))
+                    f"#{ident}-dead", f"{at:.3f}", "y:36,scale:0.92", "y:0,scale:1", 0.2, ease="back.out(1.6)"))
                 animations.append(
                     f'tl.fromTo("#{ident}-quote",{{x:0}},{{x:7,duration:0.04,yoyo:true,repeat:5,'
                     f'ease:"none"}},{at:.3f});')
+                animations.append(
+                    f'tl.fromTo("#{ident}-mark",{{scale:1}},{{scale:1.08,duration:0.45,yoyo:true,repeat:3,'
+                    f'ease:"sine.inOut",transformOrigin:"50% 50%"}},{at + 0.28:.3f});')
         elif variant == "balance":
             body = (
                 f'<div id="{ident}-quote" class="quote-card balance">'
-                f'<div class="bal-row"><div class="bal-col"><b>Design</b>'
+                f'<div class="bal-row"><div class="bal-col"><b>Design spend</b>'
                 f'<div id="{ident}-hi" class="bal-bar"></div></div>'
-                f'<div class="bal-ne">≠</div>'
-                f'<div class="bal-col"><b>Money</b><div id="{ident}-lo" class="bal-bar short"></div></div></div>'
+                f'<div id="{ident}-ne" class="bal-ne">≠</div>'
+                f'<div class="bal-col"><b>Revenue</b><div id="{ident}-lo" class="bal-bar short"></div></div></div>'
                 f'<div class="quote-text">{_esc(quote)}</div></div>')
             animations.append(_pop(f"#{ident}-quote", events[0]["at"]))
             animations.append(
-                f'tl.fromTo("#{ident}-hi",{{scaleY:0}},{{scaleY:1,duration:0.35,ease:"power2.out",'
+                f'tl.fromTo("#{ident}-hi",{{scaleY:0}},{{scaleY:1,duration:0.4,ease:"power2.out",'
                 f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.08:.3f});')
             animations.append(
-                f'tl.fromTo("#{ident}-lo",{{scaleY:0}},{{scaleY:1,duration:0.35,ease:"power2.out",'
-                f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.16:.3f});')
+                f'tl.fromTo("#{ident}-lo",{{scaleY:0}},{{scaleY:1,duration:0.4,ease:"power2.out",'
+                f'transformOrigin:"50% 100%",immediateRender:true}},{events[0]["at"] + 0.2:.3f});')
+            animations.append(_pop(f"#{ident}-ne", events[0]["at"] + 0.34))
+            animations.append(
+                f'tl.fromTo("#{ident}-hi",{{scaleY:1}},{{scaleY:0.9,duration:0.4,yoyo:true,repeat:3,'
+                f'ease:"sine.inOut",transformOrigin:"50% 100%"}},{events[0]["at"] + 0.7:.3f});')
         else:
             strike = ""
             if stage.get("strike"):

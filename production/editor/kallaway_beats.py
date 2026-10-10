@@ -199,7 +199,8 @@ def _fit_header(header, width, height, layout):
         # A price in the title is the bad offer. Amber, not a green payoff box.
         payoff_style = "amber"
     title_top = float(layout.get("title_top", 0.0520833333)) * height
-    max_bottom = min(240.0, float(layout["stage_top"]) * height - 8)
+    # 40–60 px between the title and the stage. The final card sits on that line.
+    max_bottom = min(240.0, float(layout["stage_top"]) * height - 50.0)
     room = max(48.0, max_bottom - title_top)
     line_count = max(1, len(lines))
     size = min(72.0, room / (line_count * 1.05))
@@ -226,22 +227,55 @@ def _fit_header(header, width, height, layout):
 
 
 def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5):
-    """Move a layout cut onto a nearby picture cut so a 2-frame orphan cannot sit between them."""
+    """Move a layout cut onto a nearby picture cut so a 1–3 frame orphan cannot sit between them.
+
+    The picture change is the earliest scene inside the window. A one-frame
+    pull is kept even when a neighbor is already short: reverting it is what
+    leaves the stray frame of the previous take.
+    """
     if len(shots) < 2 or not scene_times:
         return shots
     original = [float(shot["start"]) for shot in shots] + [float(shots[-1]["end"])]
     edges = list(original)
-    scenes = [float(moment) for moment in scene_times]
+    scenes = sorted(float(moment) for moment in scene_times)
     for index in range(1, len(edges) - 1):
-        nearest = min(scenes, key=lambda moment: abs(moment - edges[index]))
-        if abs(nearest - edges[index]) <= window:
-            edges[index] = nearest
+        near = [moment for moment in scenes if abs(moment - edges[index]) <= window]
+        if not near:
+            continue
+        before = [moment for moment in near if moment <= edges[index] + (1.0 / 30.0)]
+        edges[index] = min(before) if before else min(near, key=lambda moment: abs(moment - edges[index]))
     for index in range(1, len(edges) - 1):
-        if edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum:
+        moved = abs(edges[index] - original[index])
+        short = edges[index] - edges[index - 1] < minimum or edges[index + 1] - edges[index] < minimum
+        if short and moved > 0.15:
             edges[index] = original[index]
     for shot, start, end in zip(shots, edges, edges[1:]):
         shot["start"] = round(start, 3)
         shot["end"] = round(end, 3)
+    return shots
+
+
+def lengthen_closing_face(shots, headers=None, minimum=1.52):
+    """The last full-face or punch has to hold at least a second and a half."""
+    if len(shots) < 2:
+        return shots
+    last = shots[-1]
+    if last.get("layout") not in {"full", "punch_in"}:
+        return shots
+    span = float(last["end"]) - float(last["start"])
+    if span + 1e-3 >= minimum:
+        return shots
+    prev = shots[-2]
+    room = float(prev["end"]) - float(prev["start"]) - 1.2
+    shift = min(max(0.0, room), minimum - span)
+    if shift < 0.03:
+        return shots
+    boundary = round(float(last["start"]) - shift, 3)
+    prev["end"] = boundary
+    last["start"] = boundary
+    for header in headers or []:
+        if float(header.get("start", 0)) < boundary < float(header.get("end", 0)):
+            header["end"] = boundary
     return shots
 
 
@@ -578,6 +612,7 @@ def plan_authored(words, source_path, words_path, theme, mode, theme_path, keywo
             track["envelope"] = envelope
         music_tracks.append(track)
 
+    lengthen_closing_face(shots, headers, minimum=1.52)
     from kallaway_audio import UNDER_DB
     unders = theme.get("sfx_under_db") or {}
     sfx = _cover_sfx(shots, ordered, styles, unders, fps, headers)

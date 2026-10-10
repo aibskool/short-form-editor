@@ -39,15 +39,16 @@ HOLE_AREA_FRACTION = 0.004
 # land on the card edge. The overlap is opaque chest, so it does not draw a line.
 SEAM_PX = 4
 ANALYSIS_LONG_EDGE = 720
-GUIDE_RADIUS = 6
+GUIDE_RADIUS = 12
 GUIDE_EPS = 8e-4
-# Distance from fully clear to fully solid. About a 3px visible feather.
-FEATHER_PX = 2.5
+# Distance from fully clear to fully solid. Wide enough that a blocky crown
+# reads as one smooth edge, still under a 5px halo.
+FEATHER_PX = 4.0
 TEMPORAL_NOW = 0.78
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "guided-r6-feather2.5-shadow12"
+EDGE_RECIPE = "guided-r12-feather4-open3"
 
 
 def _run(args):
@@ -437,6 +438,7 @@ def refine_frame(rgb, coarse, previous=None):
     if previous is not None and getattr(previous, "shape", None) == field.shape:
         field = (TEMPORAL_NOW * field + (1 - TEMPORAL_NOW) * previous).astype(np.float32)
     binary = field >= 0.5
+    binary = ndimage.binary_opening(binary, structure=np.ones((3, 3), dtype=bool))
     binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
     binary = ndimage.binary_fill_holes(binary)
     person = _distance_feather(binary, FEATHER_PX)
