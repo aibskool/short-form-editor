@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 
 from edit import boundary_hard_kills, escape, map_words, probe, read_words, resolve, validate_music
-from kallaway_matte import CROWN_HEADROOM_PX, pop_geometry
+from kallaway_matte import caption_band_px, pop_geometry
 from kallaway_motifs import motif_markup
 
 HERE = Path(__file__).resolve().parent
@@ -94,10 +94,11 @@ def assign_full_captions(shots, chins, layout, height=1920):
 
 
 def graphic_stage_bottom(layout_spec, height, popout=None):
-    """Canvas y where panel graphics stop, above the popped hair.
+    """Canvas y where panel graphics stop, above the caption and the popped hair.
 
     The theme bottom already clears a normal head. A taller measured crown,
-    or a hand above that crown, pulls the bottom up so the panels miss it.
+    or a hand above that crown, pulls the bottom up so the caption band
+    between the panels and the hair stays empty.
     """
     stage_top = float(layout_spec["stage_top"]) * height
     theme_bottom = stage_top + float(layout_spec["stage_height"]) * height
@@ -108,7 +109,7 @@ def graphic_stage_bottom(layout_spec, height, popout=None):
     if rise <= 0:
         return theme_bottom
     card_top = float(layout_spec["card_top"]) * height
-    cleared = card_top - rise - CROWN_HEADROOM_PX
+    cleared = card_top - rise - caption_band_px(layout_spec, height)
     floor = stage_top + 160
     return max(floor, min(theme_bottom, cleared))
 
@@ -523,7 +524,7 @@ def build_kallaway(spec, spec_path, project):
     .stage{{position:absolute;z-index:2;overflow:hidden}}
     #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:12;pointer-events:none;font-size:{caption_px:.1f}px}}
     .caption{{position:absolute;left:6%;width:88%;text-align:center}}
-    .caption-text{{display:inline-block;font-family:'{caption}',sans-serif;font-weight:900;font-size:1em;line-height:1.02;letter-spacing:-0.04em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
+    .caption-text{{display:inline-block;white-space:nowrap;font-family:'{caption}',sans-serif;font-weight:900;font-size:1em;line-height:1.02;letter-spacing:-0.04em;color:{colors['text']};text-shadow:{colors['caption_shadow']}}}
     .cap.marker{{font-family:'{display}',cursive;font-weight:400;font-size:1.12em;letter-spacing:0}}
     .cap.green{{color:{colors['accent']}}}
     .cap.amber{{color:{colors['warning_text']}}}

@@ -4,11 +4,11 @@ The speaker card keeps the normal footage. Above the card's top edge, only the
 person is drawn, so the head and hands sit on the graphics. The matte is built
 once per source video and reused.
 
-MediaPipe Selfie Segmentation runs on the CPU. Its model grid is coarse, so the
-stored prior stays soft and the composition pass upsamples it with a guided
-filter against the full-resolution frame, feathers the silhouette, and bakes a
-soft contact shadow. The result is a straight-alpha QuickTime on the same
-frames as the picture.
+Robust Video Matting (resnet50) runs offline at the source resolution. It is
+recurrent, so the silhouette holds still from frame to frame. The composition
+pass then steadies the edge band with optical flow, feathers it by a pixel or
+two, pulls foliage green out of that band, and bakes the same soft contact
+shadow. The result is a straight-alpha QuickTime on the same frames as the picture.
 """
 import hashlib
 import os
@@ -18,7 +18,12 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-MODEL = "mediapipe-selfie-0.10.14-general-edge-v2"
+# Robust Video Matting resnet50 at half the encoder grid. The alpha is still
+# the full frame. BiRefNet-general matched this edge on the 07 crown and the
+# 09 foliage fringe after the same despill, and its worst crown stair was 1px
+# against 2px here, but it is per-frame and about six times slower. This
+# recurrent model is the default. downsample 0.25 softened the ear, so it is 0.5.
+MODEL = "rvm-resnet50-fullres-d050-edge-v1"
 CACHE = Path.home() / ".cache" / "kallaway-mattes"
 # Kept for the anchor record. The split crop aims a measured crown, not this fraction.
 POP_FRACTION = 0.32
@@ -32,7 +37,15 @@ POP_CAP = 0.42
 # Source pixels added under the estimated jaw so the chin stays above the card.
 CHIN_PAD_PX = 28
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
+# The live clearance is caption_band_px (the line, plus the gaps on both sides).
 CROWN_HEADROOM_PX = 96
+# The caption line ends this many pixels above the crown. It never crosses the head.
+CAPTION_GAP_ABOVE_CROWN_PX = 35
+# Empty pixels between the graphic stage and the top of that line.
+CAPTION_GAP_BELOW_STAGE_PX = 18
+# Matches .caption-text { line-height: 1.02 } and .cap.marker { font-size: 1.12em }.
+CAPTION_LINE_FACTOR = 1.02
+CAPTION_EMPHASIS = 1.12
 # A raised hand should clear the card edge by about this many pixels.
 HAND_CLEAR_PX = 16
 CROWN_MIN_PX = 28
@@ -45,14 +58,17 @@ SEAM_PX = 4
 ANALYSIS_LONG_EDGE = 720
 GUIDE_RADIUS = 12
 GUIDE_EPS = 8e-4
-# Distance from fully clear to fully solid. Wide enough that a blocky crown
-# reads as one smooth edge, still under a 5px halo.
-FEATHER_PX = 4.0
-TEMPORAL_NOW = 0.78
+# Soft ramp on the silhouette. A bald head wants one to two pixels, not a halo.
+FEATHER_PX = 1.5
+# Weight of the current frame on the uncertain edge. The solid body is not blended.
+TEMPORAL_NOW = 0.72
+# Encoder scale inside Robust Video Matting. The alpha is still full frame size.
+# 0.5 keeps the ears and the crown; 0.25 is the live-call look this replaced.
+RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "guided-r12-feather4-open3"
+EDGE_RECIPE = "rvm-r50-d050-flow-smooth-feather1.5-despill"
 
 
 def _run(args):
@@ -310,14 +326,16 @@ def measure_head(matte_path, step=0.25):
     if not masks:
         raise ValueError(f"could not read a matte frame from {matte_path}")
     scale_y = facts["height"] / sample_h
-    tops, heights, hands = [], [], []
+    tops, heights, hands, crowns = [], [], [], []
     for index, mask in enumerate(masks):
         found = _head_from_mask(mask)
         if not found:
             continue
-        tops.append(found["top"] * scale_y)
+        top = found["top"] * scale_y
+        tops.append(top)
         heights.append(found["height"] * scale_y)
         when = float(times[index]) if index < len(times) else index * step
+        crowns.append({"at": round(when, 3), "top": round(float(top), 2)})
         if found["hand"] is not None:
             hands.append({"at": round(when, 3), "top": round(found["hand"] * scale_y, 1)})
     if not tops:
@@ -334,6 +352,7 @@ def measure_head(matte_path, step=0.25):
         "pop_fraction": round(choice["fraction"], 4),
         "samples": len(tops),
         "hands": hands,
+        "crown_samples": crowns,
     }
 
 
@@ -398,7 +417,7 @@ def _distance_feather(binary, radius):
 
 def _foreground_color(rgb, person):
     """Person color in the feather, so the soft edge is not a fringe of the room."""
-    weight = ndimage.gaussian_filter(person, 2.0) + 1e-3
+    weight = ndimage.gaussian_filter(person, 1.25) + 1e-3
     rgb_f = rgb.astype(np.float32)
     out = rgb_f.copy()
     fringe = person < 0.98
@@ -406,9 +425,67 @@ def _foreground_color(rgb, person):
         return out
     pulled = np.empty_like(rgb_f)
     for channel in range(3):
-        pulled[:, :, channel] = ndimage.gaussian_filter(rgb_f[:, :, channel] * person, 2.0) / weight
+        pulled[:, :, channel] = ndimage.gaussian_filter(rgb_f[:, :, channel] * person, 1.25) / weight
     out[fringe] = pulled[fringe]
     return out
+
+
+def despill_green(rgb, person):
+    """Take foliage green off the soft edge. Skin inside the silhouette stays."""
+    out = np.asarray(rgb, dtype=np.float32)
+    edge = (person > 0.02) & (person < 0.92)
+    if not np.any(edge):
+        return out
+    if out is rgb or not out.flags.writeable:
+        out = out.copy()
+    red = out[:, :, 0]
+    green = out[:, :, 1]
+    blue = out[:, :, 2]
+    limit = np.maximum(red, blue)
+    excess = np.clip(green - limit, 0, None)
+    # The outer fringe loses the spill. A nearly solid pixel keeps its color.
+    strength = np.clip((0.92 - person) / 0.90, 0, 1)
+    out[:, :, 1] = np.where(edge, green - excess * strength, green)
+    return out
+
+
+def _flow_stabilize(alpha, previous, gray):
+    """Blend the uncertain band with the previous alpha, warped by the picture's motion.
+
+    The solid person and the empty background are left alone, so the outline
+    does not boil and a head turn does not smear.
+    """
+    prev_alpha = previous.get("alpha") if isinstance(previous, dict) else previous
+    prev_gray = previous.get("gray") if isinstance(previous, dict) else None
+    if prev_alpha is None or getattr(prev_alpha, "shape", None) != alpha.shape:
+        return alpha
+    import cv2
+    height, width = alpha.shape
+    long_edge = max(width, height)
+    scale = min(1.0, 540.0 / long_edge)
+    small_w = max(32, int(round(width * scale)) // 2 * 2)
+    small_h = max(32, int(round(height * scale)) // 2 * 2)
+    current = np.asarray(gray, dtype=np.uint8)
+    if prev_gray is None or getattr(prev_gray, "shape", None) != current.shape:
+        warped = prev_alpha
+    else:
+        prev_s = cv2.resize(prev_gray, (small_w, small_h), interpolation=cv2.INTER_AREA)
+        gray_s = cv2.resize(current, (small_w, small_h), interpolation=cv2.INTER_AREA)
+        flow = cv2.calcOpticalFlowFarneback(
+            prev_s, gray_s, None, 0.5, 3, 21, 3, 5, 1.2, 0)
+        flow = cv2.resize(flow, (width, height), interpolation=cv2.INTER_LINEAR)
+        flow[:, :, 0] *= width / float(small_w)
+        flow[:, :, 1] *= height / float(small_h)
+        grid_x, grid_y = np.meshgrid(
+            np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+        warped = cv2.remap(
+            prev_alpha.astype(np.float32),
+            grid_x + flow[:, :, 0], grid_y + flow[:, :, 1],
+            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    edge = ((alpha > 0.02) & (alpha < 0.98)) | ((warped > 0.02) & (warped < 0.98))
+    mixed = alpha.copy()
+    mixed[edge] = TEMPORAL_NOW * alpha[edge] + (1.0 - TEMPORAL_NOW) * warped[edge]
+    return mixed.astype(np.float32)
 
 
 def cast_shadow(person, offset_y=SHADOW_OFFSET_Y, sigma=SHADOW_SIGMA, opacity=SHADOW_OPACITY):
@@ -426,55 +503,86 @@ def cast_shadow(person, offset_y=SHADOW_OFFSET_Y, sigma=SHADOW_SIGMA, opacity=SH
 
 
 def refine_frame(rgb, coarse, previous=None):
-    """Snap a coarse matte to the full-res frame and composite a contact shadow.
+    """Feather a full-resolution matte and composite a contact shadow.
 
-    Returns person alpha, straight RGB, straight alpha (person over the shadow),
-    and the guided field to carry into the next frame.
+    The incoming alpha is already at the picture size. Optical flow steadies
+    the edge, a 1-2px ramp antialiases it, and green foliage is pulled off
+    that ramp. Returns person alpha, straight RGB, straight alpha (person over
+    the shadow), and the state to carry into the next frame.
     """
     rgb = np.asarray(rgb)
-    coarse = np.asarray(coarse, dtype=np.float32)
-    if coarse.shape != rgb.shape[:2]:
+    alpha = np.asarray(coarse, dtype=np.float32)
+    if alpha.shape != rgb.shape[:2]:
         import cv2
-        coarse = cv2.resize(coarse, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
-    guide = ndimage.gaussian_filter(rgb.astype(np.float32).mean(axis=2) * (1 / 255), 0.6)
-    prior = (coarse >= 0.5).astype(np.float32)
-    field = guided_filter(guide, prior, GUIDE_RADIUS, GUIDE_EPS)
-    if previous is not None and getattr(previous, "shape", None) == field.shape:
-        field = (TEMPORAL_NOW * field + (1 - TEMPORAL_NOW) * previous).astype(np.float32)
-    binary = field >= 0.5
-    binary = ndimage.binary_opening(binary, structure=np.ones((3, 3), dtype=bool))
-    binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
+        alpha = cv2.resize(alpha, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
+    alpha = np.clip(alpha, 0, 1).astype(np.float32)
+    gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
+    alpha = _flow_stabilize(alpha, previous, gray)
+    # A one-pixel stair on the bald crown. Blur the contour only; the state
+    # carried forward stays sharp so the blur does not accumulate.
+    contour = ndimage.gaussian_filter(alpha, 0.9)
+    binary = contour >= 0.5
     binary = ndimage.binary_fill_holes(binary)
+    # Close pinholes. Do not open: opening eats the ear.
+    binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
     person = _distance_feather(binary, FEATHER_PX)
     # The chest stays solid. A clip through it must not show the panel.
-    core = ndimage.binary_erosion(binary, iterations=2)
+    core = ndimage.binary_erosion(binary, iterations=1)
     person = np.where(core, 1.0, person).astype(np.float32)
-    fg = _foreground_color(rgb, person)
+    fg = despill_green(_foreground_color(rgb, person), person)
     shadow = cast_shadow(person) * (1 - person)
     out_a = np.clip(person + shadow, 0, 1)
     straight = np.zeros_like(fg)
     visible = out_a > 1e-3
     straight[visible] = fg[visible] * (person[visible] / out_a[visible])[:, None]
     straight = np.clip(straight, 0, 255).astype(np.uint8)
-    return person, straight, out_a.astype(np.float32), field
+    state = {"alpha": alpha, "gray": gray}
+    return person, straight, out_a.astype(np.float32), state
+
+
+_MATTING_MODEL = None
+
+
+def _load_matting_model():
+    """Robust Video Matting, resnet50, kept for the rest of the process."""
+    global _MATTING_MODEL
+    if _MATTING_MODEL is not None:
+        return _MATTING_MODEL
+    import torch
+    torch.set_num_threads(max(1, os.cpu_count() or 1))
+    print("loading Robust Video Matting resnet50", flush=True)
+    model = torch.hub.load(
+        "PeterL1n/RobustVideoMatting", "resnet50", pretrained=True, trust_repo=True)
+    model.eval()
+    _MATTING_MODEL = model
+    return model
+
+
+def _encode_mask(raw_path, width, height, fps, output):
+    """Full-resolution luma. yuv444 keeps the 1px edge; yuv420 would blur it."""
+    _run([
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{width}x{height}",
+        "-r", f"{fps:.6f}", "-i", str(raw_path),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "6", "-pix_fmt", "yuv444p",
+        "-an", str(output),
+    ])
 
 
 def _segment_gray(source, output):
+    """Full-frame alpha from Robust Video Matting. Cached per source by MODEL."""
     facts = _video_facts(source)
-    sample_w, sample_h = _analysis_size(facts["width"], facts["height"], ANALYSIS_LONG_EDGE)
-    os.environ.setdefault("GLOG_minloglevel", "2")
-    import mediapipe as mp
-    segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=0)
+    width, height, fps = facts["width"], facts["height"], facts["fps"]
+    import torch
+    model = _load_matting_model()
     decoder = subprocess.Popen(
         ["ffmpeg", "-v", "error", "-i", str(source),
-         "-vf", f"scale={sample_w}:{sample_h}:flags=bilinear",
          "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    frame_bytes = sample_w * sample_h * 3
-    history = []
-    previous = None
+    frame_bytes = width * height * 3
     raw_path = output.with_suffix(".raw")
     written = 0
+    rec = [None, None, None, None]
 
     def _exact(size):
         chunks = []
@@ -488,44 +596,28 @@ def _segment_gray(source, output):
         return b"".join(chunks)
 
     try:
-        with raw_path.open("wb") as raw:
+        with raw_path.open("wb") as raw, torch.inference_mode():
             while True:
                 blob = _exact(frame_bytes)
                 if len(blob) < frame_bytes:
                     break
-                rgb = np.frombuffer(blob, dtype=np.uint8).reshape(sample_h, sample_w, 3)
-                mask = np.asarray(segmenter.process(rgb).segmentation_mask, dtype=np.float32)
-                history.append(mask)
-                if len(history) > 3:
-                    history.pop(0)
-                median = np.median(np.stack(history, axis=0), axis=0)
-                blended = median if previous is None else 0.7 * median + 0.3 * previous
-                previous = blended
-                # Fill pinholes in the prior, but keep a soft edge for the guided pass.
-                closed = ndimage.binary_closing(blended >= 0.5, iterations=1)
-                filled = ndimage.binary_fill_holes(closed)
-                soft = np.array(blended, copy=True)
-                lift = filled & (soft < 0.9)
-                soft[lift] = 0.9
-                raw.write(np.clip(soft * 255.0, 0, 255).astype(np.uint8).tobytes())
+                rgb = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 3)
+                src = torch.from_numpy(np.ascontiguousarray(rgb))
+                src = src.permute(2, 0, 1).unsqueeze(0).float().mul_(1 / 255)
+                _fgr, pha, *rec = model(src, *rec, RVM_DOWNSAMPLE)
+                alpha = pha[0, 0].clamp_(0, 1).mul_(255).byte().cpu().numpy()
+                raw.write(np.ascontiguousarray(alpha).tobytes())
                 written += 1
-                if written % 200 == 0:
-                    print(f"segmented {written} frames", flush=True)
+                if written % 30 == 0:
+                    print(f"matted {written} frames", flush=True)
     finally:
-        segmenter.close()
         if decoder.stdout:
             decoder.stdout.close()
         decoder.wait()
     if written < 2:
-        raise RuntimeError(f"segmentation produced no frames for {source}")
-    _run([
-        "ffmpeg", "-y", "-v", "error",
-        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{sample_w}x{sample_h}",
-        "-r", f"{facts['fps']:.6f}", "-i", str(raw_path),
-        "-vf", f"scale={facts['width']}:{facts['height']}:flags=lanczos",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p",
-        "-an", str(output),
-    ])
+        raw_path.unlink(missing_ok=True)
+        raise RuntimeError(f"matting produced no frames for {source}")
+    _encode_mask(raw_path, width, height, fps, output)
     raw_path.unlink(missing_ok=True)
     return output
 
@@ -559,7 +651,7 @@ def cut_matte(matte, ranges, output):
     _run([
         "ffmpeg", "-y", "-v", "error", "-i", str(matte),
         "-filter_complex_script", str(script), "-map", "[vout]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "6", "-pix_fmt", "yuv444p",
         "-an", str(output),
     ])
     return output
@@ -627,7 +719,7 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out):
     mask_proc, mask_size = _raw_reader(coarse, width, height, "gray")
     gray_proc = _raw_writer(
         partial_mask, width, height, fps, "gray",
-        ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"])
+        ["-c:v", "libx264", "-preset", "veryfast", "-crf", "6", "-pix_fmt", "yuv444p"])
     alpha_proc = _raw_writer(
         partial_alpha, width, height, fps, "argb",
         ["-c:v", "qtrle", "-pix_fmt", "argb"])
@@ -693,6 +785,64 @@ def face_source_px(head):
     return max(float(head["head_height"]), 1.0)
 
 
+def _caption_line_px(font_px):
+    """Line box, including a stressed word, so the glyphs stay off the crown."""
+    return float(font_px) * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
+
+
+def caption_band_px(layout_spec, height):
+    """Pixels from the crown up through the caption line to the stage bottom."""
+    font = float(layout_spec.get("caption_split_px", layout_spec.get("caption_font_px", 60)))
+    font *= float(height) / 1920.0
+    scale = float(height) / 1920.0
+    return _caption_line_px(font) + CAPTION_GAP_ABOVE_CROWN_PX * scale + CAPTION_GAP_BELOW_STAGE_PX * scale
+
+
+def split_caption_top_px(crown_canvas_y, font_px, height):
+    """Top of the one-line caption, just above this crown and below the title band."""
+    line = _caption_line_px(font_px)
+    top = float(crown_canvas_y) - CAPTION_GAP_ABOVE_CROWN_PX * (height / 1920.0) - line
+    floor = 248.0 * (height / 1920.0)
+    return max(floor, top)
+
+
+def smooth_crown_samples(samples, window=3):
+    """Median-smooth the crown row so one bad frame does not lift the caption."""
+    rows = [item for item in samples or [] if item.get("top") is not None and item.get("at") is not None]
+    if len(rows) < 3:
+        return rows
+    tops = np.array([float(item["top"]) for item in rows], dtype=np.float64)
+    radius = max(1, int(window) // 2)
+    padded = np.pad(tops, radius, mode="edge")
+    smooth = np.array([float(np.median(padded[index:index + window])) for index in range(len(tops))])
+    return [{"at": float(item["at"]), "top": float(smooth[index])} for index, item in enumerate(rows)]
+
+
+def _highest_row(tops):
+    """Highest crown in the window. One sample far above the rest is a mask spike."""
+    ordered = sorted(float(item) for item in tops)
+    if len(ordered) >= 3 and ordered[1] - ordered[0] > 24:
+        return ordered[1]
+    return ordered[0]
+
+
+def highest_crown_source_y(head, start=None, end=None):
+    """Smallest source row of the crown in this window. Smaller is higher on screen."""
+    samples = smooth_crown_samples(head.get("crown_samples") or [])
+    fallback = float(head.get("head_high", head["head_top"]))
+    if not samples:
+        return fallback
+    if start is None or end is None:
+        return _highest_row(item["top"] for item in samples)
+    begin, finish = float(start), float(end)
+    inside = [item["top"] for item in samples if begin - 0.08 <= item["at"] <= finish + 0.08]
+    if inside:
+        return _highest_row(inside)
+    mid = (begin + finish) / 2
+    nearest = min(samples, key=lambda item: abs(item["at"] - mid))
+    return float(nearest["top"])
+
+
 def pop_limits(layout, height):
     """Stage and caption lines, in canvas pixels.
 
@@ -755,10 +905,9 @@ def solve_split_position(head, video_w, video_h, card_w, card_h, scale, limits):
 def frame_popout(timeline, head, theme):
     """Put the face inside the card and leave about 70 px of crown above it.
 
-    Full and punch stay on the theme crop with the pop hidden. Split captions
-    are one line, fixed for the segment, 35 px above the high crown.
+    Full and punch stay on the theme crop with the pop hidden. Each split
+    caption is one line, fixed for that segment, 35 px above its highest crown.
     """
-    from kallaway_style import split_caption_top
     layout = theme["layout"]
     width = int(timeline.get("output", {}).get("width", 1080))
     height = int(timeline.get("output", {}).get("height", 1920))
@@ -772,26 +921,33 @@ def frame_popout(timeline, head, theme):
     scale, pos_y = solve_split_framing(head, video_w, video_h, card_w, card_h)
     scale = round(scale, 4)
     label = f"50% {pos_y * 100:.2f}%"
+    font = float(layout.get("caption_split_px", layout.get("caption_font_px", 54)))
+    font *= width / 1080.0
+    gap = float(layout.get("caption_crown_gap_px", CAPTION_GAP_ABOVE_CROWN_PX))
+    line = _caption_line_px(font)
+    caption_pcts = []
+    for shot in shots:
+        source_y = highest_crown_source_y(head, shot.get("start"), shot.get("end"))
+        local = source_y_on_card(
+            source_y, video_w, video_h, card_w, card_h, pos_y, scale=scale)
+        top_px = limits["card_top"] + local - gap - line
+        # Stay under the title. Do not push the line down onto the crown.
+        top_px = max(top_px, float(layout["stage_top"]) * height + 40)
+        shot["scale"] = scale
+        shot["object_position"] = label
+        shot["caption_y"] = round(top_px / height * 100, 3)
+        caption_pcts.append(shot["caption_y"])
+    caption_pct = min(caption_pcts)
+    timeline.setdefault("source", {})["object_position"] = label
+    highest = highest_crown_source_y(head)
     high_y = source_y_on_card(
-        head.get("head_high", head["head_top"]), video_w, video_h, card_w, card_h, pos_y, scale=scale)
+        highest, video_w, video_h, card_w, card_h, pos_y, scale=scale)
     low_y = source_y_on_card(
         head.get("head_low", head["head_top"]), video_w, video_h, card_w, card_h, pos_y, scale=scale)
     median_y = source_y_on_card(
         head["head_top"], video_w, video_h, card_w, card_h, pos_y, scale=scale)
     chin_y = source_y_on_card(
         chin_row(head), video_w, video_h, card_w, card_h, pos_y, scale=scale)
-    crown_canvas = limits["card_top"] + high_y
-    font = float(layout.get("caption_split_px", layout.get("caption_font_px", 54)))
-    gap = float(layout.get("caption_crown_gap_px", 35))
-    top_px = split_caption_top(crown_canvas, font, gap)
-    # Keep the line under the graphic panel.
-    top_px = max(top_px, limits["stage_bottom"] + 12)
-    caption_pct = round(top_px / height * 100, 3)
-    for shot in shots:
-        shot["scale"] = scale
-        shot["object_position"] = label
-        shot["caption_y"] = caption_pct
-    timeline.setdefault("source", {})["object_position"] = label
     hand_above = None
     hands = head.get("hands") or []
     hand_tops = [item["top"] for item in hands if item.get("top") is not None]
