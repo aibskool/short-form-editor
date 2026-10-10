@@ -1,26 +1,25 @@
 Reel 08 v8, measured on the published file.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 54.07s, H.264, AAC 257 kbps, 48 kHz, 92 MB.
-SHA-256: 239ad6735dc0d2dd13ca1ab5ed0902201df42e586832973f45bf410472697922
-Loudness: I=-14.1 LUFS, LRA=2.7 LU, true peak=-1.7 dBTP. No music.
-Style check passed. short_picture_runs on the output frames is empty (no shot under 0.5 s).
+1080x1920, 30 fps, 53.60s, H.264, AAC 48 kHz, 88 MB.
+SHA-256: 2a7eb1ec769ceee908b4afdc9559a7f92ddda7d1447bd23ca4e3dd5889a61165
+Loudness: I=-14.1 LUFS, LRA=2.4 LU, true peak=-1.7 dBTP. No music.
+Style check passed. output_short_shots on the output frames is empty.
 
 Framing
-The split crop targets a 215 px face and a 70 px crown above y1408. Output YuNet face boxes on split frames landed about 199–246 px (hook 199, later shots 207–246). The chin lands about 300–340 px above the card bottom (y1920). A 215 px face and a 70 px crown cannot also put the chin 120–160 px above that bottom on this card, so the defaults keep the face size and the crown. Neck, shoulders, and card ground beside the shoulders are visible.
-Crown pop from the matte, placed with the same cover and scale as the render: 32 px at 0.94s and 3.12s, then 52, 59, 61, 57, 86, and 88 px on the later samples. The plan's highest crown sample is 126 px and its low percentile is 49.9 px. Median aim is 70 px. A single crop cannot hold every nod inside 50–100 px.
-Matte edge crops (3x, nearest neighbor) at 0.94, 3.12, 8.24, 15.69, 21.21, 38.65, 47.28, and 50.46s show a soft crown against the charcoal field, with the contact shadow and no green fringe on the sampled tips.
+The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408 (low sample 51.0, high sample 119.3), scale 0.3555, foliage plate on. YuNet boxes on the output split frames read 189 px at 0.90s, 198 px at 3.10s, then 207, 215, 222, 224, and 228 px on the later samples. The placed scale does not change; the box moves with the nod. Card side bands at y1500–1800 have foliage variance (left about 1300, right about 1040), not a flat bar.
+The punch at the "great" join starts at 5.500, the frame that already shows the new take. That frame differs from the tightened a-roll by the 1.12 scale. The frame before it does not.
 
 Captions
-Split captions are one Inter Black line at 54 px, z-index 12, above the head. On the hook the ink sits at y1291–1326 against a planned line top of y1277; the line box is 35 px above that segment's highest crown. The lowest split line (shot 16) is planned at y1185, above the highest crown in that segment.
-Full-face captions are Inter Black at 67 px. Ink on the sampled full frames: shot 02 y1055–1097 (plan y1031), shot 11 y954–989, shot 15 y933–968, shot 19 y932–964, shot 23 y968–1015. Those sit below the beard and above the lapel pin. y1498 is not used.
+Split captions are one Inter Black line at 54 px, above the head. The lowest split line (shot 16) is planned at 63.27% (top about y1215). Near-white ink on that frame (38.3s) sits at y1235–1263. The hook split (3.1s) ink sits at y1318–1346, above the card at y1408.
+Full-face captions are Inter Black at 67 px, placed per shot from the chin. Shot 11 is 48.43% (top about y930). Ink on the 25.5s frame sits at y945–1063, between the beard and the lapel pin.
 
-Panel
-Phone-mock pixels on the filled split frames stop at about y1070–1072. The hook phone is still entering and ends higher. The browser chrome is whole; the title sits above it.
+Panel and phone
+The stage runs y270–y1072. The handset is left 170, top 8, 632×736 inside the 972×802 stage: 65% of the stage width, centered (phone center and stage center both at x540). The bottom of the handset is y1014. Screen content on the 11.2s frame runs x370–712 (center 541) and y311–969, inside the bezel.
 
 Audio
-Whisper base.en on the output hears the full read, including "If you build websites", "browser.", "clean", "builds", "about $6,500", "fees.", "errors.", and the closing "If you want to go deeper". The price is heard as "$6" plus ",500", so the restored "six" is in the mix.
+Whisper base.en on the output hears "If you build websites", "cloud browser", "it's clean", "compliance pass", "AI builds fast", "about $6,500", "attorney fees", "all the errors", and "first client".
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
-15 landed cues, about 16.7 per minute. Boom 14 at 0.00 on the phone, Fast Whip at 1.74 on the hero board, Quick Swing B at 6.30 on "The Scan", Pop 5 at 7.61 and Bell 5 at 7.73 on the 56 counter, whooshes on the later phones and chapter headers, Cash Register Ka Ching at 22.11 on the charge card.
+19 landed cues. Ui 30 rolls the 56 counter from 7.609, the 56-to-0 countdown from 20.494, and the 30+ counter from 49.281. Bell 5 lands each final number at 7.729, 21.394, and 50.159. The charge card uses Cash Register Ka Ching at 22.107. The three rolls are budget-free, so they do not spend the density cap.

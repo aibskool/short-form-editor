@@ -24,10 +24,10 @@
     },
     {
       "time": 7.609,
-      "file": "Pop 5.mp3",
-      "pack_file": "27 Pops, Zaps & Switches/Pop 5.mp3",
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
       "lands_on": "counter: ACCESSIBILITY ERRORS",
-      "label": "Graphic entrance"
+      "label": "Number Counter"
     },
     {
       "time": 7.729,
@@ -52,10 +52,17 @@
     },
     {
       "time": 20.494,
-      "file": "Pop 4.mp3",
-      "pack_file": "27 Pops, Zaps & Switches/Pop 4.mp3",
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
       "lands_on": "counter: ERRORS LEFT",
-      "label": "Graphic entrance"
+      "label": "Number Counter"
+    },
+    {
+      "time": 21.394,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Number Counter"
     },
     {
       "time": 22.104,
@@ -93,18 +100,39 @@
       "label": "Graphic entrance"
     },
     {
-      "time": 37.63,
+      "time": 37.34,
       "file": "Simple Whoosh 1.wav",
       "pack_file": "03 Whooshes/Simple Whoosh 1.wav",
       "lands_on": "phone_frame",
       "label": "Graphic entrance"
     },
     {
-      "time": 39.65,
+      "time": 39.36,
       "file": "Fast Whip.wav",
       "pack_file": "03 Whooshes/Fast Whip.wav",
       "lands_on": "chapter header: The Offer",
       "label": "Chapter header"
+    },
+    {
+      "time": 49.281,
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Number Counter"
+    },
+    {
+      "time": 50.159,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Number Counter"
+    },
+    {
+      "time": 50.411,
+      "file": "Quick Swing B.wav",
+      "pack_file": "03 Whooshes/Quick Swing B.wav",
+      "lands_on": "quote_card: An A to Z guide for the first client",
+      "label": "Graphic entrance"
     }
   ]
 }
