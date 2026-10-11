@@ -1079,21 +1079,27 @@ def _measure_pcm(y, sr=SR):
     return I, TP
 
 
-def fit_loudness(voice, bed):
-    """One gain on the whole mix, aimed at -15 LUFS.
+def _peak_db(y):
+    return float(20 * np.log10(max(float(np.max(np.abs(y))), 1e-9)))
 
-    Voice and effects move together, so a cue stays the same distance under
-    the voice. If the true peak would cross -2 dBFS, the gain comes down
-    instead of clipping.
+
+def fit_loudness(voice, bed):
+    """One gain on the whole mix, aimed at -15 LUFS on the dual-mono file.
+
+    A mono measurement reads about 3 LU quieter than the stereo delivery, so
+    the mono target is -18. Only samples that would pass -1.8 dBFS are
+    trimmed, which keeps a stray peak legal without turning the voice down.
     """
     mix = np.asarray(voice, np.float64) + np.asarray(bed, np.float64)
     I, _TP = _measure_pcm(mix)
-    mix = mix * 10 ** ((-15.0 - I) / 20)
-    _I2, TP2 = _measure_pcm(mix)
-    if TP2 > -2.0:
-        mix = mix * 10 ** ((-2.0 - TP2) / 20)
-    I3, TP3 = _measure_pcm(mix)
-    return mix.astype(np.float32), {"I_pcm": round(I3, 2), "TP_pcm": round(TP3, 2)}
+    mix = mix * 10 ** ((-18.0 - I) / 20)
+    ceil = 10 ** (-1.8 / 20)
+    mix = np.clip(mix, -ceil, ceil)
+    I3, _TP3 = _measure_pcm(mix)
+    return mix.astype(np.float32), {
+        "I_pcm": round(I3 + 3.0, 2),
+        "TP_pcm": round(_peak_db(mix), 2),
+    }
 
 
 def _write_wav(path, y, sr=SR):
@@ -1976,6 +1982,9 @@ def render(reel, dest, work=None):
     print("mix", flush=True)
     mix, info = fit_loudness(voice, bed)
     mix = kill_dc(mix)
+    # The high-pass can put a sample back over the ceiling.
+    ceil = 10 ** (-1.8 / 20)
+    mix = np.clip(mix, -ceil, ceil).astype(np.float32)
     wav = work / "mix.wav"
     stereo = np.column_stack([mix, mix])
     # write stereo 16-bit
@@ -1992,8 +2001,8 @@ def render(reel, dest, work=None):
     # If the encode drifted, apply one more constant gain via a second pass.
     if loud["I"] < -16.0 or loud["I"] > -14.0 or loud["TP"] > -1.0:
         shift = -15.0 - loud["I"]
-        if loud["TP"] + shift > -1.15:
-            shift = -1.15 - loud["TP"]
+        if loud["TP"] + shift > -1.5:
+            shift = -1.5 - loud["TP"]
         tuned = work / "mix2.wav"
         adjusted = mix * 10 ** (shift / 20)
         stereo = np.column_stack([adjusted, adjusted])
