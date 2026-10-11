@@ -611,10 +611,11 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
                 landing = _lands_on(motif, stage)
                 event["lands_on"] = landing
                 for extra in event.get("also") or []:
-                    extra.setdefault("lands_on", landing)
+                    if not str(extra.get("lands_on") or "").strip():
+                        extra["lands_on"] = landing
                 bed = event.get("bed")
-                if isinstance(bed, dict):
-                    bed.setdefault("lands_on", landing)
+                if isinstance(bed, dict) and not str(bed.get("lands_on") or "").strip():
+                    bed["lands_on"] = landing
                 events.append(event)
     if shots:
         opening = "opening title"

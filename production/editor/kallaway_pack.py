@@ -336,13 +336,17 @@ def _as_pop(event, label="Graphic entrance"):
 
 
 def _wrong(at, lands_on=""):
-    return {
+    cue = {
         "kind": "error", "file": WRONG_ANSWER, "at": round(float(at), 3),
         "sound_at": round(float(at), 3), "combo": "24", "label": "Wrong Answer",
         "role": "negative", "fixed_file": True, "fixed_lead": True,
         "budget_free": True, "under_db": 6.0, "band": "noise",
-        "lands_on": lands_on,
     }
+    # Leave lands_on unset when this is a companion. An empty string blocks
+    # the parent picture name, and the cue is then muted as having no visual.
+    if lands_on:
+        cue["lands_on"] = lands_on
+    return cue
 
 
 def _as_wrong(event):
@@ -834,7 +838,7 @@ def _collapse_repeats(flat, window=0.45):
         last[key] = moment
 
 
-def _dedupe_same_frame(flat, window=0.02):
+def _dedupe_same_frame(flat, window=0.012):
     """Two copies of Pop 1, or of Wrong Answer, on one frame clip. Keep one."""
     last = {}
     order = sorted(
@@ -1149,12 +1153,14 @@ def finish_sfx(cues, fps, unders, under_db):
         for extra in companions:
             extra = dict(extra)
             extra.setdefault("at", item["at"])
-            extra.setdefault("lands_on", item.get("lands_on"))
+            if not str(extra.get("lands_on") or "").strip():
+                extra["lands_on"] = item.get("lands_on")
             flat.append(extra)
         if bed:
             bed = dict(bed)
             bed.setdefault("at", item["at"])
-            bed.setdefault("lands_on", item.get("lands_on"))
+            if not str(bed.get("lands_on") or "").strip():
+                bed["lands_on"] = item.get("lands_on")
             flat.append(bed)
     for cue in flat:
         resolve_frames(cue, fps)
