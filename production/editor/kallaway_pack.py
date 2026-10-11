@@ -1067,6 +1067,9 @@ def finish_sfx(cues, fps, unders, under_db):
         key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
     )
     for index in heard:
+        # Combo 20 on the keyword box is Pop 2, not the rotating cycle.
+        if flat[index].get("fixed_file") and flat[index].get("file"):
+            continue
         flat[index]["file"] = POP_CYCLE[pop_turn % len(POP_CYCLE)]
         pop_turn += 1
     for cue in flat:

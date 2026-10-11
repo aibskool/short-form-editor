@@ -1767,6 +1767,12 @@ class KallawayTests(unittest.TestCase):
         ]
         self.assertEqual(len(beds), 3)
         self.assertEqual(len(bells), 3)
+        kept = finish_sfx([{
+            "at": 44.4, "sound_at": 44.4, "kind": "pop", "combo": "20",
+            "file": "sfx/Pop 2.wav", "label": "Word Pop", "fixed_file": True,
+            "lands_on": "keyword box: WEBSITE", "under_db": 13,
+        }], 30, {}, UNDER_DB)
+        self.assertEqual(kept[0]["file"], "sfx/Pop 2.wav")
         for bed in beds:
             self.assertIn("Ui 30", bed["file"])
             self.assertTrue(bed.get("budget_free"))
