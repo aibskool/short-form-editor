@@ -367,7 +367,7 @@ def _apply_scales(shots):
         cands.append(s)
     cands.sort(key=lambda s: -s.dur)
     for s in cands[:want]:
-        s.push = 0.06
+        s.push = 0.11
 
     def _pairs():
         out = []
@@ -569,7 +569,7 @@ def _emphasis_windows(specs, words, duration, cta_t):
             start = words[find_word(words, spec["spoken"][0][0], spec["spoken"][0][1])]["out"]
         elif spec.get("count"):
             start = w["out"] - (len(spec["count"]) - 1) * (3 / FPS)
-        hold = spec.get("hold", 0.95)
+        hold = min(spec.get("hold", 0.95), 0.72)
         end = min(max(w["out"], start) + hold, cta_t - 0.36, duration)
         start = max(0.0, start)
         if end - start < 0.30:
@@ -1200,10 +1200,8 @@ def _encode_source(source, src_t, n, scale, push, bw, dest):
 
 
 def _encode_still(png, n, dest):
-    # Gentle push so a screenshot is not a frozen frame, without creating a cut.
-    z = f"min(1.045,1+0.045*on/{max(n,1)})"
-    vf = (f"zoompan=z='{z}':d={n}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={FPS}")
-    ff("-y", "-loop", "1", "-i", str(png), "-vf", vf, "-frames:v", str(n), *ENC, str(dest))
+    # A still plate. zoompan inserts a false cut near the end, so this is a held frame.
+    ff("-y", "-loop", "1", "-i", str(png), "-frames:v", str(n), *ENC, str(dest))
 
 
 def _jump_times(spans, t0, t1):
@@ -1225,6 +1223,23 @@ def _jump_times(spans, t0, t1):
                 jumps.append(s.out)
         prev_src_end = s.src + s.dur
     return jumps
+
+
+def _spike_times(path, thresh=11.0):
+    """Frames inside a shot whose luma jump would read as a cut."""
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", str(path), "-vf", "scale=135:240",
+        "-f", "rawvideo", "-pix_fmt", "gray", "-",
+    ])
+    frames = np.frombuffer(raw, np.uint8).reshape(-1, 240, 135).astype(np.float32)
+    if len(frames) < 8:
+        return []
+    diff = np.mean(np.abs(np.diff(frames, axis=0)), axis=(1, 2))
+    times = []
+    for i, d in enumerate(diff, start=1):
+        if d > thresh and 4 < i < len(frames) - 4:
+            times.append(i / FPS)
+    return times
 
 
 def _soften_jumps(path, dest, times, work, frames_n=6):
@@ -1306,12 +1321,14 @@ def render_base(plan, work):
             else:
                 lst = work / f"shot_{i:02d}.txt"
                 lst.write_text("".join(f"file '{p}'\n" for p in bits))
-                ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(dest))
+                ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), *ENC, str(dest))
             dest = _ensure(dest, n, work)
-            jumps = _jump_times(plan["spans"], shot.t0, shot.t1)
+            jumps = [t - shot.t0 for t in _jump_times(plan["spans"], shot.t0, shot.t1)]
+            jumps += _spike_times(dest)
+            jumps = sorted(set(round(t, 3) for t in jumps))
             if jumps:
                 softened = work / f"soft_{i:02d}.mp4"
-                dest = _soften_jumps(dest, softened, jumps, work)
+                dest = _soften_jumps(dest, softened, jumps, work, frames_n=10)
                 dest = _ensure(dest, n, work)
             prev = dest
         else:
@@ -1322,7 +1339,17 @@ def render_base(plan, work):
     lst = work / "base.txt"
     lst.write_text("".join(f"file '{p}'\n" for p in parts))
     base = work / "base.mp4"
-    ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(base))
+    ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), *ENC, str(base))
+    starts = [s.t0 for s in plan["shots"] if s.t0 > 0.05]
+    softened = work / "base_soft.mp4"
+    spikes = []
+    for t in _spike_times(base, thresh=10.2):
+        if any(abs(t - b) < 0.12 for b in starts):
+            continue
+        spikes.append(t)
+    if spikes:
+        _soften_jumps(base, softened, spikes, work, frames_n=6)
+        return softened
     return base
 
 
