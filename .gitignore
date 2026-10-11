@@ -18,7 +18,12 @@ production/pilots/
 *.wav
 *.mp3
 production/editor/sfx/viral-pack/
-# Brandon's three defaults are committed. The rest of the pack stays local.
+# Brandon's three defaults are committed. The rest of the old pack stays local.
 !production/editor/sfx/Pop 1.mp3
 !production/editor/sfx/Wrong Answer.mp3
 !production/editor/sfx/Ui Sound 12.mp3
+# The new-style preset ships the bible's pack, untouched, in its folder layout.
+!production/editor/sfx/brandon_pack/
+!production/editor/sfx/brandon_pack/**
+!production/editor/sfx/brandon_pack/**/*.mp3
+!production/editor/sfx/brandon_pack/**/*.wav
