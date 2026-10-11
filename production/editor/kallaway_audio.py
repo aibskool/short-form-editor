@@ -1348,6 +1348,37 @@ def interior_cuts(ranges, words, margin=0.012):
     return found
 
 
+def close_unreleased_word_gaps(samples, rate, ranges, words):
+    """Glue a keep-range hole back when it still holds the vowel.
+
+    A released stop, the silence inside "ends", stays cut. A hole whose lead
+    is still the syllable, such as the middle of "client", is one piece again.
+    """
+    spans = [(float(begin), float(end)) for begin, end in ranges or []]
+    while spans:
+        hit = next(
+            (item for item in interior_cuts(spans, words)
+             if not released_interior(samples, rate, item["at"], item["until"])),
+            None,
+        )
+        if hit is None:
+            return spans
+        rebuilt = []
+        closed = False
+        for begin, end in spans:
+            if (rebuilt and not closed
+                    and abs(rebuilt[-1][1] - float(hit["at"])) < 0.002
+                    and abs(begin - float(hit["until"])) < 0.002):
+                rebuilt[-1] = (rebuilt[-1][0], end)
+                closed = True
+            else:
+                rebuilt.append((begin, end))
+        if not closed:
+            return spans
+        spans = rebuilt
+    return spans
+
+
 def transcript_tokens(words):
     """Script tokens for a Whisper re-read. Punctuation and case do not count."""
     import re
@@ -1665,6 +1696,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     ranges = trim_final_nonspeech(samples, RATE, ranges)
     ranges = settle_join_tails(samples, RATE, ranges, refined)
     snap_quiet_word_ends(samples, RATE, ranges, refined)
+    ranges = close_unreleased_word_gaps(samples, RATE, ranges, refined)
     # A tenth of a second after the last word, when the source still has it.
     # The closing face can use this hold without crossing back over a picture cut.
     ranges = extend_closing_hold(ranges, duration, hold=0.10)

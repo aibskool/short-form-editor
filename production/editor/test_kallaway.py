@@ -284,6 +284,14 @@ class KallawayTests(unittest.TestCase):
         tone = _voiced(t, 180, 0.4, (t >= 0.10) & (t < 0.30))
         self.assertTrue(released_interior(tone, rate, 0.45, 0.60))
         self.assertFalse(released_interior(tone, rate, 0.18, 0.32))
+        from kallaway_audio import close_unreleased_word_gaps
+        words = [{"word": "client", "start": 0.10, "end": 0.70}]
+        sealed = close_unreleased_word_gaps(tone, rate, [(0.10, 0.28), (0.40, 0.70)], words)
+        self.assertEqual(len(sealed), 1)
+        self.assertAlmostEqual(sealed[0][0], 0.10, places=2)
+        self.assertAlmostEqual(sealed[0][1], 0.70, places=2)
+        kept = close_unreleased_word_gaps(tone, rate, [(0.10, 0.32), (0.50, 0.70)], words)
+        self.assertEqual(len(kept), 2)
 
     def test_a_cut_inside_an_aligned_word_is_sealed(self):
         from kallaway_audio import interior_cuts, missing_script_words, seal_word_interiors
