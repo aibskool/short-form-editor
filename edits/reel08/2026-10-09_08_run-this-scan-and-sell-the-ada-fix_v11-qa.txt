@@ -1,0 +1,46 @@
+Reel 08 v11 QA receipt
+Master: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v11.mp4
+sha256: 1adad731977f60adc459de7a66b75c562fbc532a505f5f9a78d46e7d6b0f5e0a
+98,808,052 bytes · 53.633 s · 1609 frames · -14.12 LUFS · -1.64 dBTP
+Scale 0.3555, face target 215 px, crown target 70 px. Same as v10.
+24 shots, last edge 53.616. Cut list matches v10. Full-face captions are 67 px. The matte cache was reused (cacheHits 8, cacheMisses 1, no refine).
+
+Picture lock. Sampled frames away from the 56 roll are identical to v10 (f90, f600, f641, f656, f657, f900, f1500, mean absolute difference 0). The only picture change is the 56 count.
+
+56 count. The roll is 0.400 s, ease power2.in, from 0 to 56, lock 7.850. On-screen digits, template-matched to Inter Black: 0, then 1, 3, 5, 9, 14, 20, 28, 38, 49, 56. That is 10 changes. The first frame of 0 is 7.467. 56 lands on frame 236 (7.867). Ui Sound 12 ticks at 7.533, 7.600, 7.633, 7.667, 7.700, 7.733, 7.767, 7.800, 7.833, 7.867, and Wrong Answer shares 7.867.
+
+SFX. Pop 1 is mixed at -4 dB and Ui Sound 12 at -6 dB, after the 0.98 peak ceiling. The two hook Wrong Answers (0.000 and 1.855) take another -4 dB under the voice match. The bakery Wrong Answer at 30.664 does not. Roles in the log: 37 pop, 46 tick, 4 negative, 4 landing. No whoosh. Swish 2 at 39.359 is absent.
+
+Landings. ERRORS LEFT: 21 ticks from 20.633 through 21.367. The deleted times 20.540, 20.640 and 20.673 are absent. Bell 5 replaces Wrong Answer on the 0 frame at 21.367 (frame 641 shows 0, identical to v10). 30+: 15 ticks, including 49.767 and not 49.538, 49.704, 49.738, 49.804 or 49.904. Bell 5 shares the landing tick at 50.267. Compliance pop is at 21.866. The pops at 21.950, 22.242 and 22.339 are absent, and so is 22.144. Ka-Ching stays at 22.050. Frame 656 (21.867) is still the 0; the receipt's first encoded frame is 657 (21.900), one frame after the pop. Underlines: 29.484 "underline: 49 businesses", 32.844 "underline: approximately $6,500".
+
+Voice and phone. Clean speech matches v10 within 0.2 dB, and matches the dry voice within 0.2 dB. After pops, the voice matches v10 (median difference 0.02 dB across 35 pops). Through the rolls the voice is louder than v10 by 1.5–4.3 dB on ERRORS LEFT and 1.4–3.1 dB on 30+, which is the old duck coming off. Against the dry voice those gaps sit inside 1 dB except two 15 ms gaps at 1.3 dB (ERRORS LEFT) and 1.2 dB (30+). The 56 roll stays inside 0.9 dB of the dry voice. Every Pop 1, after a 300 Hz high-pass (two 2-pole stages), peaks at least 6.2 dB above the high-passed voice floor. The quietest pop peak is -3.8 dBFS.
+
+Raw mix before the limiter: -14.34 LUFS, -0.45 dBTP (v10 was +1.16 dBTP). Final -14.12 LUFS, -1.64 dBTP.
+
+Log: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v11-sfx-log.json (schema kallaway-sfx-log/v2, pops and cues separated).
+
+QA matte checker (production/editor/qa/matte_check.py) on this master, with the v9 cut diff and the join list. Exit 0.
+
+=== SUMMARY 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v11.mp4
+frames 1609 | split 1280 | layout runs S:0.000-4.133 F:4.133-6.300 S:6.300-23.800 F:23.800-27.300 S:27.300-35.500 F:35.500-37.267 S:37.267-42.233 F:42.233-44.233 S:44.233-52.100 F:52.100-53.633
+cuts 91 (52 from --cuts) | cut-window split frames checked 166
+  cut-window peak rough      0.803 at f1266 (limit 1.0)
+  cut-window peak green_in   0.000 at f1545 (limit 0.03)
+  cut-window peak green_out  0.005 at f0 (limit 0.05)
+  cut-window peak specks     0.000 at f1545 (limit 3)
+  cut-window peak dark_above 0.013 at f263 (limit 0.05)
+  index proxy worst margin 1.0 px at f617 (fail if next>=5.0 and next>=2.0x prev; 53 picture cuts)
+  reel rough median   0.44 (limit 1.0)
+  reel jitter median  0.33 (limit 1.0)
+  reel jitter p90     0.43 (limit 2.0)
+  reel rough p90 0.63 max 0.84; jitter max 0.53
+  plate max deviation 0.8 at f711 (limit 6.0)
+  foliage largest blob 71 px at f562 (limit <120)
+  split caption gap crown-baseline median 40 p10 31 min 22 at f1459 (25..50, never <18)
+  split caption gap crown-ink bottom (incl. descenders) median 38 min 12 at f1164; 2D min dist 19px at f610 (info / touch gate <=1)
+  full-face beard clearance min 94 at f151 (>=25)
+  full-face pin clearance (baseline) min 35 at f137 (>=20, ideal 30)
+  full-face frames with caption measured: 327 (inner F frames 317 of 319)
+  full-face caption ink height median 50 px (text block incl. ascenders/descenders; 67 px type ~ 49 px cap height)
+FAIL frames: 0  WARN frames: 0
+RESULT: PASS
