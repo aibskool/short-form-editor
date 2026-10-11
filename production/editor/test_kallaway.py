@@ -409,6 +409,7 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(late["motion"]["scroll_end"], 3.0)
         self.assertLess(late["callout"]["at"], late["motion"]["scroll_end"])
         self.assertGreaterEqual(late["callout"]["at"], 2.40)
+        self.assertTrue(late["motion"]["scroll_authored"])
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
                   "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
         section, animations, _events = motif_markup(

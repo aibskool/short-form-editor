@@ -333,7 +333,10 @@ def check(timeline_path, words_path=None, project=None):
                     errors.append(
                         f"callout: {key} on {shot.get('id', motif)} starts at {visible} "
                         f"during the frame entrance that ends at {entrance_end}")
-                if scroll_end is not None and visible + 0.001 < float(scroll_end):
+                # An authored pan runs on its own clock. The circle is inside
+                # the same pan, so it stays on the words while they move.
+                authored = bool(stored.get("scroll_authored"))
+                if scroll_end is not None and visible + 0.001 < float(scroll_end) and not authored:
                     errors.append(
                         f"callout: {key} on {shot.get('id', motif)} starts at {visible} "
                         f"while the screenshot is still scrolling until {scroll_end}")
