@@ -1413,11 +1413,44 @@ def missing_script_words(heard, script):
     return missing
 
 
-def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
+def _sentence_air(words):
+    """Source spans between a sentence-ending word and the next word.
+
+    That air was already limited to the sentence gap. A later silence pass
+    must not trim it to hit a mid-phrase target.
+    """
+    ordered = sorted(words or [], key=lambda item: float(item["start"]))
+    spans = []
+    for prev, word in zip(ordered, ordered[1:]):
+        if _ends_sentence(prev):
+            spans.append((float(prev["end"]) - 0.03, float(word["start"]) + 0.04))
+    return spans
+
+
+def _outside_sentence_air(lo, hi, air, min_gap):
+    """The part of a quiet hole that is not a kept sentence gap."""
+    pieces = [(float(lo), float(hi))]
+    for a0, a1 in air:
+        nxt = []
+        for p0, p1 in pieces:
+            if p1 <= a0 or p0 >= a1:
+                nxt.append((p0, p1))
+                continue
+            if p0 < a0:
+                nxt.append((p0, a0))
+            if p1 > a1:
+                nxt.append((a1, p1))
+        pieces = nxt
+    return [(p0, p1) for p0, p1 in pieces if p1 - p0 >= min_gap]
+
+
+def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11, words=None):
     """Cut a quiet stretch inside a kept range down to ``max_keep``.
 
     A stop closure under ``min_gap`` stays. A 120–280 ms mid-phrase pause,
-    which refine folded into the word, does not.
+    which refine folded into the word, does not. Silence kept in front of
+    the next word after a sentence stays; it is not a tail trimmed to hit
+    the mid-phrase gap.
     """
     samples = np.asarray(samples, dtype=np.float64)
     if len(samples) < 8 or not ranges:
@@ -1441,6 +1474,7 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
     high_thresh = 10 ** (-46.0 / 20.0)
     full_thresh = 10 ** (-32.0 / 20.0)
     quiet = (frames < thresh) & (high_frames < high_thresh) & (full_frames < full_thresh)
+    air = _sentence_air(words)
     rebuilt = []
     for begin, end in ranges:
         cursor = float(begin)
@@ -1448,8 +1482,9 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11):
         for q0, q1 in _quiet_spans(times, quiet):
             lo = max(q0, float(begin) + 0.03)
             hi = min(q1, float(end) - 0.03)
-            if hi - lo >= min_gap:
-                holes.append((lo, hi))
+            if hi - lo < min_gap:
+                continue
+            holes.extend(_outside_sentence_air(lo, hi, air, min_gap))
         for lo, hi in holes:
             # A vowel that is still decaying keeps about 45 ms. A hole that is
             # already silence keeps the short pad, so the stop in "ends" stays cut.
@@ -1792,7 +1827,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     # before the silence pass, so the pass can still drop a truly silent interior
     # (the stop in "ends") without gluing that air back in.
     ranges = seal_word_interiors(ranges, refined)
-    ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
+    ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap, words=refined)
     ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10, words=refined)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
     ranges = settle_join_tails(samples, RATE, ranges, refined)

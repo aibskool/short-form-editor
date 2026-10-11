@@ -94,6 +94,24 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(sentence[0][1], 0.40, places=3)
         self.assertAlmostEqual(sentence[1][0], 1.07, places=2)
 
+    def test_a_sentence_lead_survives_the_internal_silence_pass(self):
+        from kallaway_audio import excise_internal_silence
+        rate = 16000
+        t = np.arange(int(rate * 2.2)) / rate
+        first = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.45))
+        nxt = _voiced(t, 180, 0.35, (t >= 1.40) & (t < 1.70))
+        audio = first + nxt
+        refined = refine_word_bounds(audio, rate, [
+            {"word": "pass.", "start": 0.18, "end": 0.50},
+            {"word": "Scan", "start": 1.35, "end": 1.75},
+        ])
+        ranges = keep_ranges(refined, 2.2, gap=0.04, sentence_gap=0.13, handle=0)
+        cut = excise_internal_silence(audio, rate, ranges, max_keep=0.04, words=refined)
+        lead = min(cut, key=lambda span: abs(span[0] - (refined[1]["start"] - 0.13)))
+        self.assertLessEqual(refined[1]["start"] - lead[0], 0.15)
+        self.assertGreaterEqual(refined[1]["start"] - lead[0], 0.11)
+        self.assertGreater(lead[1] - lead[0], 0.4)
+
     def test_energy_trim_drops_a_separated_breath(self):
         rate = 16000
         t = np.arange(rate) / rate
