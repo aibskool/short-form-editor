@@ -1867,6 +1867,49 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(fraction, 0.10)
         self.assertGreater(int(binary[140, 80]), 0)
 
+    def test_opening_rematte_keeps_a_clean_coarse_matte(self):
+        from kallaway_matte import (
+            _rematte_failed_opening, _shrink_dark_crown, fringe_dark_fails, fringe_dark_fraction,
+            refine_frame,
+        )
+        import kallaway_matte as matte
+        height, width = 200, 160
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (88, 96, 84)
+        rgb[80:190, 40:120] = (220, 170, 150)
+        rgb[74:80, 36:124] = (12, 14, 10)
+        body = np.zeros((height, width), np.float32)
+        body[80:190, 40:120] = 1
+        failed, _fraction = fringe_dark_fails(rgb, body)
+        self.assertTrue(failed)
+        binary = body >= 0.5
+        for _ in range(16):
+            still, _fraction = fringe_dark_fails(rgb, binary.astype(np.float32))
+            if not still:
+                break
+            binary = _shrink_dark_crown(binary, rgb, steps=1)
+        coarse = binary.astype(np.float32)
+        clear = rgb.copy()
+        clear[74:80, 36:124] = (88, 96, 84)
+        seed = refine_frame(clear, body, None)
+        straight = np.zeros_like(rgb)
+        bad = (body, straight, body.copy(), {"alpha": body, "gray": np.zeros((height, width), np.uint8)})
+        clean = (seed[0], straight, seed[2], seed[3])
+        refined = [bad, clean, clean, seed]
+        frames = [(rgb, coarse), (clear, body), (clear, body), (clear, body)]
+
+        def _refuse_warp(*_args, **_kwargs):
+            raise AssertionError("a clean coarse matte must not be replaced by a warp")
+
+        original = matte._warp_alpha
+        matte._warp_alpha = _refuse_warp
+        try:
+            _rematte_failed_opening(refined, frames, 3)
+        finally:
+            matte._warp_alpha = original
+        self.assertLessEqual(fringe_dark_fraction(rgb, refined[0][0]), 0.10)
+        self.assertGreater(float(refined[0][0][140, 80]), 0.9)
+
     def test_a_background_patch_on_the_shoulder_is_dropped(self):
         from kallaway_matte import _drop_background_rim
         height, width = 220, 180

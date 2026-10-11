@@ -116,7 +116,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -1543,12 +1543,31 @@ def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
     return repaired
 
 
+def _shrink_fringe(binary, rgb):
+    """Pull a crown off a green or dark halo. One stalled step is not progress."""
+    binary = np.array(np.asarray(binary), dtype=bool, copy=True)
+    for _step in range(40):
+        person = binary.astype(np.float32)
+        failed, _soft, _ring = fringe_fails(rgb, person)
+        dark_failed, _dark = fringe_dark_fails(rgb, person)
+        if not failed and not dark_failed:
+            break
+        nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
+        if np.array_equal(nxt, binary):
+            nxt = _shrink_dark_crown(binary, rgb, steps=2, below=8)
+            if np.array_equal(nxt, binary):
+                break
+        binary = nxt
+    return binary
+
+
 def _rematte_failed_opening(refined, frames, seed_index):
-    """Re-matte an opening frame that still holds foliage the stable frame does not.
+    """Re-matte an opening frame that still holds a fringe the stable frame does not.
 
     The check covers the first frames of the segment, before ``seed_index``.
-    A failure is warped from the stable matte and refined again. A frame that
-    still fails does not ship.
+    The frame's own coarse matte is the repair. Warping the stable frame onto
+    a cut can drag the crown into a dark halo that coarse edge already cleared,
+    and that warp will not shrink back under the limit.
     """
     seed_person = refined[seed_index][0]
     seed_rgb = np.asarray(frames[seed_index][0])
@@ -1558,35 +1577,42 @@ def _rematte_failed_opening(refined, frames, seed_index):
         rgb = np.asarray(frames[index][0])
         if not _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             continue
-        gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
-        if seed_gray is not None and getattr(seed_gray, "shape", None) == gray.shape:
-            coarse = np.clip(_warp_alpha(seed_person, seed_gray, gray), 0, 1).astype(np.float32)
-        else:
-            coarse = (np.asarray(seed_person) >= 0.5).astype(np.float32)
-        refined[index] = refine_frame(rgb, coarse, None)
-        if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
-            binary = np.asarray(refined[index][0]) >= 0.5
-            for _step in range(40):
-                failed, _soft, _ring = fringe_fails(rgb, binary.astype(np.float32))
-                dark_failed, _dark = fringe_dark_fails(rgb, binary.astype(np.float32))
-                if not failed and not dark_failed:
-                    break
-                nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
-                if np.array_equal(nxt, binary):
-                    nxt = _shrink_dark_crown(binary, rgb, steps=2, below=8)
-                    if np.array_equal(nxt, binary):
-                        break
-                binary = nxt
-            refined[index] = refine_frame(rgb, binary.astype(np.float32), None, hold_edge=True)
-        if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
-            area, rim = _matte_green_stats(refined[index][0], rgb)
-            _soft, ring = fringe_green_fractions(rgb, refined[index][0])
-            dark = fringe_dark_fraction(rgb, refined[index][0])
-            if _soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or dark > 0.12 or rim > OPEN_RIM_GREEN_PX:
-                raise RuntimeError(
-                    f"matte on segment frame {index} still has a foliage shell "
-                    f"({rim}px green in the rim, area {area}, "
-                    f"crown fringe in {_soft:.3f} out {ring:.3f} dark {dark:.3f})")
+        own = frames[index][1]
+        if own is None:
+            own = np.asarray(refined[index][0], dtype=np.float32)
+        cold = refine_frame(rgb, np.asarray(own, dtype=np.float32), None)
+        chosen = cold
+        if _opening_frame_fails(cold[0], rgb, seed_person, seed_rgb):
+            binary = _shrink_fringe(np.asarray(cold[0]) >= 0.5, rgb)
+            held = refine_frame(rgb, binary.astype(np.float32), None, hold_edge=True)
+            chosen = held
+            if _opening_frame_fails(held[0], rgb, seed_person, seed_rgb):
+                gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
+                if seed_gray is not None and getattr(seed_gray, "shape", None) == gray.shape:
+                    warped = np.clip(_warp_alpha(seed_person, seed_gray, gray), 0, 1).astype(np.float32)
+                else:
+                    warped = (np.asarray(seed_person) >= 0.5).astype(np.float32)
+                flowed = refine_frame(rgb, warped, None)
+                if _opening_frame_fails(flowed[0], rgb, seed_person, seed_rgb):
+                    flowed = refine_frame(
+                        rgb, _shrink_fringe(np.asarray(flowed[0]) >= 0.5, rgb).astype(np.float32),
+                        None, hold_edge=True)
+                # A warp replaces the coarse repair only when its ring is less dark.
+                if fringe_dark_fraction(rgb, flowed[0]) + 1e-4 < fringe_dark_fraction(rgb, held[0]):
+                    chosen = flowed
+        refined[index] = chosen
+        if not _opening_frame_fails(chosen[0], rgb, seed_person, seed_rgb):
+            continue
+        soft, ring = fringe_green_fractions(rgb, chosen[0])
+        dark = fringe_dark_fraction(rgb, chosen[0])
+        area, rim = _matte_green_stats(chosen[0], rgb)
+        # A plate that sits between 0.10 and 0.12 will not shrink further.
+        # The halos QA flagged are well above that.
+        if soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or dark > 0.12 or rim > OPEN_RIM_GREEN_PX:
+            raise RuntimeError(
+                f"matte on segment frame {index} still has a foliage shell "
+                f"({rim}px green in the rim, area {area}, "
+                f"crown fringe in {soft:.3f} out {ring:.3f} dark {dark:.3f})")
 
 
 def _refine_opening(frames):
