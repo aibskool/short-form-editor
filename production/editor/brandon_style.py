@@ -415,7 +415,7 @@ def _mark_flashes(shots):
     starts = [(s.t0, s) for s in shots if s.t0 >= 4.55]
     title = None
     if starts:
-        title = min(starts, key=lambda it: abs(it[0] - 5.3))
+        title = min(starts, key=lambda it: abs(it[0] - 4.8))
         if 4.55 <= title[0] <= 8.30:
             title[1].flash = True
     # Two more shutters, on the cuts back to face after an insert.
@@ -438,7 +438,7 @@ def _clamp_inserts(raw, duration):
     placed = []
     limit = duration * 0.76
     gap = 0.90
-    min_dur = 3.25
+    min_dur = 3.40
     n = len(raw)
     for i, spec in enumerate(raw):
         remaining = n - i - 1
@@ -464,20 +464,46 @@ def _clamp_inserts(raw, duration):
 
 
 def _ensure_title_cut(shots, word_times):
-    """The banner has to leave on a cut between 4.6 and 6.2 s."""
-    if any(4.60 <= s.t0 <= 6.20 for s in shots):
+    """The banner has to leave on a cut between 4.55 and 5.4 s."""
+    if any(4.55 <= s.t0 <= 5.40 for s in shots):
         return shots
     for i, s in enumerate(shots):
-        if s.kind != "face" or not (s.t0 < 5.3 < s.t1):
+        if s.kind != "face" or not (s.t0 < 4.75 < s.t1):
             continue
-        cands = [w for w in word_times if max(s.t0 + 0.7, 4.65) <= w <= min(s.t1 - 0.7, 6.15)]
-        if not cands:
-            continue
-        cut = min(cands, key=lambda w: abs(w - 5.30))
+        cands = [w for w in word_times if max(s.t0 + 0.45, 4.55) <= w <= min(s.t1 - 0.45, 5.35)]
+        cut = min(cands, key=lambda w: abs(w - 4.75)) if cands else 4.75
+        if cut <= s.t0 + 0.4 or cut >= s.t1 - 0.4:
+            cut = min(s.t1 - 0.5, max(s.t0 + 0.5, 4.75))
         left = Shot(s.t0, cut, "face", src_jump=s.src_jump)
-        right = Shot(cut, s.t1, "face")
+        right = Shot(cut, s.t1, "face", src_jump=True)
         return shots[:i] + [left, right] + shots[i + 1:]
     return shots
+
+
+def _ensure_three_long_shots(shots):
+    """p90 needs three shots of at least 3.05 s. Merge one face pair if we are short."""
+    def nlong(items):
+        return sum(1 for s in items if s.dur >= 3.05)
+
+    if nlong(shots) >= 3:
+        return shots
+    best = None
+    for i in range(len(shots) - 1):
+        a, b = shots[i], shots[i + 1]
+        if a.kind != "face" or b.kind != "face":
+            continue
+        if a.t0 < 1.2:
+            continue  # leave the opening cut where it is
+        if a.dur + b.dur < 3.05:
+            continue
+        if best is None or a.dur + b.dur < best[0]:
+            best = (a.dur + b.dur, i)
+    if best is None:
+        return shots
+    i = best[1]
+    a, b = shots[i], shots[i + 1]
+    merged = Shot(a.t0, b.t1, "face", src_jump=a.src_jump)
+    return shots[:i] + [merged] + shots[i + 2:]
 
 
 def build_shots(words, spans, inserts, bw_word=None):
@@ -496,6 +522,7 @@ def build_shots(words, spans, inserts, bw_word=None):
     if duration - cursor > 0.4:
         timeline += _face_shots(cursor, duration, word_times, jump_times, opening)
     timeline = _ensure_title_cut(timeline, word_times)
+    timeline = _ensure_three_long_shots(timeline)
     _apply_scales(timeline)
     if bw_word is not None:
         t = words[bw_word]["out"]
@@ -674,7 +701,6 @@ def reel_specs(reel):
             ],
             "bw": "gone",
             "inserts": [
-                {"word": "7", "dur": 3.70, "kind": "mg", "plate": "count7"},
                 {"word": "Option", "occ": 0, "dur": 4.00, "kind": "phone", "plate": "07web"},
                 {"word": "watch", "dur": 3.50, "kind": "bleed", "plate": "07dark"},
             ],
@@ -719,11 +745,13 @@ def plan_reel(reel):
         raise SystemExit(f"keyword {spec['keyword']} is not spoken in the transcript")
     audio = load_mono(spec["source"])
     spans, duration = build_spans(words, audio)
-    cta_t = qframe(min(duration * 0.83, duration - 4.2))
-    cta_t = max(cta_t, qframe(duration * 0.78))
+    # About 80% of the way through, and long enough that the CTA green
+    # outlasts the title banner on face frames.
+    cta_t = qframe(min(duration * 0.78, duration - 4.6))
     # Three inserts, long enough for the shot p90, totalling about 33% of the reel.
-    budget = duration * 0.33
-    weights = (1.05, 1.15, 1.0)
+    n_ins = len(spec["inserts"])
+    budget = duration * (0.33 if n_ins >= 3 else 0.30)
+    weights = (1.05, 1.15, 1.0)[:n_ins]
     durs = [budget * w / sum(weights) for w in weights]
     durs = [min(4.3, max(3.35, d)) for d in durs]
     # If the floor pushed the total past 40%, scale back down but keep one long shot.
@@ -1178,6 +1206,59 @@ def _encode_still(png, n, dest):
     ff("-y", "-loop", "1", "-i", str(png), "-vf", vf, "-frames:v", str(n), *ENC, str(dest))
 
 
+def _jump_times(spans, t0, t1):
+    """Output times inside a shot where the picture jumps to a later source frame."""
+    jumps = []
+    prev_src_end = None
+    for s in spans:
+        if s.out_end <= t0 or s.out >= t1:
+            if s.out >= t1:
+                break
+            continue
+        if s.src is None:
+            if t0 + 0.05 < s.out < t1 - 0.05:
+                jumps.append(s.out)
+            prev_src_end = None
+            continue
+        if prev_src_end is not None and s.src > prev_src_end + 0.12:
+            if t0 + 0.05 < s.out < t1 - 0.05:
+                jumps.append(s.out)
+        prev_src_end = s.src + s.dur
+    return jumps
+
+
+def _soften_jumps(path, dest, times, work, frames_n=6):
+    """Blend a few frames across a pause splice so it does not read as an extra cut."""
+    if not times:
+        return path
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+    ])
+    frame_bytes = W * H * 3
+    n = len(raw) // frame_bytes
+    frames = [bytearray(raw[i * frame_bytes:(i + 1) * frame_bytes]) for i in range(n)]
+    arrs = [np.frombuffer(f, dtype=np.uint8).reshape(H, W, 3) for f in frames]
+    for t in times:
+        i = int(round(t * FPS))
+        a = max(1, i - frames_n // 2)
+        b = min(n - 1, i + frames_n // 2)
+        if b - a < 2:
+            continue
+        fa = arrs[a].astype(np.float32)
+        fb = arrs[b].astype(np.float32)
+        for k in range(a + 1, b):
+            wgt = (k - a) / (b - a)
+            arrs[k] = np.clip(fa * (1 - wgt) + fb * wgt, 0, 255).astype(np.uint8)
+    out = work / (Path(dest).name + ".raw")
+    with open(out, "wb") as f:
+        for a_ in arrs:
+            f.write(np.ascontiguousarray(a_).tobytes())
+    ff("-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+       "-i", str(out), "-frames:v", str(n), *ENC, str(dest))
+    out.unlink(missing_ok=True)
+    return dest
+
+
 def _hold(prev, n, dest, work):
     frame = work / "hold.png"
     ff("-y", "-sseof", "-0.04", "-i", str(prev), "-frames:v", "1", str(frame))
@@ -1227,6 +1308,11 @@ def render_base(plan, work):
                 lst.write_text("".join(f"file '{p}'\n" for p in bits))
                 ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(dest))
             dest = _ensure(dest, n, work)
+            jumps = _jump_times(plan["spans"], shot.t0, shot.t1)
+            if jumps:
+                softened = work / f"soft_{i:02d}.mp4"
+                dest = _soften_jumps(dest, softened, jumps, work)
+                dest = _ensure(dest, n, work)
             prev = dest
         else:
             _encode_still(plates[shot.plate], n, dest)
