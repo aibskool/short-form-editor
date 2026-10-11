@@ -48,17 +48,28 @@ PLATE_SIGMA = 32.0
 PLATE_DARKEN = 0.12
 # Edge darkening on the plate, so a shoulder fade reads as depth.
 PLATE_VIGNETTE = 0.12
-PLATE_RECIPE = "blur-cover-live-v1"
-# Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
-BOUNDARY_RAMP_CARD_PX = 64.0
+# How much of the live background, with the speaker already removed, comes back.
+PLATE_MOTION = 0.60
+# Source pixels the person mask grows before a pixel may enter the plate.
+PLATE_DILATE_PX = 36
+PLATE_RECIPE = "blur-cover-clean-v2"
+# Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
+BOUNDARY_RAMP_CARD_PX = 20.0
 # A hand that crosses the frame fades only across this many card pixels.
 HAND_RAMP_CARD_PX = 20.0
 # A run this wide, touching the frame, is the torso. A narrower contact is a hand.
 TORSO_RUN_FRACTION = 0.28
-# Geometric frame-edge ramp. Skin outside the short hand ramp stays opaque.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v5"
+# Short fade on every source edge. The old wide torso ramp is gone.
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v6"
 # First frames of a segment are seeded from this many frames later, then checked.
-SEGMENT_OPEN_FRAMES = 3
+SEGMENT_OPEN_FRAMES = 2
+# Green inside the matte, in a connected patch this small, is a foliage leak.
+FOLIAGE_COMPONENT_PX = 25000
+# Rim green, or a matte that grew against the stable frame, fails an opening frame.
+OPEN_RIM_GREEN_PX = 800
+OPEN_AREA_RATIO = 1.06
+OPEN_AREA_GREEN_PX = 400
+OPEN_RIM_PX = 28
 # Pixels of matte that sit off the stable silhouette on an opening frame.
 SEGMENT_OPEN_BLOB_PX = 2500
 # The face box may lose this fraction of its raw matte. More than that fails the render.
@@ -104,7 +115,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage-feather2.5-despill6-speck200"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage2-feather2.5-despill6-speck200"
 
 
 def _run(args):
@@ -490,6 +501,47 @@ def _drop_specks(binary, min_area=SPECK_MIN_PX):
     return keep[labels]
 
 
+def _foliage_green(rgb):
+    """Leaves: greener than the shirt and the skin, and not a near-black pixel."""
+    color = np.asarray(rgb)
+    red = color[:, :, 0].astype(np.int16)
+    green = color[:, :, 1].astype(np.int16)
+    blue = color[:, :, 2].astype(np.int16)
+    return (green > red + 14) & (green > blue + 14) & (green > 35)
+
+
+def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX):
+    """Take foliage leaks out of the matte. Skin and the shirt stay.
+
+    A connected green patch up to ``max_area`` is a leaf that the mask
+    swallowed, including one beside a fingertip. Green on the outer rim of a
+    larger patch is the same leak. A green region bigger than that, and deeper
+    than the rim, is left for the opening-frame check.
+    """
+    binary = np.asarray(binary, dtype=bool)
+    green = _foliage_green(rgb) & binary
+    if not np.any(green):
+        return binary
+    labels, count = ndimage.label(green)
+    counts = np.bincount(labels.ravel())
+    drop = np.zeros(count + 1, dtype=bool)
+    for label in range(1, count + 1):
+        if 0 < int(counts[label]) <= int(max_area):
+            drop[label] = True
+    cleaned = np.array(binary, copy=True) if drop.any() else binary
+    if drop.any():
+        cleaned[drop[labels]] = False
+    remain = _foliage_green(rgb) & cleaned
+    if np.any(remain):
+        dist = ndimage.distance_transform_edt(cleaned)
+        rim = remain & (dist > 0) & (dist <= float(rim_px))
+        if int(rim.sum()) > 0 and int(rim.sum()) < 0.08 * max(1, int(cleaned.sum())):
+            if cleaned is binary:
+                cleaned = np.array(binary, copy=True)
+            cleaned[rim] = False
+    return cleaned
+
+
 def despill_green(rgb, person, binary=None):
     """Take foliage green off the edge band. Skin inside the silhouette stays.
 
@@ -601,6 +653,7 @@ def refine_frame(rgb, coarse, previous=None):
     binary = rounded >= 0.5
     binary = ndimage.binary_fill_holes(binary)
     binary = _drop_specks(binary)
+    binary = _drop_foliage(binary, rgb)
     person = _distance_feather(binary, FEATHER_PX)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
@@ -872,6 +925,81 @@ def _clear_opening_foliage(refined, frames, seed_index):
         refined[index] = (person, straight, out_a, state)
 
 
+def _matte_green_stats(person, rgb, rim_px=OPEN_RIM_PX):
+    """Matte area, and foliage-green pixels that sit inside the outer rim."""
+    inside = np.asarray(person) >= 0.5
+    area = int(inside.sum())
+    if area == 0:
+        return 0, 0
+    green = _foliage_green(rgb) & inside
+    if not np.any(green):
+        return area, 0
+    dist = ndimage.distance_transform_edt(inside)
+    rim = int(np.count_nonzero(green & (dist <= float(rim_px))))
+    return area, rim
+
+
+def _opening_frame_fails(person, rgb, seed_person):
+    """A cut frame whose matte still holds a foliage shell, or grew one."""
+    area, rim = _matte_green_stats(person, rgb)
+    seed_area = int((np.asarray(seed_person) >= 0.5).sum())
+    if rim > OPEN_RIM_GREEN_PX:
+        return True
+    if seed_area > 0 and area > OPEN_AREA_RATIO * seed_area and rim > OPEN_AREA_GREEN_PX:
+        return True
+    return False
+
+
+def _warp_alpha(seed_alpha, seed_gray, gray):
+    """Move the stable matte onto this frame with the picture's optical flow."""
+    import cv2
+
+    seed_alpha = np.asarray(seed_alpha, dtype=np.float32)
+    height, width = seed_alpha.shape
+    long_edge = max(width, height)
+    scale = min(1.0, 540.0 / float(long_edge))
+    small_w = max(32, int(round(width * scale)) // 2 * 2)
+    small_h = max(32, int(round(height * scale)) // 2 * 2)
+    prev_s = cv2.resize(np.asarray(seed_gray, dtype=np.uint8), (small_w, small_h), interpolation=cv2.INTER_AREA)
+    gray_s = cv2.resize(np.asarray(gray, dtype=np.uint8), (small_w, small_h), interpolation=cv2.INTER_AREA)
+    flow = cv2.calcOpticalFlowFarneback(prev_s, gray_s, None, 0.5, 3, 21, 3, 5, 1.2, 0)
+    flow = cv2.resize(flow, (width, height), interpolation=cv2.INTER_LINEAR)
+    flow[:, :, 0] *= width / float(small_w)
+    flow[:, :, 1] *= height / float(small_h)
+    grid_x, grid_y = np.meshgrid(
+        np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    return cv2.remap(
+        seed_alpha, grid_x + flow[:, :, 0], grid_y + flow[:, :, 1],
+        cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+
+
+def _rematte_failed_opening(refined, frames, seed_index):
+    """Re-matte an opening frame that still holds foliage the stable frame does not.
+
+    The check covers the first frames of the segment, before ``seed_index``.
+    A failure is warped from the stable matte and refined again. A frame that
+    still fails does not ship.
+    """
+    seed_person = refined[seed_index][0]
+    seed_state = refined[seed_index][3] if isinstance(refined[seed_index][3], dict) else {}
+    seed_gray = seed_state.get("gray")
+    for index in range(seed_index):
+        rgb = np.asarray(frames[index][0])
+        if not _opening_frame_fails(refined[index][0], rgb, seed_person):
+            continue
+        gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
+        if seed_gray is not None and getattr(seed_gray, "shape", None) == gray.shape:
+            coarse = np.clip(_warp_alpha(seed_person, seed_gray, gray), 0, 1).astype(np.float32)
+        else:
+            coarse = (np.asarray(seed_person) >= 0.5).astype(np.float32)
+        refined[index] = refine_frame(rgb, coarse, None)
+        if _opening_frame_fails(refined[index][0], rgb, seed_person):
+            area, rim = _matte_green_stats(refined[index][0], rgb)
+            raise RuntimeError(
+                f"matte on segment frame {index} still has a foliage shell "
+                f"({rim}px green in the rim, area {area})")
+
+
 def _refine_opening(frames):
     """Seed the first frames from the first stable frame of this same segment.
 
@@ -890,6 +1018,7 @@ def _refine_opening(frames):
         refined[index] = refine_frame(rgb, coarse, state)
         state = refined[index][3]
     _clear_opening_foliage(refined, frames, seed_index)
+    _rematte_failed_opening(refined, frames, seed_index)
     _segment_open_holds(
         [item[0] for item in refined[:seed_index + 1]], seed_index,
         colors=[rgb for rgb, _coarse in frames[:seed_index + 1]])
@@ -1336,43 +1465,43 @@ def _skin_mask(rgb):
 def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
     """Ease only the matte that is actually cut by the left or right frame edge.
 
-    Rows above the shoulder stay at 1. A run that does not touch the frame stays
-    at 1, so a hand inside the frame does not dissolve. A wide run is the torso
-    and fades across ``ramp_px``. A narrow run is a hand or arm and fades across
-    ``hand_ramp_px``. Skin on that wide run stays opaque past the short hand
-    ramp, so an arm that shares the torso's row does not dissolve with the shirt.
-    The last ``hand_ramp_px`` at the frame may still fade. There is no fade along
-    the bottom.
+    The fade is ``hand_ramp_px`` on every row, including a raised hand. A wide
+    run above the shoulder is the head and stays at 1, so the face is not
+    eaten. A run that does not touch the frame stays at 1. Shirt and skin both
+    stay opaque past that short ramp. There is no fade along the bottom.
+    ``ramp_px`` remains for callers that still pass a longer distance; the
+    fade used is the short one.
     """
+    del ramp_px
     alpha = np.asarray(alpha)
     height, width = alpha.shape
-    ramp = max(1.0, float(ramp_px))
     hand = max(1.0, float(hand_ramp_px))
     gain = np.ones((height, width), dtype=np.float32)
     shoulder = int(np.clip(np.floor(float(shoulder_y)), 0, height))
     torso_min = max(8, int(round(width * TORSO_RUN_FRACTION)))
     xs = np.arange(width, dtype=np.float32)
-    for y in range(shoulder, height):
+    for y in range(height):
         for start, stop in _row_runs(alpha[y] >= 16):
             touches_left = start == 0
             touches_right = stop == width
             if not touches_left and not touches_right:
                 continue
-            span_ramp = ramp if (stop - start) >= torso_min else hand
+            wide = (stop - start) >= torso_min
+            if wide and y < shoulder:
+                continue
             if touches_left:
-                span = min(stop, int(np.ceil(span_ramp)))
+                span = min(stop, int(np.ceil(hand)))
                 if span > 0:
-                    gain[y, :span] *= _smoothstep(xs[:span] / span_ramp)
+                    gain[y, :span] *= _smoothstep(xs[:span] / hand)
             if touches_right:
-                x0 = max(start, width - int(np.ceil(span_ramp)))
+                x0 = max(start, width - int(np.ceil(hand)))
                 if x0 < stop:
-                    gain[y, x0:stop] *= _smoothstep((width - 1.0 - xs[x0:stop]) / span_ramp)
+                    gain[y, x0:stop] *= _smoothstep((width - 1.0 - xs[x0:stop]) / hand)
     if rgb is not None:
         skin = _skin_mask(rgb)
         if skin.shape != (height, width):
             raise ValueError("contact color must match the alpha plane")
         hand_cols = min(width, int(np.ceil(hand)))
-        skin[:shoulder, :] = False
         skin[:, :hand_cols] = False
         skin[:, width - hand_cols:] = False
         gain[skin] = 1.0
@@ -1380,12 +1509,11 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
 
 
 def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
-    """Ease alpha where the torso is cut by the source frame, below the shoulder.
+    """Ease alpha where the body is cut by the source frame.
 
-    ``ramp_px`` is the torso fade, in the same pixels as ``alpha``. A hand that
-    crosses the frame uses ``hand_ramp_px``. Skin farther in than that stays
-    opaque when ``rgb`` is passed. Rows above ``shoulder_y``, and any matte that
-    does not touch the frame, keep the matte's own feather.
+    The fade is ``hand_ramp_px`` (about 20 card pixels once placed). A hand
+    inside the frame stays opaque. A wide run above ``shoulder_y`` is the head
+    and is not faded. There is no fade along the bottom.
     """
     alpha = np.asarray(alpha)
     if alpha.ndim != 2:
@@ -1450,7 +1578,11 @@ def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PL
     height, width = frames[0].shape[:2]
     card_w, card_h = int(card_w), int(card_h)
     stack = np.stack([frame.astype(np.float32) for frame in frames], axis=0)
-    bg = np.stack([mask < 48 for mask in masks], axis=0)
+    dilate = max(2, min(PLATE_DILATE_PX, width // 12))
+    hold = np.stack([
+        _plate_holdout(mask, frame, dilate) for mask, frame in zip(masks, frames)
+    ], axis=0)
+    bg = ~hold
     known_count = bg.sum(axis=0)
     stack = np.where(bg[..., None], stack, np.nan)
     with np.errstate(all="ignore"), warnings.catch_warnings():
@@ -1536,20 +1668,54 @@ def _cover_crop(image, card_w, card_h):
     return crop
 
 
-def _clean_fill(picture, mask):
-    """Median of the background, with the speaker hole painted from the leaves."""
+def _plate_holdout(mask, rgb, dilate_px):
+    """Pixels that belong to the speaker, grown so a blur cannot pull him back in."""
     import cv2
 
+    person = np.asarray(mask) >= 48
+    if rgb is not None and np.asarray(rgb).shape[:2] == person.shape:
+        person = person | _skin_mask(rgb)
+    radius = int(max(0, dilate_px))
+    if radius <= 0 or not np.any(person):
+        return person
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+    return cv2.dilate(person.astype(np.uint8), kernel) > 0
+
+
+def _inpaint_holes(clean, known):
+    """Fill unknown pixels from the surrounding background. ``known`` is boolean."""
+    import cv2
+
+    clean = np.asarray(clean, dtype=np.float32)
+    height, width = clean.shape[:2]
+    hole = np.where(known, np.uint8(0), np.uint8(255))
+    if not hole.any():
+        return np.clip(clean, 0, 255)
+    tiny_w = max(48, width // 2)
+    tiny_h = max(48, height // 2)
+    tiny = cv2.resize(np.clip(clean, 0, 255).astype(np.uint8), (tiny_w, tiny_h), interpolation=cv2.INTER_AREA)
+    hole_tiny = cv2.resize(hole, (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+    painted = cv2.inpaint(tiny, hole_tiny, 4, cv2.INPAINT_TELEA)
+    filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+    return np.where(known[..., None], clean, filled)
+
+
+def _clean_fill(picture, mask):
+    """Median of background-only pixels, with the speaker hole painted from the leaves."""
     facts = _video_facts(picture)
     width, height = int(facts["width"]), int(facts["height"])
     duration = min(float(facts["duration"]), float(_video_facts(mask)["duration"]))
-    times = np.linspace(0.4, max(0.5, duration - 0.4), 6)
+    times = np.linspace(0.35, max(0.45, duration - 0.35), 12)
     frames, masks = [], []
     for when in times:
         frames.append(_frame_rgb(picture, when, width, height))
         masks.append(_frame_mask(mask, when, width, height))
     stack = np.stack([frame.astype(np.float32) for frame in frames], axis=0)
-    bg = np.stack([item < 48 for item in masks], axis=0)
+    dilate = max(8, min(PLATE_DILATE_PX, width // 12))
+    hold = np.stack([
+        _plate_holdout(item, frame, dilate) for item, frame in zip(masks, frames)
+    ], axis=0)
+    bg = ~hold
     known_count = bg.sum(axis=0)
     stack = np.where(bg[..., None], stack, np.nan)
     with np.errstate(all="ignore"), warnings.catch_warnings():
@@ -1557,46 +1723,71 @@ def _clean_fill(picture, mask):
         clean = np.nanmedian(stack, axis=0)
     known = known_count > 0
     clean = np.nan_to_num(clean, nan=0.0)
-    hole = np.where(known, np.uint8(0), np.uint8(255))
-    if hole.any():
-        tiny_w = max(24, width // 8)
-        tiny_h = max(24, height // 8)
-        tiny = cv2.resize(np.clip(clean, 0, 255).astype(np.uint8), (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
-        hole_tiny = cv2.resize(hole, (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
-        painted = cv2.inpaint(tiny, hole_tiny, 6, cv2.INPAINT_TELEA)
-        filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
-        clean = np.where(known[..., None], clean, filled)
+    clean = _inpaint_holes(clean, known)
     return np.clip(clean, 0, 255).astype(np.uint8)
+
+
+def compose_live_fill(frame, mask, clean, card_w, card_h, sigma=PLATE_SIGMA, darken=PLATE_DARKEN,
+                      vignette=PLATE_VIGNETTE, motion=PLATE_MOTION, dilate_px=None):
+    """Blur the clean plate and add motion from the background only.
+
+    The speaker is gone before the blur. Live pixels inside the dilated matte,
+    including skin the mask missed, are zeroed before and after the motion blur
+    so they cannot smear into the card.
+    """
+    import cv2
+
+    frame = np.asarray(frame)
+    clean = np.asarray(clean)
+    height, width = frame.shape[:2]
+    if dilate_px is None:
+        dilate_px = max(4, min(PLATE_DILATE_PX, width // 12))
+    # The plate blur is heavy. Half resolution matches it on a full-frame take.
+    step = 2 if max(height, width) > 480 else 1
+    work_w = max(32, width // step)
+    work_h = max(32, height // step)
+    cover = max(int(card_w) / float(width), int(card_h) / float(height))
+    src_sigma = max(1.0, float(sigma) / max(cover, 1e-3))
+    work_sigma = max(0.8, src_sigma / float(step))
+    motion_sigma = max(0.6, min(work_sigma * 0.22, 6.0))
+    work_dilate = max(1, int(round(float(dilate_px) / float(step))))
+    small_clean = cv2.resize(clean, (work_w, work_h), interpolation=cv2.INTER_AREA)
+    small_frame = cv2.resize(frame, (work_w, work_h), interpolation=cv2.INTER_AREA)
+    small_mask = cv2.resize(np.asarray(mask), (work_w, work_h), interpolation=cv2.INTER_AREA)
+    hold = _plate_holdout(small_mask, small_frame, work_dilate)
+    blurred = cv2.GaussianBlur(small_clean, (0, 0), work_sigma)
+    residual = small_frame.astype(np.float32) - small_clean.astype(np.float32)
+    residual[hold] = 0
+    moved = cv2.GaussianBlur(residual, (0, 0), motion_sigma)
+    moved[hold] = 0
+    mixed = blurred.astype(np.float32) + float(motion) * moved
+    full = cv2.resize(np.clip(mixed, 0, 255), (width, height), interpolation=cv2.INTER_LINEAR)
+    crop = _cover_crop(full, card_w, card_h)
+    darkened = np.clip(crop.astype(np.float32) * (1.0 - float(darken)), 0, 255)
+    if vignette:
+        darkened = _radial_vignette(darkened, vignette)
+    return np.clip(darkened, 0, 255).astype(np.uint8)
 
 
 def ensure_live_plate(picture, mask, card_w, card_h, dest, sigma=PLATE_SIGMA, darken=PLATE_DARKEN,
                       vignette=PLATE_VIGNETTE):
-    """A blurred cover of every frame, with the speaker filled from the clean plate.
+    """A blurred cover of the clean background, with a little live foliage motion.
 
-    The foliage moves. The hole where he stood does not leave a ghost, because
-    those pixels come from the median background before the blur.
+    Brandon is removed before the blur. Motion is the live frame minus that
+    plate, and only where the dilated matte says the pixel is background.
     """
-    import cv2
-
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
     token = (
         f"{PLATE_RECIPE}|sigma={float(sigma):.1f}|darken={float(darken):.2f}"
-        f"|vignette={float(vignette):.2f}|{int(card_w)}x{int(card_h)}")
+        f"|vignette={float(vignette):.2f}|motion={float(PLATE_MOTION):.2f}|{int(card_w)}x{int(card_h)}")
     if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
-    print("building the live blurred plate", flush=True)
+    print("building the clean background plate", flush=True)
     facts = _video_facts(picture)
     width, height = int(facts["width"]), int(facts["height"])
     fps = float(facts["fps"])
     clean = _clean_fill(picture, mask)
-    cover = max(int(card_w) / float(width), int(card_h) / float(height))
-    src_sigma = max(1.0, float(sigma) / max(cover, 1e-3))
-    # The blur is heavy. Half resolution is the same plate and much faster.
-    small_w = max(32, width // 2)
-    small_h = max(32, height // 2)
-    small_sigma = max(0.8, src_sigma * small_w / float(width))
-    clean_small = cv2.resize(clean, (small_w, small_h), interpolation=cv2.INTER_AREA)
     rgb_proc, rgb_size = _raw_reader(picture, width, height, "rgb24")
     mask_proc, mask_size = _raw_reader(mask, width, height, "gray")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1613,16 +1804,9 @@ def ensure_live_plate(picture, mask, card_w, card_h, dest, sigma=PLATE_SIGMA, da
                 break
             rgb = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, width, 3)
             matte = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(height, width)
-            small_rgb = cv2.resize(rgb, (small_w, small_h), interpolation=cv2.INTER_AREA)
-            small_mask = cv2.resize(matte, (small_w, small_h), interpolation=cv2.INTER_AREA)
-            filled = fill_speaker(small_rgb, small_mask, clean_small)
-            blurred = cv2.GaussianBlur(filled, (0, 0), small_sigma)
-            full = cv2.resize(blurred, (width, height), interpolation=cv2.INTER_LINEAR)
-            crop = _cover_crop(full, card_w, card_h)
-            darkened = np.clip(crop.astype(np.float32) * (1.0 - float(darken)), 0, 255)
-            if vignette:
-                darkened = _radial_vignette(darkened, vignette)
-            writer.stdin.write(np.ascontiguousarray(darkened.astype(np.uint8)).tobytes())
+            plate = compose_live_fill(
+                rgb, matte, clean, card_w, card_h, sigma=sigma, darken=darken, vignette=vignette)
+            writer.stdin.write(np.ascontiguousarray(plate).tobytes())
             frames += 1
             if frames % 100 == 0:
                 print(f"plate {frames} frames", flush=True)
@@ -1669,12 +1853,12 @@ def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, 
 
 def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_height,
                            ramp_card=BOUNDARY_RAMP_CARD_PX, hand_card=HAND_RAMP_CARD_PX):
-    """Bake a per-frame ramp into alpha where the torso meets the frame edge.
+    """Bake a short ramp into alpha where the body meets the frame edge.
 
-    The ramp starts at ``shoulder_y``. A hand inside the frame stays opaque, and
-    a hand that crosses the edge fades only across ``hand_card`` pixels. The
-    bottom of the torso is not faded. The source matte stays cached. ``ramp_card``
-    is pixels on the placed card; the source ramp is that divided by scale.
+    Every contact, including a raised hand, fades across ``hand_card`` pixels.
+    A wide run above ``shoulder_y`` is the head and stays opaque. The bottom of
+    the torso is not faded. The source matte stays cached. The distances are
+    card pixels; the source ramp is that divided by scale.
     """
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
@@ -1686,10 +1870,10 @@ def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_h
     facts = _video_facts(alpha_path)
     width, height = int(facts["width"]), int(facts["height"])
     fps = float(facts["fps"])
-    ramp_src = float(ramp_card) / max(float(scale), 1e-3)
+    ramp_src = float(hand_card) / max(float(scale), 1e-3)
     hand_src = float(hand_card) / max(float(scale), 1e-3)
     print(
-        f"feathering torso edges over {float(ramp_card):.0f}px, hands over {float(hand_card):.0f}px",
+        f"feathering frame edges over {float(hand_card):.0f}px",
         flush=True)
     frame_bytes = width * height * 4
     reader = subprocess.Popen(

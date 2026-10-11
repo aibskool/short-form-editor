@@ -1268,7 +1268,10 @@ class KallawayTests(unittest.TestCase):
         self.assertLessEqual(np.median(widths), 4)
         edge = (person > 0.15) & (person < 0.7)
         self.assertTrue(edge.any())
-        self.assertLess(straight[:, :, 1][edge].mean(), 100)
+        # The painted foliage rim is not part of the matte, and the soft edge
+        # is not left green.
+        self.assertLess(float(person[rim].mean()), 0.45)
+        self.assertLess(straight[:, :, 1][edge].mean(), 130)
         below = out_a[center + radius + 3:center + radius + 16, center - 8:center + 8].mean()
         above = out_a[center - radius - 16:center - radius - 3, center - 8:center + 8].mean()
         self.assertGreater(below, above + 0.04)
@@ -1325,6 +1328,12 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(int(faded_hand[58, 8]), 255)
         again = feather_boundary_alpha(hand, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
         self.assertTrue(np.array_equal(again, faded_hand))
+        # A raised hand above the shoulder fades across the same short ramp.
+        raised = np.zeros((80, 100), np.uint8)
+        raised[8:24, 0:12] = 255
+        faded_raised = feather_boundary_alpha(raised, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
+        self.assertEqual(int(faded_raised[14, 0]), 0)
+        self.assertEqual(int(faded_raised[14, 8]), 255)
 
     def test_an_arm_on_the_torso_row_stays_opaque_past_the_hand_ramp(self):
         from kallaway_matte import feather_boundary_alpha
@@ -1336,17 +1345,15 @@ class KallawayTests(unittest.TestCase):
         out = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5, rgb=rgb)
         # The last hand-ramp columns of a crossing arm may fade.
         self.assertLess(int(out[60, 0]), 128)
-        # Skin past that ramp stays solid, even though the torso ramp is wider.
+        # Skin and shirt both stay solid past that short ramp.
         self.assertEqual(int(out[60, 8]), 255)
         self.assertEqual(int(out[60, 14]), 255)
-        # The shirt on the same wide run still eases into the frame edge.
         self.assertLess(int(out[45, 0]), 32)
-        self.assertLess(int(out[45, 4]), 160)
-        self.assertGreater(int(out[45, 12]), int(out[45, 4]))
+        self.assertEqual(int(out[45, 8]), 255)
         self.assertEqual(int(out[60, 100]), 255)
-        # Without color, the old wide-run ramp still covers the arm columns.
         plain = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
-        self.assertLess(int(plain[60, 8]), 255)
+        self.assertEqual(int(plain[60, 8]), 255)
+        self.assertLess(int(plain[60, 0]), 128)
 
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate
@@ -1372,6 +1379,17 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(float(plate.mean()), float(foliage[:70].mean()) * 0.95)
         # A light radial vignette. Corners sit under the center.
         self.assertLess(float(plate[0, 0].mean()), float(plate[32, 60].mean()) * 0.97)
+        from kallaway_matte import compose_live_fill
+        clean = foliage.copy()
+        leaked = frame.copy()
+        leaked[100:132, 0:6] = (210, 150, 120)
+        live = compose_live_fill(leaked, person, clean, 120, 64, sigma=16, motion=0.6)
+        red_lead = (live[:, :, 0].astype(np.int16) > live[:, :, 1].astype(np.int16) + 12).mean()
+        self.assertLess(float(red_lead), 0.02)
+        moved = leaked.copy()
+        moved[100:140, 112:120] = (160, 210, 90)
+        live_moved = compose_live_fill(moved, person, clean, 120, 64, sigma=16, motion=0.6)
+        self.assertGreater(float(np.abs(live.astype(np.float32) - live_moved.astype(np.float32)).mean()), 0.15)
         from kallaway_pack import _limit_density
         cues = []
 
@@ -1752,6 +1770,71 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(cleaned[30, 40])
         self.assertFalse(cleaned[3, 3])
         self.assertFalse(cleaned[1, 74])
+
+    def test_foliage_inside_the_matte_is_dropped(self):
+        from kallaway_matte import _refine_opening, refine_frame
+        height, width = 160, 120
+        body = np.zeros((height, width), np.float32)
+        body[24:150, 40:92] = 1
+        shell = body.copy()
+        shell[24:150, 6:36] = 1
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (28, 96, 40)
+        rgb[body >= 0.5] = (220, 170, 150)
+        leaked = rgb.copy()
+        leaked[24:150, 6:36] = (36, 168, 42)
+        person, _straight, _out, _state = refine_frame(leaked, shell)
+        self.assertLess(float(person[60, 16]), 0.2)
+        self.assertGreater(float(person[80, 64]), 0.9)
+        frames = [
+            (leaked, shell),
+            (leaked, shell),
+            (rgb, body),
+        ]
+        refined, _seed = _refine_opening(frames)
+        self.assertLess(float(refined[0][0][60, 16]), 0.2)
+        self.assertGreater(float(refined[0][0][80, 64]), 0.9)
+        self.assertLess(float(refined[1][0][60, 16]), 0.2)
+
+    def test_a_decaying_vowel_keeps_about_45ms(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.2)) / rate
+        env = np.zeros_like(t)
+        env[(t >= 0.10) & (t < 0.40)] = 1.0
+        decay = (t >= 0.40) & (t < 0.46)
+        env[decay] = 1.0 - (t[decay] - 0.40) / 0.06
+        vowel = _voiced(t, 180, 0.35, np.ones_like(t, dtype=bool)) * env
+        coda = _voiced(t, 200, 0.22, (t >= 0.70) & (t < 0.82))
+        cut = excise_internal_silence(vowel + coda, rate, [(0.08, 0.90)], max_keep=0.04)
+        self.assertGreater(cut[0][1], 0.43)
+        self.assertLess(cut[0][1], 0.52)
+        self.assertTrue(cut[-1][0] >= 0.55)
+
+    def test_a_quiet_tail_is_capped_at_a_tenth(self):
+        from kallaway_audio import trim_quiet_tails
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.10) & (t < 0.40))
+        hiss = ((t >= 0.55) & (t < 0.70)).astype(np.float64) * 0.008 * np.sin(2 * np.pi * 6500 * t)
+        nxt = _voiced(t, 180, 0.35, (t >= 1.20) & (t < 1.40))
+        trimmed = trim_quiet_tails(vowel + hiss + nxt, rate, [(0.08, 0.90), (1.15, 1.45)], max_quiet=0.10)
+        self.assertLessEqual(trimmed[0][1], 0.52)
+        self.assertGreater(trimmed[0][1], 0.40)
+
+    def test_a_stop_burst_is_pulled_onto_the_word(self):
+        from kallaway_audio import attach_stop_release
+        rate = 16000
+        t = np.arange(int(rate * 1.2)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.10) & (t < 0.40))
+        burst = ((t >= 0.47) & (t < 0.50)).astype(np.float64) * 0.016 * np.sin(2 * np.pi * 1400 * t)
+        rest = _voiced(t, 160, 0.2, (t >= 0.55) & (t < 0.70))
+        attached = attach_stop_release(vowel + burst + rest, rate, [(0.08, 0.40), (0.47, 0.72)])
+        self.assertGreater(attached[0][1], 0.49)
+        self.assertLessEqual(attached[0][1] - 0.40, 0.16)
+        loud = _voiced(t, 180, 0.35, (t >= 0.80) & (t < 1.00))
+        left = attach_stop_release(vowel + loud, rate, [(0.08, 0.40), (0.80, 1.05)])
+        self.assertAlmostEqual(left[0][1], 0.40, places=2)
+        self.assertGreater(left[1][0], 0.70)
 
 
 if __name__ == "__main__":

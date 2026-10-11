@@ -581,10 +581,11 @@ def build_kallaway(spec, spec_path, project):
     .range-old{{position:relative;z-index:5;text-align:center;font-family:'{display}',cursive;font-size:{72*scale:.0f}px;line-height:0.9;color:{colors['warning_text']};margin-bottom:4%}}
     .range-old .quote-strike{{top:54%}}
     .range-row{{display:flex;gap:{12*scale:.0f}px;width:100%;flex:1;min-height:0}}
-    .range-card{{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{8*scale:.0f}px;padding:4% 3%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05;text-align:center}}
-    .range-ico{{width:{64*scale:.0f}px;height:{64*scale:.0f}px;color:{colors['accent']}}}
+    .range-card{{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:{10*scale:.0f}px;padding:7% 6%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{40*scale:.0f}px;line-height:1.05;text-align:center}}
+    .range-ico{{width:{108*scale:.0f}px;height:{108*scale:.0f}px;color:{colors['accent']}}}
     .range-ico svg{{width:100%;height:100%}}
-    .range-card em{{font-style:normal;font-family:'{mono}',monospace;font-weight:500;font-size:{18*scale:.0f}px;line-height:1.15;color:{colors['muted']}}}
+    .range-fill{{flex:1 1 auto;width:46%;min-height:{48*scale:.0f}px;margin:{8*scale:.0f}px 0;border-radius:12px;background:linear-gradient(180deg,{colors['accent']},{colors['accent_strong']});box-shadow:0 10px 22px rgba(0,0,0,0.35)}}
+    .range-card em{{font-style:normal;font-family:'{mono}',monospace;font-weight:500;font-size:{26*scale:.0f}px;line-height:1.2;color:{colors['muted']}}}
     .feat-col{{height:100%;display:flex;flex-direction:column;gap:{12*scale:.0f}px}}
     .feat-card{{flex:1;display:flex;align-items:center;gap:{18*scale:.0f}px;padding:0 6%;border-radius:18px;background:linear-gradient(180deg,{colors['surface']},{colors['contrast']});border:2px solid {colors['border']};box-shadow:0 18px 36px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);color:{colors['text']};font-family:'{display}',cursive;font-size:{52*scale:.0f}px;line-height:0.95}}
     .feat-ico{{width:{72*scale:.0f}px;height:{72*scale:.0f}px;flex:0 0 {72*scale:.0f}px;color:{colors['accent']}}}
@@ -673,7 +674,7 @@ def build_kallaway(spec, spec_path, project):
     .browser-live span{{display:inline-block;margin-right:{10*scale:.0f}px;padding:0.2em 0.5em;border-radius:999px;background:{colors['surface']};border:1px solid {colors['border']};font-size:{18*scale:.0f}px}}
     .browser-dead{{position:absolute;left:0;right:0;top:{54*scale:.0f}px;bottom:0;padding:8% 6%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{12*scale:.0f}px;font-family:'{display}',cursive;font-size:{48*scale:.0f}px;line-height:0.95;color:{colors['text']};text-align:center;opacity:0}}
     .page-lines{{display:flex;flex-direction:column;gap:{14*scale:.0f}px;margin-top:{18*scale:.0f}px}}
-    .page-lines p{{margin:0;padding:{8*scale:.0f}px {14*scale:.0f}px;border-radius:12px;background:{colors['surface']};border:1px solid {colors['border']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{32*scale:.0f}px;line-height:1.05;color:{colors['text']}}}
+    .page-lines p{{margin:0;padding:{10*scale:.0f}px {14*scale:.0f}px;border-radius:12px;background:{colors['surface']};border:1px solid {colors['border']};font-family:'{caption}',sans-serif;font-weight:800;font-size:{44*scale:.0f}px;line-height:1.15;color:{colors['text']}}}
     .page-lines p:nth-child(2){{width:92%}} .page-lines p:nth-child(3){{width:78%}}
     .offline-mark{{width:{92*scale:.0f}px;height:{92*scale:.0f}px;border-radius:50%;border:{6*scale:.0f}px solid {colors['warning']};color:{colors['warning']};display:flex;align-items:center;justify-content:center;font-family:'{display}',cursive;font-size:{64*scale:.0f}px;line-height:1}}
     .offline-sub{{font-family:'{mono}',monospace;font-size:{mono_px:.1f}px;color:{colors['muted']}}}
