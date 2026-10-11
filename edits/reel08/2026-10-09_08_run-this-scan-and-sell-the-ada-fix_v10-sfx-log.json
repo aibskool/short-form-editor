@@ -1,0 +1,775 @@
+{
+  "schema": "kallaway-sfx-log/v2",
+  "pops": [
+    {
+      "time": 0.0,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 1.855,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "hero_board: ACCESSIBILITY ERRORS",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 6.39,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "chapter header: The Scan",
+      "label": "Chapter header",
+      "role": "pop"
+    },
+    {
+      "time": 6.59,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 7.45,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 8.665,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 12.34,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "pill: CLOUD BROWSER",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 13.455,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 14.13,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 14.805,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 17.76,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: fixed",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 18.01,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "chapter header: The Fix",
+      "label": "Chapter header",
+      "role": "pop"
+    },
+    {
+      "time": 18.435,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: fixed",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 19.11,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: fixed",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 20.44,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 21.95,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "List Tick",
+      "role": "pop"
+    },
+    {
+      "time": 22.144,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "List Tick",
+      "role": "pop"
+    },
+    {
+      "time": 22.242,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "List Tick",
+      "role": "pop"
+    },
+    {
+      "time": 22.339,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "List Tick",
+      "role": "pop"
+    },
+    {
+      "time": 27.5,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 29.484,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 30.664,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: One bakery settled",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 32.044,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 32.844,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 37.466,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 39.429,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 39.679,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "chapter header: The Offer",
+      "label": "Chapter header",
+      "role": "pop"
+    },
+    {
+      "time": 39.694,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 39.958,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 40.223,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 40.487,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 40.752,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "thumbnail_grid: ALT TEXT",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 41.266,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "offer_pair: SCAN REPORT|Show every error",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 41.426,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "offer_pair: SCAN REPORT|Show every error",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 44.226,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "doc_fan",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 44.476,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "keyword box: WEBSITE",
+      "label": "Word Pop",
+      "role": "pop"
+    },
+    {
+      "time": 44.801,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "doc_fan",
+      "label": "Page pop",
+      "role": "pop"
+    },
+    {
+      "time": 45.376,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "doc_fan",
+      "label": "Page pop",
+      "role": "pop"
+    },
+    {
+      "time": 49.371,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Graphic entrance",
+      "role": "pop"
+    },
+    {
+      "time": 50.656,
+      "file": "Pop 1.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 1.mp3",
+      "lands_on": "quote_card: An A to Z guide for the first client",
+      "label": "Graphic entrance",
+      "role": "pop"
+    }
+  ],
+  "cues": [
+    {
+      "time": 0.0,
+      "file": "Boom 14.mp3",
+      "pack_file": "07 Booms/Boom 14.mp3",
+      "lands_on": "phone_frame",
+      "label": "Cold Slam",
+      "role": "landing"
+    },
+    {
+      "time": 0.0,
+      "file": "Wrong Answer.mp3",
+      "pack_file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+      "lands_on": "chapter header: Your AI Website Could Get Your Client Sued",
+      "label": "Wrong Answer",
+      "role": "negative"
+    },
+    {
+      "time": 1.855,
+      "file": "Wrong Answer.mp3",
+      "pack_file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+      "lands_on": "hero_board: ACCESSIBILITY ERRORS",
+      "label": "Wrong Answer",
+      "role": "negative"
+    },
+    {
+      "time": 7.483,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 7.517,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 7.55,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 7.57,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 7.57,
+      "file": "Wrong Answer.mp3",
+      "pack_file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Number Counter",
+      "role": "negative"
+    },
+    {
+      "time": 20.54,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.607,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.64,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.673,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.707,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.74,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.773,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.807,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.84,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.873,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.907,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.94,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 20.973,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.007,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.04,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.073,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.107,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.14,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.173,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.207,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.24,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.273,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.307,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.34,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 21.34,
+      "file": "Wrong Answer.mp3",
+      "pack_file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Number Counter",
+      "role": "negative"
+    },
+    {
+      "time": 22.05,
+      "file": "Cash Register Ka Ching.mp3",
+      "pack_file": "35 Money & Cash/Cash Register Ka Ching.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "Money Shot",
+      "role": "landing"
+    },
+    {
+      "time": 30.664,
+      "file": "Wrong Answer.mp3",
+      "pack_file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+      "lands_on": "quote_card: One bakery settled",
+      "label": "Wrong Answer",
+      "role": "negative"
+    },
+    {
+      "time": 39.359,
+      "file": "Swish 2.mp3",
+      "pack_file": "04 Swishes & Swooshes/Swish 2.mp3",
+      "lands_on": "phone_frame",
+      "label": "Callout swish",
+      "role": "whoosh"
+    },
+    {
+      "time": 49.538,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.638,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.704,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.738,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.804,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.838,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.871,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.904,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.938,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 49.971,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.004,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.038,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.071,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.104,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.138,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.171,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.204,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.238,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    },
+    {
+      "time": 50.271,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Number Counter",
+      "role": "landing"
+    },
+    {
+      "time": 50.271,
+      "file": "Ui Sound 12.mp3",
+      "pack_file": "24 UI Sounds/Ui Sound 12.mp3",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Counter tick",
+      "role": "tick"
+    }
+  ]
+}

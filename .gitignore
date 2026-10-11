@@ -17,4 +17,7 @@ production/pilots/
 *.mov
 *.wav
 *.mp3
+!production/editor/sfx/Pop 1.mp3
+!production/editor/sfx/Wrong Answer.mp3
+!production/editor/sfx/Ui Sound 12.mp3
 production/editor/sfx/viral-pack/
