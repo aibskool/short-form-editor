@@ -286,10 +286,10 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
 
 def _write_sfx_log(timeline, project, output=None):
     """Placement log for gate G9: time, pack file, and the picture the hit lands on."""
-    from kallaway_plan import sfx_placement_rows
+    from kallaway_plan import sfx_log_document, sfx_placement_rows
     rows = sfx_placement_rows(timeline.get("sfx"))
     timeline["sfx_log"] = rows
-    payload = {"schema": "kallaway-sfx-log/v1", "cues": rows}
+    payload = sfx_log_document(rows)
     text = json.dumps(payload, indent=2) + "\n"
     path = Path(project) / "sfx-placement.json"
     path.write_text(text)

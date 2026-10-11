@@ -2,12 +2,14 @@
 
 The pack is royalty-free in a video and may not be redistributed as a library.
 Point SFX_PACK_DIR at a local copy (default: production/editor/sfx/viral-pack).
-Files are used as supplied. The only edits are a timeline trim, a short fade
-where a long file is cut, and clip gain on anything that peaks above 0 dBFS.
-No EQ, pitch shift, time-stretch, or filtering.
+Files are used as supplied. The only edit is gain: a timeline trim, a short fade
+where a long file is cut, and clip gain. Pop 1 and Ui Sound 12 are peak-bound
+to just under 0 dBFS so a phone still hears them. No EQ, pitch shift,
+time-stretch, or filtering.
 """
 import math
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -48,6 +50,8 @@ CORRECT = "30 Notifications & Alerts/Alert Positive Correct.mp3"
 BUZZER = "18 Fails & Buzzers/Buzzer 2.mp3"
 BUZZER_ALT = "18 Fails & Buzzers/Buzzer 1.mp3"
 UI_30 = "24 UI Sounds/Ui 30.wav"
+UI_TICK = "24 UI Sounds/Ui Sound 12.mp3"
+WRONG_ANSWER = "00 Viral Reels Essentials/Wrong Answer.mp3"
 KA_CHING = "35 Money & Cash/Cash Register Ka Ching.mp3"
 KA_CHING_02 = "35 Money & Cash/Cash Register Ka Ching 02.mp3"
 MONEY_FILES = [KA_CHING, KA_CHING_02]
@@ -63,11 +67,11 @@ KIND_FILES = {
     "whoosh": [FAST_WHIP, QUICK_SWING, SWIPE],
     "click": [BELL_6, CLICK_10, CLICK_8],
     "typing": [TYPING_3, TYPING_4],
-    "ticking": [UI_30, BELL_6],
+    "ticking": [UI_TICK, UI_30],
     "ding": [CORRECT, BELL_5],
     "bass": [BOOM_14, DEEP_HIT, IMPACT],
     "riser": [RISER_14, RISER_12],
-    "error": [BUZZER, BUZZER_ALT],
+    "error": [WRONG_ANSWER, BUZZER, BUZZER_ALT],
     "marker": [SWISH_2, SWOOSH_FAST],
     "paper": [SWOOSH_FAST, SIMPLE_WHOOSH],
 }
@@ -89,7 +93,16 @@ UNDER_FROM_SHEET = {
 _CACHE = {}
 _DURATION = {}
 _DROP = ("also", "bed", "fixed_file", "fixed_lead", "rotate", "trim_frames",
-         "fade_frames", "fade_in_frames", "delay_frames", "delay_from", "priority")
+         "fade_frames", "fade_in_frames", "delay_frames", "delay_from", "priority",
+         "peak_bound")
+# Just under full scale. Pop 1 and Ui Sound 12 are quiet in the pack, so gain
+# brings them up to this ceiling and the mixer does not duck them back down.
+PEAK_CEILING = 0.98
+MAKEUP_FILES = {"Pop 1.mp3", "Ui Sound 12.mp3"}
+_NEGATIVE_RE = re.compile(
+    r"\b(errors?|lawsuits?|sued|sue|warnings?|mistakes?|losses|loss|wrong|fails?|failed|failure|settled)\b",
+    re.I,
+)
 
 
 def pack_dir():
@@ -107,23 +120,70 @@ def resolve(file):
     path = Path(file)
     if path.is_file():
         return path
-    return pack_dir() / str(file)
+    packed = pack_dir() / str(file)
+    if packed.is_file():
+        return packed
+    # Brandon's defaults live next to the editor when a pack copy is missing them.
+    local = HERE / "sfx" / path.name
+    if local.is_file():
+        return local
+    return packed
 
 
 def keyword_pop_file():
-    """Pack-relative pop for the keyword box.
+    """Pack-relative pop for every pop-on, including the keyword box."""
+    return POP_1
 
-    The pack file is `Pop 2.mp3`. A Pop 1 mix written beside the editor is not
-    that file, and an absolute path to the mix does not exist in the pack.
-    When this copy of the pack has no Pop 2, the cue uses Pop 4, the other
-    short pop that is actually in the folder.
+
+def _negative_meaning(stage):
+    """Errors, lawsuits, warnings, mistakes, and losses. ``sue`` is a whole word."""
+    if not stage:
+        return False
+    if stage.get("negative"):
+        return True
+    parts = []
+    for key in ("text", "label", "kicker", "title"):
+        value = stage.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value)
+    return bool(_NEGATIVE_RE.search(" ".join(parts)))
+
+
+def count_change_times(start, land, origin, target, fps=30.0):
+    """One time per displayed integer during a power2.in roll.
+
+    The tween is ``progress = t^2``. The last time is the lock frame, where the
+    final number is forced, even if rounding reached it a frame early.
     """
-    packed = "27 Pops, Zaps & Switches/Pop 2.mp3"
-    if resolve(packed).is_file():
-        return packed
-    if resolve(POP_4).is_file():
-        return POP_4
-    return None
+    start = float(start)
+    end = float(land)
+    roll = max(1e-3, end - start)
+    origin = int(origin or 0)
+    target = int(0 if target is None else target)
+    fps = float(fps or 30)
+    shown = origin
+    times = []
+    step = 1.0 / fps
+    moment = step
+    while moment < roll - (0.45 * step):
+        progress = (moment / roll) ** 2
+        displayed = int(round(origin + (target - origin) * progress))
+        if displayed != shown:
+            times.append(round(start + moment, 3))
+            shown = displayed
+        moment += step
+    end_r = round(end, 3)
+    if times and shown == target:
+        times[-1] = end_r
+    else:
+        times.append(end_r)
+    unique = []
+    for item in times:
+        if unique and abs(unique[-1] - item) < (0.45 / fps):
+            unique[-1] = item
+        else:
+            unique.append(item)
+    return unique
 
 
 def kind_paths(kind):
@@ -146,21 +206,29 @@ def _decode(path):
 
 
 def load(path):
-    """Decode once. Clip-gain only when the file peaks above 0 dBFS.
+    """Decode once. Gain only.
 
-    Quiet files are not turned up. Backwards Swoosh is the loud one (about
-    +12 dBFS in this copy; the pack note says +13.4).
+    Files that peak above 0 dBFS are turned down to 0 dBFS. Pop 1 and Ui Sound
+    12 are also brought to just under that ceiling so the phone hears them.
+    Nothing else is turned up. Backwards Swoosh is the loud one (about +12 dBFS).
     """
     path = str(path)
     if path not in _CACHE:
         samples = _decode(path)
         peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
+        name = Path(path).name
+        ceiling = PEAK_CEILING if name in MAKEUP_FILES else 1.0
         clip_db = 0.0
-        if peak > 1.0:
-            samples = samples * (1.0 / peak)
-            clip_db = -20.0 * math.log10(peak)
-            peak = 1.0
-        _CACHE[path] = (samples, {"clip_gain_db": round(clip_db, 2), "peak_db": round(20.0 * math.log10(max(peak, 1e-8)), 2)})
+        if peak > 1e-8 and (peak > ceiling or name in MAKEUP_FILES):
+            gain = ceiling / peak
+            samples = samples * gain
+            clip_db = 20.0 * math.log10(gain)
+            peak = ceiling
+        _CACHE[path] = (samples, {
+            "clip_gain_db": round(clip_db, 2),
+            "peak_db": round(20.0 * math.log10(max(peak, 1e-8)), 2),
+            "peak_linear": peak,
+        })
     samples, info = _CACHE[path]
     return samples.copy(), dict(info)
 
@@ -271,6 +339,45 @@ def _money(stage):
     return "$" in blob or "£" in blob
 
 
+def _as_pop(event, label=None):
+    """Pop 1 on the frame the element first becomes visible. No whoosh lead."""
+    event.update({
+        "kind": "pop",
+        "file": POP_1,
+        "fixed_file": True,
+        "fixed_lead": True,
+        "role": "pop",
+        "budget_free": True,
+        "peak_bound": True,
+        "band": "high",
+        "combo": "19",
+        "label": label or event.get("label") or "Graphic entrance",
+        "sound_at": round(float(event["at"]), 3),
+        "under_db": 6.0,
+    })
+    event.pop("rotate", None)
+    event.pop("mute", None)
+    event.pop("mute_reason", None)
+    return event
+
+
+def _negative_hit(at, lands_on=""):
+    return {
+        "at": round(float(at), 3),
+        "sound_at": round(float(at), 3),
+        "kind": "error",
+        "file": WRONG_ANSWER,
+        "fixed_file": True,
+        "fixed_lead": True,
+        "role": "negative",
+        "combo": "24",
+        "label": "Wrong Answer",
+        "under_db": 6.0,
+        "band": "noise",
+        "lands_on": lands_on,
+    }
+
+
 def decorate_events(motif, events, stage, start, end):
     """Attach pack files without moving the animation time or the kind.
 
@@ -291,16 +398,10 @@ def decorate_events(motif, events, stage, start, end):
                 event.setdefault("combo", "8")
                 event.setdefault("label", "UI swipe")
                 event.setdefault("rotate", "ui")
-    if motif in {"phone_frame", "broll_card"}:
+    if motif in {"phone_frame", "broll_card", "highlight_box", "cursor_mock"}:
         for event in events:
             if event["kind"] == "whoosh":
-                event["label"] = "Graphic entrance"
-    if motif == "phone_frame" and not stage.get("enter_after") and not stage.get("scan") and not stage.get("scroll"):
-        # A held handset only drifts. A swipe on that cut has no entrance to land on.
-        for event in events:
-            if event.get("kind") == "whoosh":
-                event["mute"] = True
-                event["mute_reason"] = "no entrance"
+                _as_pop(event, "Graphic entrance")
     if motif in {"phone_frame", "broll_card", "hand_circle"}:
         draw = 0.45 if motif == "hand_circle" else float((stage.get("callout") or {}).get("draw") or 0.36)
         for event in events:
@@ -316,22 +417,15 @@ def decorate_events(motif, events, stage, start, end):
         for index, event in enumerate(events):
             if event["kind"] == "error":
                 event.update({
-                    "file": BUZZER, "combo": "24", "label": "Graphic entrance",
-                    "fixed_file": True, "under_db": 8.0, "trim_frames": 8,
-                    "fade_frames": 3, "band": "noise",
+                    "file": WRONG_ANSWER, "combo": "24", "label": "Wrong Answer",
+                    "role": "negative", "fixed_file": True, "under_db": 6.0,
+                    "band": "noise", "sound_at": round(float(event["at"]), 3),
                 })
                 continue
-            event.update({
-                "file": SWOOSH_FAST, "combo": "paper", "label": "Page swish",
-                "fixed_file": True, "under_db": 10.0, "band": "mid",
-            })
-            event["also"] = [{
-                "kind": "pop", "at": event["at"], "combo": "19",
-                "label": "Graphic entrance" if index == 0 else "Page pop",
-                "sound_at": event["at"], "band": "high",
-            }]
-            if index:
-                event["mute"] = True
+            # Each page pops on. Kind stays paper so the fan markup still builds
+            # one card per page. The sound is Pop 1, not a swoosh.
+            _as_pop(event, "Graphic entrance" if index == 0 else "Page pop")
+            event["kind"] = "paper"
     if motif == "vacuum_merge":
         ding = next(event for event in events if event["kind"] == "ding")
         for event in events:
@@ -351,37 +445,40 @@ def decorate_events(motif, events, stage, start, end):
                 event.setdefault("combo", "19")
                 event.setdefault("label", "Word Pop")
     if motif == "counter":
-        ticks = [event for event in events if event["kind"] == "ticking"]
-        for event in ticks:
-            event["mute"] = True
-            event["combo"] = "25"
-            event["label"] = "Counter tick"
         money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
+        negative = _negative_meaning(stage) and not money
         land = round(_counter_lock(start, end, stage), 3)
-        # Ka Ching has about 90 ms of mechanism noise before the hit. The bell does not.
+        origin = int(stage.get("from") or 0)
+        target = int(stage.get("value") if stage.get("value") is not None else 0)
+        events = [event for event in events if event.get("kind") != "ticking"]
+        for moment in count_change_times(start, land, origin, target):
+            events.append({
+                "at": moment, "sound_at": moment, "kind": "ticking",
+                "file": UI_TICK, "combo": "25", "label": "Counter tick",
+                "fixed_file": True, "fixed_lead": True, "role": "tick",
+                "budget_free": True, "peak_bound": True, "under_db": 6.0, "band": "high",
+            })
+        # The digits themselves scale in on the first frame of the card.
+        events.append(_as_pop({"at": round(float(start), 3), "kind": "pop"}, "Graphic entrance"))
+        # Ka Ching has about 90 ms of mechanism noise before the hit.
         attack = 0.09 if money else 0.0
+        landing_file = KA_CHING if money else (WRONG_ANSWER if negative else BELL_5)
         for event in events:
             if event["kind"] != "ding":
                 continue
-            start_at = float(ticks[0]["at"]) if ticks else float(start)
-            roll = max(0.3, land - start_at)
             event.update({
-                "file": KA_CHING if money else BELL_5,
+                "file": landing_file,
                 "combo": "25", "label": "Number Counter",
-                "fixed_file": True, "under_db": 10.0, "trim_frames": 14, "fade_frames": 3,
-                "band": "high",
+                "fixed_file": True, "under_db": 6.0 if negative else 10.0,
+                "trim_frames": 14, "fade_frames": 3,
+                "band": "noise" if negative else "high",
+                "role": "negative" if negative else "landing",
                 "at": land,
                 "sound_at": round(max(0.0, land - attack), 3),
             })
             event.pop("mute", None)
             event.pop("mute_reason", None)
-            # The loop is the whole roll. It shares the bell's one budget slot.
-            event["bed"] = {
-                "kind": "ticking", "at": start_at,
-                "file": UI_30, "combo": "25", "label": "Number Counter",
-                "under_db": 13.0, "loop": round(roll, 3), "fixed_file": True, "band": "bed",
-                "budget_free": True,
-            }
+            event.pop("bed", None)
     if motif == "bar_chart" and stage.get("reveal") == "slice":
         riser = next(event for event in events if event["kind"] == "riser")
         riser.update({
@@ -400,80 +497,51 @@ def decorate_events(motif, events, stage, start, end):
         seen_pop = False
         for event in events:
             if event["kind"] == "pop":
-                if not seen_pop:
-                    event["combo"] = "20"
-                    event["label"] = "Chart entrance"
-                    event["sound_at"] = round(float(event["at"]), 3)
-                    seen_pop = True
-                else:
-                    event.setdefault("combo", "19")
-                    event.setdefault("label", "Word Pop")
-                    event["sound_at"] = _land(event["at"], end, 0.08)
+                _as_pop(event, "Chart entrance" if not seen_pop else "Word Pop")
+                seen_pop = True
             elif event["kind"] == "error":
                 event.update({
-                    "file": BUZZER, "combo": "24", "label": "Wrong Answer",
-                    "fixed_file": True, "under_db": 6.0, "trim_frames": 8, "fade_frames": 3,
-                    "band": "noise",
+                    "file": WRONG_ANSWER, "combo": "24", "label": "Wrong Answer",
+                    "role": "negative", "fixed_file": True, "under_db": 6.0, "band": "noise",
+                    "sound_at": round(float(event["at"]), 3),
                 })
     if motif == "quote_card":
         card = events[0]
         if _money(stage):
             card.update({
                 "file": KA_CHING, "combo": "42", "label": "Money Shot", "kind": "pop",
-                "fixed_file": True, "under_db": 10.0,
+                "role": "landing", "fixed_file": True, "fixed_lead": True, "under_db": 10.0,
                 "sound_at": _land(card["at"], end, 0.18),
                 "band": "high",
             })
         else:
-            # The whoosh leads the card by 4 frames. It is not delayed onto the hold.
-            card.update({
-                "combo": "8", "label": "Graphic entrance", "band": "mid",
-                "rotate": "whoosh", "kind": "whoosh",
-                "sound_at": round(max(0.0, float(card["at"]) - 4.0 / 30.0), 3),
-                "fixed_lead": True,
-            })
+            # The card pops on. Pop 1 lands on that frame, not a leading whoosh.
+            _as_pop(card, "Graphic entrance")
         for extra in events[1:]:
             if extra.get("kind") == "pop" and abs(float(extra.get("at", 0)) - float(card["at"])) < 0.05:
                 extra["mute"] = True
                 extra["mute_reason"] = "stacked"
-        tick_n = 0
         money_at = float(card.get("sound_at", card.get("at", 0)))
         for event in events:
             if event["kind"] == "ticking":
-                event.update({
-                    "file": LIST_BELLS[tick_n % len(LIST_BELLS)], "combo": "22", "label": "List Tick",
-                    "fixed_file": True, "trim_frames": 8, "fade_frames": 3,
-                    "sound_at": event["at"], "band": "high",
-                })
-                # A list bell  a few milliseconds before the cash register is buried in it.
+                # A list item that pops within 40 ms of the cash register is buried in it.
                 if _money(stage) and abs(float(event["at"]) - money_at) < 0.04:
                     event["mute"] = True
                     event["mute_reason"] = "stacked"
-                tick_n += 1
+                else:
+                    _as_pop(event, "List Tick")
             elif event["kind"] == "error":
                 event.update({
-                    "file": BUZZER, "combo": "24", "label": "Wrong Answer",
-                    "fixed_file": True, "under_db": 6.0, "trim_frames": 8, "fade_frames": 3,
-                    "band": "noise",
+                    "file": WRONG_ANSWER, "combo": "24", "label": "Wrong Answer",
+                    "role": "negative", "fixed_file": True, "under_db": 6.0, "band": "noise",
+                    "sound_at": round(float(event["at"]), 3),
                 })
+        if not _money(stage) and _negative_meaning(stage):
+            events.append(_negative_hit(card["at"]))
     if motif == "numbered_list":
-        if stage.get("variant") == "cards":
-            for event in events:
-                event.update({
-                    "kind": "pop", "combo": "19", "label": "Graphic entrance",
-                    "sound_at": round(float(event["at"]), 3), "band": "high",
-                })
-                event.pop("file", None)
-                event.pop("fixed_file", None)
-        else:
-            for index, event in enumerate(events):
-                event.update({
-                    "file": LIST_BELLS[index % len(LIST_BELLS)], "combo": "22", "label": "List Tick",
-                    "fixed_file": True, "trim_frames": 8, "fade_frames": 3, "band": "high",
-                })
-            if events:
-                events[0]["label"] = "Graphic entrance"
-                events[0]["combo"] = "19"
+        for index, event in enumerate(events):
+            label = "Graphic entrance" if index == 0 else "List Tick"
+            _as_pop(event, label)
     if motif == "offer_pair":
         items = [str(item) for item in (stage.get("items") or [])]
         money_n = 0
@@ -487,18 +555,7 @@ def decorate_events(motif, events, stage, start, end):
                 })
                 money_n += 1
             else:
-                event.update({
-                    "combo": "19", "label": "Word Pop", "band": "high",
-                    "sound_at": round(float(event["at"]), 3),
-                })
-        # The hook boom already hits this pair. A second money hit, and a hit
-        # delayed off the cards, is what pushed the reel over 20 per minute.
-        if events and float(events[0].get("at", 0)) < 0.5:
-            events[0]["mute"] = True
-            events[0]["mute_reason"] = "stacked"
-        if len(events) > 1:
-            events[1]["mute"] = True
-            events[1]["mute_reason"] = "stacked"
+                _as_pop(event, "Word Pop")
     if motif == "state_swap":
         for event in events:
             if event["kind"] == "whoosh":
@@ -508,9 +565,9 @@ def decorate_events(motif, events, stage, start, end):
                 event.update({"combo": "19", "label": "Word Pop", "sound_at": _land(event["at"], end, 0.26)})
             elif event["kind"] == "error":
                 event.update({
-                    "file": BUZZER, "combo": "24", "label": "Wrong Answer",
-                    "fixed_file": True, "under_db": 6.0, "trim_frames": 8, "fade_frames": 3,
-                    "band": "noise",
+                    "file": WRONG_ANSWER, "combo": "24", "label": "Wrong Answer",
+                    "role": "negative", "fixed_file": True, "under_db": 6.0, "band": "noise",
+                    "sound_at": round(float(event["at"]), 3),
                 })
             elif event["kind"] == "ding":
                 event.update({
@@ -538,11 +595,14 @@ def decorate_events(motif, events, stage, start, end):
     if motif in {"thumbnail_grid", "mind_map", "logo_row", "pill", "hero_board"}:
         for event in events:
             if event["kind"] == "pop":
-                event.setdefault("combo", "19")
-                event.setdefault("label", "Word Pop")
-                # The hero board's pop was landing 4-5 frames before the card.
-                delay = 2.0 / 30.0 if motif == "pill" else (0.15 if motif == "hero_board" else 0.0)
-                event.setdefault("sound_at", _land(event["at"], end, delay))
+                _as_pop(event, event.get("label") or "Word Pop")
+            elif event["kind"] == "whoosh":
+                # The panel pops on. A whoosh on that same frame is not a slide.
+                event["mute"] = True
+                event["mute_reason"] = "pop-on"
+        if motif == "hero_board" and _negative_meaning(stage):
+            pop_at = next((event["at"] for event in events if event.get("kind") == "pop"), start)
+            events.append(_negative_hit(pop_at))
     defaults = {
         "pop": (None, "19", "Word Pop"),
         "whoosh": (None, "8", "Panel slide"),
@@ -552,7 +612,7 @@ def decorate_events(motif, events, stage, start, end):
         "ding": (BELL_5, "bell", "Bell"),
         "bass": (None, "2", "Cold Slam"),
         "riser": (RISER_12, "1", "Hard Open"),
-        "error": (BUZZER, "24", "Wrong Answer"),
+        "error": (WRONG_ANSWER, "24", "Wrong Answer"),
         "marker": (None, "callout", "Callout swish"),
         "paper": (None, "paper", "Page swish"),
     }
@@ -566,6 +626,37 @@ def decorate_events(motif, events, stage, start, end):
             event["rotate"] = "whoosh"
         event.setdefault("band", _band(event))
     return events
+
+
+def _stamp_budget(cue):
+    """Pops and count ticks sit outside the 20-per-minute cap.
+
+    Brandon requires a pop on every pop-on, and one tick on every displayed
+    number change. Those cues are logged apart from the capped set.
+    """
+    kind = cue.get("kind")
+    path = str(cue.get("file") or "")
+    if not cue.get("role"):
+        if "Wrong Answer" in path or kind == "error":
+            cue["role"] = "negative"
+        elif kind == "ticking" or "Ui Sound 12" in path:
+            cue["role"] = "tick"
+        elif kind == "pop" and "Ka Ching" not in path and str(cue.get("combo")) != "42":
+            cue["role"] = "pop"
+        elif kind in {"whoosh", "riser", "marker", "paper"}:
+            cue["role"] = "whoosh"
+        elif kind in {"ding", "bass"} or "Ka Ching" in path or "Bell" in path:
+            cue["role"] = "landing"
+        else:
+            cue["role"] = "landing"
+    if cue.get("role") == "pop":
+        cue["budget_free"] = True
+        cue.setdefault("file", POP_1)
+        cue["peak_bound"] = True
+    if cue.get("role") == "tick" and kind == "ticking":
+        cue["budget_free"] = True
+        cue["peak_bound"] = True
+        cue.setdefault("file", UI_TICK)
 
 
 def _band(cue):
@@ -678,8 +769,7 @@ def _collapse_repeats(flat, window=0.45):
         cue = flat[index]
         key = str(cue.get("label") or cue.get("combo") or cue.get("kind"))
         moment = float(cue.get("sound_at", cue["at"]))
-        if _count_roll(cue):
-            last[key] = moment
+        if _count_roll(cue) or cue.get("budget_free"):
             continue
         if key in last and moment - last[key] < window:
             cue["mute"] = True
@@ -724,6 +814,8 @@ def _mute_whoosh_beside_card(flat):
     ]
     for cue in flat:
         if cue.get("mute") or cue.get("label") != "Chapter header":
+            continue
+        if cue.get("budget_free") or cue.get("kind") == "pop":
             continue
         visual = float(cue.get("at", 0))
         if any(abs(visual - at) < 0.45 for at in pops):
@@ -1016,6 +1108,7 @@ def finish_sfx(cues, fps, unders, under_db):
             cue["under_db"] = float((unders or {}).get(kind, under_db.get(kind, 13.0)))
         cue["band"] = _band(cue)
         cue["priority"] = _priority(cue)
+        _stamp_budget(cue)
     lead = 4.0 / float(fps or 30)
     for cue in flat:
         if cue.get("mute") or cue.get("fixed_lead") or cue.get("align") == "end":
@@ -1041,6 +1134,8 @@ def finish_sfx(cues, fps, unders, under_db):
     for index in order:
         cue = flat[index]
         if cue.get("mute"):
+            continue
+        if cue.get("budget_free"):
             continue
         if cue.get("band") == "bed" or float(cue.get("under_db") or 0) >= 20:
             continue
@@ -1080,20 +1175,12 @@ def finish_sfx(cues, fps, unders, under_db):
         for index in ranked[3:]:
             flat[index]["mute"] = True
     _limit_density(flat)
-    pop_turn = 0
-    heard = sorted(
-        (index for index, cue in enumerate(flat)
-         if not cue.get("mute") and cue.get("kind") == "pop"
-         and str(cue.get("combo")) in {"19", "20", "callout"}),
-        key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
-    )
-    for index in heard:
-        # Combo 20 on the keyword box keeps its pack file, not the rotating cycle.
-        if flat[index].get("fixed_file") and flat[index].get("file"):
+    for cue in flat:
+        if cue.get("mute") or cue.get("role") != "pop":
             continue
-        flat[index]["file"] = POP_CYCLE[pop_turn % len(POP_CYCLE)]
-        pop_turn += 1
-    _separate_bells(flat)
+        cue["file"] = POP_1
+        cue["fixed_file"] = True
+        cue["budget_free"] = True
     for cue in flat:
         if cue.get("mute") or cue.get("file"):
             continue

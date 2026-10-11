@@ -2323,6 +2323,18 @@ def mix_cues(voice, rate, cues, library=None):
         target = voice_lufs - under
         gain_db = float(np.clip(target - cue_lufs, -40.0, 12.0))
         gain = 10 ** (gain_db / 20.0)
+        from kallaway_pack import MAKEUP_FILES, PEAK_CEILING
+        cue_name = Path(str(prepared_cue.get("file") or "")).name
+        peak_linear = float(info.get("peak_linear") or 1.0)
+        if cue_name in MAKEUP_FILES:
+            # Already peak-bound in load(). Do not duck this under the voice.
+            gain = 1.0
+            gain_db = 0.0
+        elif cue_name == "Wrong Answer.mp3":
+            ceiling_gain = PEAK_CEILING / max(peak_linear, 1e-8)
+            if gain > ceiling_gain:
+                gain = ceiling_gain
+                gain_db = 20.0 * math.log10(max(gain, 1e-8))
         offset = int(round(body_at * RATE))
         chunk = prepared[offset:]
         if offset > 0 and len(chunk):

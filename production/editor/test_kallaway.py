@@ -1185,13 +1185,17 @@ class KallawayTests(unittest.TestCase):
         phone = next(shot for shot in timeline["shots"] if shot.get("layout") == "split")
         self.assertEqual(phone["stage"].get("enter_after"), 0.20)
         events = stage_events("phone_frame", phone["start"], phone["end"], phone["stage"])
-        whoosh = next(event for event in events if event["kind"] == "whoosh")
-        self.assertGreaterEqual(whoosh["at"], phone["start"] + 0.18)
-        self.assertFalse(whoosh.get("mute"))
+        pop = next(event for event in events if event["kind"] == "pop")
+        self.assertGreaterEqual(pop["at"], phone["start"] + 0.18)
+        self.assertFalse(pop.get("mute"))
+        self.assertIn("Pop 1", pop["file"])
+        self.assertEqual(pop.get("role"), "pop")
+        self.assertAlmostEqual(pop["sound_at"], pop["at"], places=3)
         held = stage_events("phone_frame", 8.665, 13.455, {"motif": "phone_frame"})
-        swipe = next(event for event in held if event["kind"] == "whoosh")
-        self.assertTrue(swipe.get("mute"))
-        self.assertEqual(swipe.get("mute_reason"), "no entrance")
+        held_pop = next(event for event in held if event["kind"] == "pop")
+        self.assertFalse(held_pop.get("mute"))
+        self.assertIn("Pop 1", held_pop["file"])
+        self.assertAlmostEqual(held_pop["sound_at"], held_pop["at"], places=3)
 
     def test_vault_pages_keep_body_lines_and_keep_moving(self):
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
@@ -1764,24 +1768,22 @@ class KallawayTests(unittest.TestCase):
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
-        self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking"))
+        heard_ticks = [event for event in ticks if event["kind"] == "ticking" and not event.get("mute")]
+        self.assertTrue(heard_ticks)
+        self.assertTrue(all("Ui Sound 12" in event["file"] for event in heard_ticks))
+        self.assertTrue(all(event.get("budget_free") and event.get("role") == "tick" for event in heard_ticks))
         ding = next(event for event in ticks if event["kind"] == "ding")
         self.assertEqual(ding["combo"], "25")
         self.assertFalse(ding.get("mute"))
         self.assertIn("Bell 5", ding["file"])
-        self.assertIn("Ui 30", ding["bed"]["file"])
-        self.assertFalse(ding["bed"].get("mute"))
-        self.assertGreater(float(ding["bed"]["loop"]), 0.4)
-        self.assertTrue(ding["bed"].get("budget_free"))
-        self.assertAlmostEqual(float(ding["bed"]["at"]) + float(ding["bed"]["loop"]), float(ding["at"]), delta=0.02)
-        self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
+        self.assertNotIn("bed", ding)
+        self.assertAlmostEqual(max(event["at"] for event in heard_ticks), float(ding["at"]), delta=0.02)
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
-        self.assertIn("Swoosh Fast", pages[0].get("file", ""))
-        self.assertTrue(all(event.get("mute") for event in pages[1:]))
-        self.assertTrue(all(
-            any(extra.get("kind") == "pop" for extra in (event.get("also") or []))
-            for event in pages))
-        self.assertEqual(pages[0]["also"][0]["label"], "Graphic entrance")
+        self.assertTrue(all(event["kind"] == "paper" for event in pages))
+        self.assertTrue(all("Pop 1" in event.get("file", "") for event in pages))
+        self.assertTrue(all(not event.get("mute") for event in pages))
+        self.assertEqual(pages[0]["role"], "pop")
+        self.assertEqual(pages[0]["label"], "Graphic entrance")
         quote = stage_events("quote_card", 1.0, 2.4, {"text": "Better design = more money?"})
         self.assertEqual(quote[0]["label"], "Graphic entrance")
         money = stage_events("quote_card", 1.0, 2.4, {"variant": "receipt", "text": "$2,000", "items": ["JAN"]})
@@ -1818,39 +1820,39 @@ class KallawayTests(unittest.TestCase):
                 "label": "Word Pop", "under_db": 13, "lands_on": "extra",
             })
         flat = finish_sfx(cues, 30, {}, UNDER_DB)
-        beds = [
+        ticks = [
             cue for cue in flat
-            if cue.get("label") == "Number Counter" and cue.get("loop") and not cue.get("mute")
+            if cue.get("label") == "Counter tick" and not cue.get("mute")
         ]
         bells = [
             cue for cue in flat
             if cue.get("label") == "Number Counter" and cue.get("kind") == "ding"
             and not cue.get("loop") and not cue.get("mute")
         ]
-        self.assertEqual(len(beds), 3)
+        self.assertGreaterEqual(len(ticks), 3)
         self.assertEqual(len(bells), 3)
         kept = finish_sfx([{
             "at": 44.4, "sound_at": 44.4, "kind": "pop", "combo": "20",
-            "file": "sfx/Pop 2.wav", "label": "Word Pop", "fixed_file": True,
-            "lands_on": "keyword box: WEBSITE", "under_db": 13,
+            "label": "Word Pop", "lands_on": "keyword box: WEBSITE", "under_db": 13,
         }], 30, {}, UNDER_DB)
-        self.assertEqual(kept[0]["file"], "sfx/Pop 2.wav")
+        self.assertIn("Pop 1.mp3", kept[0]["file"])
+        self.assertNotIn("Pop 2", kept[0]["file"])
         from kallaway_pack import keyword_pop_file
         pop = keyword_pop_file()
         self.assertIsNotNone(pop)
         self.assertFalse(Path(pop).is_absolute())
         self.assertTrue(str(pop).startswith("27 Pops"))
-        self.assertNotIn("Pop 2.wav", pop)
-        for bed in beds:
-            self.assertIn("Ui 30", bed["file"])
-            self.assertTrue(bed.get("budget_free"))
-            self.assertGreaterEqual(bed["loop"], 0.12)
-            landing = min(bells, key=lambda bell: abs(bell["at"] - (bed["at"] + bed["loop"])))
-            self.assertAlmostEqual(bed["at"] + bed["loop"], landing["at"], delta=0.02)
-            self.assertTrue(any(name in landing["file"] for name in ("Bell 5", "Bell 6", "Bell 7")))
-        heard_bells = [bell["file"] for bell in sorted(bells, key=lambda bell: bell["at"])]
-        self.assertEqual(len(set(heard_bells)), 3)
-        self.assertIn("Bell 5", heard_bells[0])
+        self.assertIn("Pop 1.mp3", pop)
+        self.assertNotIn("Pop 2", pop)
+        self.assertFalse((Path(__file__).resolve().parent / "sfx" / "Pop 2.wav").exists())
+        for bell in bells:
+            roll = [cue for cue in ticks if abs(cue["at"] - bell["at"]) < 1.2]
+            self.assertTrue(roll)
+            self.assertTrue(all("Ui Sound 12" in cue["file"] for cue in roll))
+            self.assertTrue(all(cue.get("budget_free") and cue.get("role") == "tick" for cue in roll))
+            self.assertAlmostEqual(max(cue["at"] for cue in roll), bell["at"], delta=0.02)
+            self.assertIn("Bell 5", bell["file"])
+            self.assertEqual(bell.get("role"), "landing")
 
     def test_a_count_up_tick_that_starts_in_a_short_gap_still_rolls(self):
         from kallaway_plan import anchor_sfx
@@ -1903,7 +1905,7 @@ class KallawayTests(unittest.TestCase):
             self.assertTrue(row["lands_on"], row)
             self.assertNotEqual(row["label"], "Loop Close")
             covered = gap_at(row["time"], gaps)
-            if covered is not None:
+            if covered is not None and row.get("role") == "whoosh":
                 visual = next(
                     float(cue.get("at", row["time"]))
                     for cue in planned["sfx"]
@@ -2010,14 +2012,32 @@ class KallawayTests(unittest.TestCase):
     def test_a_counter_bell_uses_the_visual_lock_when_the_value_is_zero(self):
         events = stage_events("counter", 20.0, 22.0, {"from": 56, "value": 0, "lock_at": 20.9, "label": "LEFT"})
         ding = next(event for event in events if event["kind"] == "ding")
-        bed = ding["bed"]
+        ticks = [event for event in events if event["kind"] == "ticking" and not event.get("mute")]
         self.assertAlmostEqual(ding["at"], 20.9, delta=0.02)
-        self.assertAlmostEqual(bed["at"] + bed["loop"], ding["at"], delta=0.02)
+        self.assertTrue(ticks)
+        self.assertAlmostEqual(max(event["at"] for event in ticks), ding["at"], delta=0.02)
+        self.assertIn("Bell 5", ding["file"])
+        negative = stage_events("counter", 7.45, 8.665, {
+            "from": 0, "value": 56, "negative": True, "lock_at": 7.57, "label": "ACCESSIBILITY ERRORS",
+        })
+        landing = next(event for event in negative if event["kind"] == "ding")
+        neg_ticks = [event for event in negative if event["kind"] == "ticking" and not event.get("mute")]
+        self.assertIn("Wrong Answer", landing["file"])
+        self.assertEqual(landing.get("role"), "negative")
+        self.assertNotIn("Bell", landing["file"])
+        self.assertAlmostEqual(landing["at"], 7.57, delta=0.02)
+        self.assertAlmostEqual(max(event["at"] for event in neg_ticks), landing["at"], delta=0.02)
+        self.assertAlmostEqual(landing["sound_at"], landing["at"], delta=0.02)
 
     def test_the_hero_pop_lands_with_the_board(self):
         events = stage_events("hero_board", 1.855, 4.3, {"value": "56"})
-        pop = next(event for event in events if event["kind"] == "pop")
-        self.assertAlmostEqual(pop["sound_at"], 2.005, delta=0.02)
+        pop = next(event for event in events if event["kind"] == "pop" and not event.get("mute"))
+        self.assertAlmostEqual(pop["sound_at"], 1.855, delta=0.02)
+        self.assertIn("Pop 1", pop["file"])
+        errors = stage_events("hero_board", 1.855, 4.3, {"value": "56", "label": "ACCESSIBILITY ERRORS"})
+        wrong = next(event for event in errors if event.get("role") == "negative")
+        self.assertIn("Wrong Answer", wrong["file"])
+        self.assertAlmostEqual(wrong["at"], 1.855, delta=0.02)
 
     def test_a_list_bell_on_the_cash_register_is_muted(self):
         from kallaway_pack import decorate_events

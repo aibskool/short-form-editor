@@ -318,6 +318,10 @@ def anchor_sfx(cues, words, fps=30):
             cue["mute"] = True
             cue["mute_reason"] = "no visual"
             continue
+        # A pop lands on the first visible frame, and a count tick lands on the
+        # displayed change. Neither is pulled off that frame for a pause.
+        if cue.get("role") in {"pop", "tick"}:
+            continue
         heard = float(cue.get("sound_at", cue.get("at", 0)))
         visual = float(cue.get("at", heard))
         kind = cue.get("kind")
@@ -487,6 +491,29 @@ def _pack_file_label(pack):
     return path.name
 
 
+def _sfx_role(cue):
+    if cue.get("role"):
+        return str(cue["role"])
+    kind = str(cue.get("kind") or "")
+    path = str(cue.get("file") or "")
+    if "Wrong Answer" in path or kind == "error":
+        return "negative"
+    if kind == "ticking" or "Ui Sound 12" in path:
+        return "tick"
+    if kind == "pop" and "Ka Ching" not in path:
+        return "pop"
+    if kind in {"whoosh", "riser", "marker", "paper"}:
+        return "whoosh"
+    return "landing"
+
+
+def sfx_log_document(rows):
+    """Pops are outside the density cap, so the written log keeps them apart."""
+    pops = [row for row in rows if row.get("role") == "pop"]
+    cues = [row for row in rows if row.get("role") != "pop"]
+    return {"schema": "kallaway-sfx-log/v2", "pops": pops, "cues": cues}
+
+
 def sfx_placement_rows(cues):
     """Audible cues only: when they play, which pack file, and the picture they hit."""
     rows = []
@@ -500,6 +527,7 @@ def sfx_placement_rows(cues):
             "pack_file": pack,
             "lands_on": str(cue.get("lands_on") or ""),
             "label": str(cue.get("label") or ""),
+            "role": _sfx_role(cue),
         })
     rows.sort(key=lambda row: (row["time"], row["file"], row["label"]))
     return rows
@@ -550,6 +578,7 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
             "lands_on": opening,
         })
     previous = None
+    from kallaway_pack import POP_1, _negative_meaning
     for header in headers or []:
         text = str(header.get("text") or "")
         at = float(header.get("start") or 0.0)
@@ -559,27 +588,39 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
                 for item in events
             )
             if not covered:
-                # The header slides in after the layout cut. The whoosh rides that motion.
+                # The header first becomes visible 0.12s after the cut, then scales in.
                 motion = round(at + 0.12, 3) if at > 0.3 else round(at, 3)
+                if header.get("payoff_style") == "box":
+                    events.append({
+                        "at": motion, "sound_at": motion, "kind": "pop", "combo": "19",
+                        "file": POP_1, "label": "Word Pop", "fixed_file": True, "fixed_lead": True,
+                        "role": "pop", "budget_free": True, "peak_bound": True, "band": "high",
+                        "lands_on": f"keyword box: {header.get('payoff') or header.get('emphasis') or text}",
+                    })
+                else:
+                    events.append({
+                        "at": motion, "sound_at": motion, "kind": "pop", "combo": "19",
+                        "file": POP_1, "label": "Chapter header", "fixed_file": True,
+                        "fixed_lead": True, "role": "pop", "budget_free": True, "peak_bound": True,
+                        "band": "high", "lands_on": f"chapter header: {text}",
+                    })
+                if _negative_meaning({"text": text}):
+                    events.append({
+                        "at": motion, "sound_at": motion, "kind": "error", "combo": "24",
+                        "file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+                        "label": "Wrong Answer", "fixed_file": True, "fixed_lead": True,
+                        "role": "negative", "under_db": 6.0, "band": "noise",
+                        "lands_on": f"chapter header: {text}",
+                    })
+        if text:
+            if previous is None and _negative_meaning({"text": text}):
                 events.append({
-                    "at": motion, "kind": "whoosh", "combo": "8",
-                    "label": "Chapter header", "rotate": "whoosh", "band": "mid",
+                    "at": round(at, 3), "sound_at": round(at, 3), "kind": "error", "combo": "24",
+                    "file": "00 Viral Reels Essentials/Wrong Answer.mp3",
+                    "label": "Wrong Answer", "fixed_file": True, "fixed_lead": True,
+                    "role": "negative", "under_db": 6.0, "band": "noise",
                     "lands_on": f"chapter header: {text}",
                 })
-        if header.get("payoff_style") == "box":
-            from kallaway_pack import keyword_pop_file
-            # The header slides for 0.24s starting 0.12s after the cut.
-            # The pop hits the frame the box is fully on, not the still-hidden start.
-            fully_on = round(at + 0.36, 3)
-            pop_file = keyword_pop_file()
-            if pop_file:
-                events.append({
-                    "at": fully_on, "kind": "pop", "combo": "20",
-                    "file": pop_file, "label": "Word Pop", "fixed_file": True,
-                    "band": "high", "sound_at": fully_on,
-                    "lands_on": f"keyword box: {header.get('payoff') or header.get('emphasis') or text}",
-                })
-        if text:
             previous = text
     if shots:
         duration = max(float(shot["end"]) for shot in shots)

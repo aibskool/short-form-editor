@@ -374,7 +374,9 @@ def check(timeline_path, words_path=None, project=None):
             and 0.05 <= lead <= 0.16
             and (gap_at(visual, gaps) is None if words else True)
         )
-        if covered is not None and not whoosh_lead:
+        # Pops and count ticks are required on the visible frame, including a
+        # pause. Whooshes, landings, and other cues still stay out of pauses.
+        if covered is not None and not whoosh_lead and cue.get("role") not in {"pop", "tick"}:
             errors.append(
                 f"sfx: {label} at {heard:.3f}s covers the pause after {covered.get('word')}; "
                 "pauses come from word alignment and stay clear of SFX")

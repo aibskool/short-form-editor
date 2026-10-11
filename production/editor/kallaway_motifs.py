@@ -345,7 +345,8 @@ def _stage_events(motif, start, end, stage=None):
         return [{"at": round(start, 3), "kind": "whoosh"},
                 {"at": round(start + 0.05, 3), "kind": "marker"}]
     if motif == "doc_fan":
-        count = int(stage.get("count", 5))
+        pages = stage.get("pages") or []
+        count = int(stage.get("count") or (len(pages) if pages else 5))
         if stage.get("strike"):
             events = [{"at": t, "kind": "paper"} for t in _times(start, min(end, start + 0.42), count, 0.4)]
             events.append({"at": _clamp(stage.get("strike_at", start + 0.5), start, end), "kind": "error"})
