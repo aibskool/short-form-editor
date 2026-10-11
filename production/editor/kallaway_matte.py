@@ -54,7 +54,7 @@ PLATE_VIGNETTE = 0.12
 PLATE_MOTION = 0.60
 # Source pixels the person mask grows before a pixel may enter the plate.
 PLATE_DILATE_PX = 36
-PLATE_RECIPE = "blur-cover-clean-v4"
+PLATE_RECIPE = "blur-cover-clean-v5"
 # Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
 BOUNDARY_RAMP_CARD_PX = 28.0
 # A hand that crosses the frame fades only across this many card pixels.
@@ -2549,38 +2549,26 @@ def _cover_crop(image, card_w, card_h):
 def _plate_holdout(mask, rgb, dilate_px):
     """Pixels that belong to the speaker, grown so a blur cannot pull him back in.
 
-    A small olive or green patch within a couple of percent of the frame height
-    of the silhouette is a shoulder leaf. It is held out so the plate does not
-    bake it in. A large foliage region, including the background, still moves.
+    Olive or green just outside the dilated silhouette is a shoulder leaf, even
+    when that leaf connects to the trees behind him. It is held out so the plate
+    does not paint it back into the hole. Foliage farther out still moves.
     """
     import cv2
 
     person = np.asarray(mask) >= 48
+    color = None
     if rgb is not None and np.asarray(rgb).shape[:2] == person.shape:
         color = np.asarray(rgb)
         person = person | _skin_mask(color)
-        if np.any(person):
-            leaves = (_olive_leak(color) | _foliage_green(color)) & ~person
-            if np.any(leaves):
-                labels, count = ndimage.label(leaves)
-                counts = np.bincount(labels.ravel())
-                near_px = max(8, int(round(max(person.shape) * 0.025)))
-                near = ndimage.distance_transform_edt(~person) <= near_px
-                limit = 0.004 * float(person.size)
-                drop = np.zeros(count + 1, dtype=bool)
-                for label in range(1, count + 1):
-                    area = int(counts[label])
-                    if area <= 0 or area > limit:
-                        continue
-                    if np.any((labels == label) & near):
-                        drop[label] = True
-                if drop.any():
-                    person = person | drop[labels]
     radius = int(max(0, dilate_px))
-    if radius <= 0 or not np.any(person):
-        return person
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
-    return cv2.dilate(person.astype(np.uint8), kernel) > 0
+    if radius > 0 and np.any(person):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+        person = cv2.dilate(person.astype(np.uint8), kernel) > 0
+    if color is not None and np.any(person):
+        near_px = max(8, int(round(max(person.shape) * 0.025)))
+        near = ndimage.distance_transform_edt(~person) <= near_px
+        person = person | ((_olive_leak(color) | _foliage_green(color)) & near)
+    return person
 
 
 def _match_hole_luma(clean, known, radius=28):

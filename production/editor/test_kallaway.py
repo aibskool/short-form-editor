@@ -1424,7 +1424,8 @@ class KallawayTests(unittest.TestCase):
         red_lead = (live[:, :, 0].astype(np.int16) > live[:, :, 1].astype(np.int16) + 12).mean()
         self.assertLess(float(red_lead), 0.02)
         moved = leaked.copy()
-        moved[100:140, 112:120] = (160, 210, 90)
+        # Beside the silhouette, and not foliage, so the shoulder-leaf holdout leaves it.
+        moved[100:140, 112:120] = (30, 30, 220)
         live_moved = compose_live_fill(moved, person, clean, 120, 64, sigma=16, motion=0.6)
         self.assertGreater(float(np.abs(live.astype(np.float32) - live_moved.astype(np.float32)).mean()), 0.15)
         from kallaway_pack import _limit_density
