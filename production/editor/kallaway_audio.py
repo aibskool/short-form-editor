@@ -73,10 +73,10 @@ def write_sfx_library(directory):
     written = {}
     for kind in SFX_KINDS:
         sources = kind_paths(kind)
-        if len(sources) < 2:
+        if not sources:
             raise FileNotFoundError(
                 f"kallaway sfx kind {kind} needs the Viral Reels pack at {pack_dir()} "
-                "(set SFX_PACK_DIR). At least two files are required.")
+                "(set SFX_PACK_DIR).")
         copied = []
         for index, source in enumerate(sources[:3], start=1):
             samples, _info = load(source)

@@ -348,7 +348,9 @@ def _write_sfx_log(timeline, project, output=None):
     from kallaway_plan import sfx_placement_rows
     rows = sfx_placement_rows(timeline.get("sfx"))
     timeline["sfx_log"] = rows
-    payload = {"schema": "kallaway-sfx-log/v1", "cues": rows}
+    pops = [row for row in rows if row.get("role") == "pop"]
+    rest = [row for row in rows if row.get("role") != "pop"]
+    payload = {"schema": "kallaway-sfx-log/v2", "pops": pops, "cues": rest}
     text = json.dumps(payload, indent=2) + "\n"
     path = Path(project) / "sfx-placement.json"
     path.write_text(text)

@@ -374,7 +374,10 @@ def check(timeline_path, words_path=None, project=None):
             and 0.05 <= lead <= 0.16
             and (gap_at(visual, gaps) is None if words else True)
         )
-        if covered is not None and not whoosh_lead:
+        # Pop 1, the digit tick, and Wrong Answer are pinned to the frame the
+        # element or the number appears. A word gap under that frame stays.
+        on_frame = cue.get("kind") in {"pop", "ticking", "error"} and abs(lead) <= 0.02
+        if covered is not None and not whoosh_lead and not on_frame:
             errors.append(
                 f"sfx: {label} at {heard:.3f}s covers the pause after {covered.get('word')}; "
                 "pauses come from word alignment and stay clear of SFX")

@@ -1447,13 +1447,14 @@ class KallawayTests(unittest.TestCase):
         add(18.8, "19", "Graphic entrance", "pop")
         add(22.5, "8", "Panel slide", "whoosh")
         _limit_density(cues)
-        heard = [cue["label"] for cue in cues if not cue.get("mute")]
+        heard = [cue["label"] for cue in cues if not cue.get("mute") and not cue.get("budget_free")]
         self.assertLessEqual(len(heard), 7)
-        self.assertEqual(heard.count("Graphic entrance"), 2)
+        pops = [cue for cue in cues if cue["kind"] == "pop" and not cue.get("mute")]
+        self.assertEqual(len(pops), 2)
+        self.assertTrue(all(cue.get("budget_free") for cue in pops))
         self.assertIn("Number Counter", heard)
         self.assertIn("Cold Slam", heard)
         self.assertIn("Chapter header", heard)
-        self.assertTrue(cues[-1].get("mute"))
 
     def test_a_second_phone_keeps_its_whoosh_near_20_per_minute(self):
         from kallaway_pack import _limit_density
@@ -1513,23 +1514,31 @@ class KallawayTests(unittest.TestCase):
         add(21.4, "8", "Graphic entrance", "whoosh")
         add(24.4, "47", "Loop Close", "whoosh")
         _limit_density(cues)
-        heard = [cue["label"] for cue in cues if not cue.get("mute")]
+        heard = [cue["label"] for cue in cues if not cue.get("mute") and not cue.get("budget_free")]
         self.assertIn("Typewriter Line", heard)
         self.assertIn("Number Counter", heard)
         self.assertLessEqual(len(heard) * 60.0 / 24.4, 20.6)
+        pops = [cue for cue in cues if cue["kind"] == "pop" and not cue.get("mute")]
+        self.assertEqual(len(pops), 4)
 
     def test_pack_cues_follow_the_combo_guide(self):
         from kallaway_pack import BACKWARDS, load, pack_ready, render, resolve
         ticks = stage_events("counter", 1.0, 2.4, {"value": 7, "items": ["A", "B"]})
-        self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking"))
+        self.assertTrue(all(event.get("mute") for event in ticks if event["kind"] == "ticking" and not event.get("file")))
         ding = next(event for event in ticks if event["kind"] == "ding")
         self.assertEqual(ding["combo"], "25")
         self.assertFalse(ding.get("mute"))
         self.assertIn("Bell 5", ding["file"])
-        self.assertIn("Ui 30", ding["bed"]["file"])
-        self.assertFalse(ding["bed"].get("mute"))
-        self.assertGreater(float(ding["bed"]["loop"]), 0.4)
-        self.assertTrue(ding["bed"].get("budget_free"))
+        self.assertNotIn("bed", ding)
+        digit_ticks = [extra for extra in ding["also"] if extra.get("role") == "tick"]
+        self.assertTrue(digit_ticks)
+        self.assertTrue(all("Ui Sound 12" in extra["file"] for extra in digit_ticks))
+        self.assertEqual(digit_ticks[-1]["at"], ding["at"])
+        self.assertEqual(digit_ticks[-1]["sound_at"], ding["sound_at"])
+        self.assertTrue(all(extra.get("budget_free") for extra in digit_ticks))
+        card_pops = [extra for extra in ding["also"] if extra.get("role") == "pop"]
+        self.assertTrue(card_pops)
+        self.assertTrue(all(extra["file"].endswith("Pop 1.mp3") for extra in card_pops))
         self.assertTrue(all(event["kind"] == "paper" for event in stage_events("doc_fan", 1.0, 2.4, {"count": 3})))
         pages = stage_events("doc_fan", 1.0, 2.4, {"count": 3})
         self.assertIn("Swoosh Fast", pages[0].get("file", ""))
@@ -1540,19 +1549,58 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(pages[0]["also"][0]["label"], "Graphic entrance")
         quote = stage_events("quote_card", 1.0, 2.4, {"text": "Better design = more money?"})
         self.assertEqual(quote[0]["label"], "Graphic entrance")
+        self.assertEqual(quote[0]["kind"], "pop")
+        self.assertTrue(quote[0]["file"].endswith("Pop 1.mp3"))
+        self.assertEqual(quote[0]["role"], "pop")
+        self.assertEqual(quote[0]["sound_at"], quote[0]["at"])
         money = stage_events("quote_card", 1.0, 2.4, {"variant": "receipt", "text": "$2,000", "items": ["JAN"]})
-        self.assertEqual(money[0]["combo"], "42")
-        self.assertIn("Ka Ching", money[0]["file"])
+        self.assertTrue(money[0]["file"].endswith("Pop 1.mp3"))
+        cash = next(extra for extra in money[0]["also"] if "Ka Ching" in extra["file"])
+        self.assertEqual(cash["combo"], "42")
+        self.assertEqual(cash["role"], "landing")
         merge = stage_events("vacuum_merge", 1.0, 2.4, {"items": ["A", "B"]})
         suck = next(event for event in merge if event["kind"] == "whoosh")
         self.assertEqual(suck["align"], "end")
         self.assertIn("Cinematic Reverse", suck["file"])
         self.assertEqual(suck["sound_at"], next(event["at"] for event in merge if event["kind"] == "ding"))
-        marker = next(event for event in stage_events("phone_frame", 0.0, 3.0, {
+        phone = stage_events("phone_frame", 0.0, 3.0, {
             "callout": {"at": 1.2, "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.2},
-        }) if event["kind"] == "marker")
+        })
+        marker = next(event for event in phone if event["kind"] == "marker")
         self.assertEqual(marker["at"], 1.2)
         self.assertEqual(marker["combo"], "callout")
+        entrance = phone[0]
+        self.assertEqual(entrance["kind"], "pop")
+        self.assertTrue(entrance["file"].endswith("Pop 1.mp3"))
+        self.assertEqual(entrance["sound_at"], entrance["at"])
+        lost = stage_events("counter", 1.0, 2.4, {"value": 4, "negative": True, "label": "lost sales"})
+        lost_land = next(event for event in lost if event.get("role") == "negative")
+        lost_ticks = [extra for extra in lost_land["also"] if extra.get("role") == "tick"]
+        self.assertTrue(lost_land["file"].endswith("Wrong Answer.mp3"))
+        self.assertEqual(lost_ticks[-1]["at"], lost_land["at"])
+        self.assertNotIn("Bell", lost_land["file"])
+        offers = stage_events("offer_pair", 0.0, 2.0, {"items": ["$2,000|UPFRONT", "FREE BUILD|$300-400/MO"]})
+        self.assertTrue(all(event["file"].endswith("Pop 1.mp3") for event in offers))
+        self.assertFalse(any(event.get("mute") for event in offers))
+        self.assertTrue(any(extra.get("role") == "negative" for extra in offers[0].get("also") or []))
+        self.assertTrue(any("Ka Ching" in extra.get("file", "") for extra in offers[1].get("also") or []))
+        from kallaway_pack import POP_1, UI_12, WRONG_ANSWER, _PEAK_TARGET, load, resolve
+        pop_samples, pop_info = load(resolve(POP_1))
+        tick_samples, tick_info = load(resolve(UI_12))
+        wrong_samples, wrong_info = load(resolve(WRONG_ANSWER))
+        self.assertLessEqual(float(np.max(np.abs(pop_samples))), 1.0)
+        self.assertLessEqual(float(np.max(np.abs(tick_samples))), 1.0)
+        self.assertAlmostEqual(float(np.max(np.abs(pop_samples))), _PEAK_TARGET, places=3)
+        self.assertAlmostEqual(float(np.max(np.abs(tick_samples))), _PEAK_TARGET, places=3)
+        self.assertLess(pop_info["clip_gain_db"], 0.0)
+        self.assertGreater(tick_info["clip_gain_db"], 0.0)
+        self.assertLess(float(np.max(np.abs(wrong_samples))), 0.6)
+        self.assertEqual(wrong_info["clip_gain_db"], 0.0)
+        from kallaway_pack import count_tick_times
+        times, land = count_tick_times(6.0, 15)
+        self.assertEqual(times[-1], land)
+        self.assertEqual(len(times), len(set(times)))
+        self.assertGreater(len(times), 4)
         if not pack_ready():
             return
         samples, info = load(resolve(BACKWARDS))
@@ -1598,13 +1646,16 @@ class KallawayTests(unittest.TestCase):
             self.assertTrue(row["lands_on"], row)
             self.assertNotEqual(row["label"], "Loop Close")
             covered = gap_at(row["time"], gaps)
+            self.assertIn(row["role"], {"pop", "negative", "tick", "landing", "whoosh", "impact", "typing"})
             if covered is not None:
-                visual = next(
-                    float(cue.get("at", row["time"]))
-                    for cue in planned["sfx"]
+                cue = next(
+                    cue for cue in planned["sfx"]
                     if abs(float(cue.get("sound_at", cue.get("at", -1))) - float(row["time"])) < 0.001
                     and not cue.get("mute")
                 )
+                visual = float(cue.get("at", row["time"]))
+                if cue.get("kind") in {"pop", "ticking", "error"} and abs(visual - float(row["time"])) <= 0.02:
+                    continue
                 self.assertGreaterEqual(visual - float(row["time"]), 0.05)
                 self.assertLessEqual(visual - float(row["time"]), 0.16)
                 self.assertIsNone(gap_at(visual, gaps))

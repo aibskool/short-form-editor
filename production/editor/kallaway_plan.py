@@ -325,6 +325,10 @@ def anchor_sfx(cues, words, fps=30):
             if gap_at(visual, gaps) is None:
                 cue["sound_at"] = round(max(0.0, visual - lead), 3)
                 continue
+        # A pop, a digit tick, and a negative hit stay on the frame they belong
+        # to. Moving them out of a short word gap would miss the picture.
+        if kind in {"pop", "ticking", "error"} and abs(visual - heard) <= 0.02:
+            continue
         if gap_at(heard, gaps) is None:
             continue
         if gap_at(visual, gaps) is None and abs(visual - heard) <= 0.35:
@@ -515,7 +519,13 @@ def apply_sfx_shifts(timeline, shifts):
 def _shift_counters(timeline, originals, starts):
     """Keep the count-up bell on the snapped shot, with the digits."""
     for cue in timeline.get("sfx") or []:
-        if cue.get("mute") or cue.get("label") != "Number Counter":
+        lands = str(cue.get("lands_on") or "")
+        counter_hit = lands == "counter" or lands.startswith("counter:")
+        roll = (
+            cue.get("label") in {"Number Counter", "Count tick", "Graphic entrance", "Money Shot", "Wrong Answer"}
+            or cue.get("role") in {"tick", "landing", "negative", "pop"}
+        )
+        if cue.get("mute") or not (counter_hit and roll):
             continue
         visual = float(cue.get("at", cue.get("sound_at", 0)))
         index = None
@@ -547,9 +557,34 @@ def sfx_placement_rows(cues):
             "pack_file": pack,
             "lands_on": str(cue.get("lands_on") or ""),
             "label": str(cue.get("label") or ""),
+            "role": _cue_role(cue),
         })
     rows.sort(key=lambda row: (row["time"], row["file"], row["label"]))
     return rows
+
+
+def _cue_role(cue):
+    """Log role. Pops are listed apart from the capped cues."""
+    named = cue.get("role")
+    if named in {"pop", "negative", "tick", "landing", "whoosh", "impact", "typing"}:
+        return named
+    kind = cue.get("kind")
+    path = str(cue.get("file") or "")
+    if kind == "pop" or path.endswith("Pop 1.mp3"):
+        return "pop"
+    if kind == "error" or "Wrong Answer" in path:
+        return "negative"
+    if "Ui Sound 12" in path or (kind == "ticking" and cue.get("role") == "tick"):
+        return "tick"
+    if kind == "bass":
+        return "impact"
+    if kind == "typing":
+        return "typing"
+    if kind in {"whoosh", "riser", "marker", "paper"}:
+        return "whoosh"
+    if kind in {"ding", "click"}:
+        return "landing"
+    return kind or ""
 
 
 def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
@@ -562,7 +597,7 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
     is muted. The loop-close whoosh has no entrance to land on, so it stays muted.
     """
     from kallaway_audio import UNDER_DB
-    from kallaway_pack import BOOM_14, COOL_WHOOSH, finish_sfx
+    from kallaway_pack import BOOM_14, COOL_WHOOSH, POP_1, finish_sfx, negative_copy, _wrong
     del styles
     unders = unders or {}
     fps = float(fps or 30)
@@ -601,16 +636,27 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
         text = str(header.get("text") or "")
         at = float(header.get("start") or 0.0)
         if previous and text and text != previous:
+            # A header that scales on gets Pop 1. Skip it when a pop-on is
+            # already on that frame, so two Pop 1s do not sum past the ceiling.
             covered = any(
-                item.get("kind") in {"whoosh", "riser"} and abs(float(item.get("at", 0)) - at) < 0.2
+                item.get("kind") in {"pop", "whoosh", "riser"}
+                and abs(float(item.get("at", 0)) - at) < 0.05
                 for item in events
             )
             if not covered:
                 events.append({
-                    "at": round(at, 3), "kind": "whoosh", "combo": "8",
-                    "label": "Chapter header", "rotate": "whoosh", "band": "mid",
+                    "at": round(at, 3), "kind": "pop", "file": POP_1, "combo": "19",
+                    "label": "Chapter header", "role": "pop", "budget_free": True,
+                    "fixed_file": True, "fixed_lead": True, "band": "high",
+                    "sound_at": round(at, 3),
                     "lands_on": f"chapter header: {text}",
                 })
+            if negative_copy(text) and not any(
+                item.get("kind") == "error" and abs(float(item.get("at", 0)) - at) < 0.3
+                for item in events
+            ):
+                hit = _wrong(at, f"chapter header: {text}")
+                events.append(hit)
         if text:
             previous = text
     if shots:
