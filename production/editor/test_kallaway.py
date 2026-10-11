@@ -147,6 +147,8 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(stage["chip"]["place"], "bottom")
         kept = _stage_from({"chip": {"text": "LIVE BUILD", "place": "bottom"}}, "phone_frame")
         self.assertEqual(kept["chip"]["place"], "bottom")
+        zoomed = _stage_from({"zoom": {"scale": 2, "x": 0.12, "y": 0.46}}, "phone_frame")
+        self.assertEqual(zoomed["zoom"]["scale"], 2)
 
     def test_a_stop_attack_150ms_ahead_stays_with_the_word(self):
         rate = 16000
@@ -397,6 +399,16 @@ class KallawayTests(unittest.TestCase):
         resolve_annotations(early, 1.0, 4.0)
         self.assertGreater(early["callout"]["at"], early["callout"]["cue_at"])
         self.assertGreaterEqual(early["callout"]["at"], early["motion"]["scroll_end"])
+        late = {
+            "motif": "phone_frame",
+            "scroll": {"from": 0, "to": 0.2, "at": 2.15, "duration": 1.2},
+            "callout": {"at": 2.40, "x": 0.2, "y": 0.4, "w": 0.3, "h": 0.08},
+        }
+        resolve_annotations(late, 0.0, 3.5)
+        self.assertGreaterEqual(late["motion"]["scroll_start"], 2.15)
+        self.assertGreater(late["motion"]["scroll_end"], 3.0)
+        self.assertLess(late["callout"]["at"], late["motion"]["scroll_end"])
+        self.assertGreaterEqual(late["callout"]["at"], 2.40)
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
                   "surface": "#242424", "border": "#333", "contrast": "#111", "warning": "#ECC94B", "on_accent": "#111"}
         section, animations, _events = motif_markup(
@@ -405,6 +417,16 @@ class KallawayTests(unittest.TestCase):
         ring = section.index('id="stage-0-ring"')
         self.assertLess(pan, ring)
         self.assertIn(f'tl.set("#stage-0-ring",{{opacity:1}},{stage["callout"]["at"]:.3f});', animations)
+        zoomed = {
+            "motif": "phone_frame",
+            "zoom": {"scale": 2, "x": 0.12, "y": 0.46},
+            "callout": {"at": 1.2, "x": 0.4, "y": 0.3, "w": 0.2, "h": 0.08},
+        }
+        resolve_annotations(zoomed, 0.0, 3.0)
+        _section, zoom_animations, _events = motif_markup(
+            "phone_frame", zoomed, 0.0, 3.0,
+            {"left": 0, "top": 0, "width": 400, "height": 700}, colors, "stage-z", None)
+        self.assertTrue(any("scale:2.000" in line and "stage-z-pan" in line for line in zoom_animations))
         bad = {
             "style": "kallaway", "theme": "ai-builder-school", "theme_mode": "dark",
             "output": {"width": 1080, "height": 1920, "fps": 30},
@@ -1771,6 +1793,31 @@ class KallawayTests(unittest.TestCase):
         self.assertFalse(cleaned[3, 3])
         self.assertFalse(cleaned[1, 74])
 
+    def test_a_leaf_halo_outside_the_crown_fails_and_shrinks(self):
+        from kallaway_matte import _shrink_green_crown, fringe_fails
+        height, width = 200, 160
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (28, 36, 30)
+        rgb[40:90, 36:124] = (36, 168, 42)
+        rgb[90:190, 40:120] = (220, 170, 150)
+        body = np.zeros((height, width), np.float32)
+        body[90:190, 40:120] = 1
+        bumped = body.copy()
+        bumped[72:90, 48:112] = 1
+        failed, soft, ring = fringe_fails(rgb, bumped)
+        self.assertTrue(failed)
+        self.assertGreater(ring, 0.15)
+        binary = bumped >= 0.5
+        for _ in range(32):
+            still, _soft, _ring = fringe_fails(rgb, binary.astype(np.float32))
+            if not still:
+                break
+            binary = _shrink_green_crown(binary, rgb, steps=1)
+        clean, _soft, ring = fringe_fails(rgb, binary.astype(np.float32))
+        self.assertFalse(clean)
+        self.assertLess(ring, 0.155)
+        self.assertGreater(int(binary[120, 80]), 0)
+
     def test_foliage_inside_the_matte_is_dropped(self):
         from kallaway_matte import _refine_opening, refine_frame
         height, width = 160, 120
@@ -1820,6 +1867,31 @@ class KallawayTests(unittest.TestCase):
         trimmed = trim_quiet_tails(vowel + hiss + nxt, rate, [(0.08, 0.90), (1.15, 1.45)], max_quiet=0.10)
         self.assertLessEqual(trimmed[0][1], 0.52)
         self.assertGreater(trimmed[0][1], 0.40)
+
+    def test_a_gap_trim_cannot_eat_a_fricative_tail(self):
+        from kallaway_audio import protect_aligned_tails, trim_quiet_tails
+        rate = 16000
+        t = np.arange(int(rate * 1.6)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.10) & (t < 0.40))
+        # A quiet /ts/ after a short closure. The pause trim treats it as air.
+        hiss = ((t >= 0.52) & (t < 0.68)).astype(np.float64) * 0.012 * np.sin(2 * np.pi * 7000 * t)
+        nxt = _voiced(t, 180, 0.35, (t >= 1.20) & (t < 1.40))
+        audio = vowel + hiss + nxt
+        trimmed = trim_quiet_tails(audio, rate, [(0.08, 0.90), (1.15, 1.45)], max_quiet=0.10)
+        self.assertLess(trimmed[0][1], 0.55)
+        words = [
+            {"word": "websites", "start": 0.10, "end": 0.70},
+            {"word": "and", "start": 1.18, "end": 1.40},
+        ]
+        kept = protect_aligned_tails(trimmed, words, audio, rate, margin=0.02)
+        self.assertGreaterEqual(kept[0][1], 0.70)
+        self.assertLess(kept[0][1], 1.10)
+        # Air past the aligned end is still a pause. It does not come back.
+        already = protect_aligned_tails([(0.08, 0.48), (1.15, 1.45)], [
+            {"word": "websites", "start": 0.10, "end": 0.42},
+            {"word": "and", "start": 1.18, "end": 1.40},
+        ])
+        self.assertLess(already[0][1], 0.50)
 
     def test_a_stop_burst_is_pulled_onto_the_word(self):
         from kallaway_audio import attach_stop_release

@@ -20,7 +20,7 @@ MAX_SHOT = 5.4
 MIN_SHOT = 0.5
 STAGE_KEYS = (
     "media", "items", "count", "value", "label", "text", "heights", "negative",
-    "pages", "hold", "active", "prefix", "suffix", "scroll", "desaturate",
+    "pages", "hold", "active", "prefix", "suffix", "scroll", "zoom", "desaturate",
     "chip", "reveal", "labels", "kicker", "disclaimer", "progress",
     "media_start", "playback_rate", "target_still", "target_time", "poster_time", "typing",
     "variant", "uncropped", "result", "notes",
