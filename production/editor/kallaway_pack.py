@@ -4,8 +4,9 @@ The pack is royalty-free in a video and may not be redistributed as a library.
 Point SFX_PACK_DIR at a local copy (default: production/editor/sfx/viral-pack).
 Files are used as supplied. The only edit is gain: a timeline trim, a short fade
 where a long file is cut, and clip gain. Pop 1 and Ui Sound 12 are peak-bound
-to just under 0 dBFS so a phone still hears them. No EQ, pitch shift,
-time-stretch, or filtering.
+to just under 0 dBFS, then the mix sets Pop 1 4 dB under that ceiling and the
+count ticks 6 dB under it, so the limiter does not pump the voice. Wrong
+Answer stays under the voice. No EQ, pitch shift, time-stretch, or filtering.
 """
 import math
 import os
@@ -96,9 +97,20 @@ _DROP = ("also", "bed", "fixed_file", "fixed_lead", "rotate", "trim_frames",
          "fade_frames", "fade_in_frames", "delay_frames", "delay_from", "priority",
          "peak_bound")
 # Just under full scale. Pop 1 and Ui Sound 12 are quiet in the pack, so gain
-# brings them up to this ceiling and the mixer does not duck them back down.
+# brings them up to this ceiling. The mixer then sets Pop 1 4 dB under that
+# ceiling and the ticks 6 dB under it. A full-scale hit was pumping the voice.
 PEAK_CEILING = 0.98
 MAKEUP_FILES = {"Pop 1.mp3", "Ui Sound 12.mp3"}
+POP_GAIN_DB = -4.0
+TICK_GAIN_DB = -6.0
+# Opening Wrong Answers sit another 4 dB under the voice-relative level.
+HOOK_NEGATIVE_DB = -4.0
+# Bundled GSAP registers Power2 as the cubic ease. power2.in is t^3.
+GSAP_POWER2_IN = 3
+# A roll shorter than this only changes a few times and the ticks blur.
+MIN_COUNT_SECONDS = 0.40
+# A marker stroke with less of the shot left than this never reads.
+MIN_DRAW_SECONDS = 0.15
 _NEGATIVE_RE = re.compile(
     r"\b(errors?|lawsuits?|sued|sue|warnings?|mistakes?|losses|loss|wrong|fails?|failed|failure|settled)\b",
     re.I,
@@ -149,41 +161,57 @@ def _negative_meaning(stage):
     return bool(_NEGATIVE_RE.search(" ".join(parts)))
 
 
-def count_change_times(start, land, origin, target, fps=30.0):
-    """One time per displayed integer during a power2.in roll.
+def first_frame_ms(moment, fps=30.0):
+    """Millisecond time of the video frame that contains ``moment``.
 
-    The tween is ``progress = t^2``. The last time is the lock frame, where the
-    final number is forced, even if rounding reached it a frame early.
+    Truncated, so a shot that starts at 21.870 is the frame at 21.866.
+    """
+    fps = float(fps or 30)
+    index = math.floor(float(moment) * fps + 1e-6)
+    raw = index / fps
+    return math.floor(raw * 1000.0 + 1e-6) / 1000.0
+
+
+def count_change_times(start, land, origin, target, fps=30.0):
+    """One time per integer that changes on a video frame.
+
+    The digits use GSAP ``power2.in``. In this package that ease is ``t^3``,
+    not ``t^2``. The sample clock is the frame ``n / fps``. A value that only
+    exists between frames is not a change, so the tick count matches the
+    picture. The last time is the frame that first shows the target.
     """
     start = float(start)
-    end = float(land)
-    roll = max(1e-3, end - start)
+    land = float(land)
+    roll = max(1e-3, land - start)
     origin = int(origin or 0)
     target = int(0 if target is None else target)
     fps = float(fps or 30)
-    shown = origin
+    first = int(math.ceil(start * fps - 1e-9))
+    last = int(math.ceil(land * fps - 1e-9)) + 1
+    shown = None
     times = []
-    step = 1.0 / fps
-    moment = step
-    while moment < roll - (0.45 * step):
-        progress = (moment / roll) ** 2
-        displayed = int(round(origin + (target - origin) * progress))
-        if displayed != shown:
-            times.append(round(start + moment, 3))
-            shown = displayed
-        moment += step
-    end_r = round(end, 3)
-    if times and shown == target:
-        times[-1] = end_r
-    else:
-        times.append(end_r)
-    unique = []
-    for item in times:
-        if unique and abs(unique[-1] - item) < (0.45 / fps):
-            unique[-1] = item
+    for index in range(first, last + 1):
+        moment = index / fps
+        if moment + 1e-9 < start:
+            continue
+        if moment + 1e-9 >= land:
+            displayed = target
         else:
-            unique.append(item)
-    return unique
+            progress = ((moment - start) / roll) ** GSAP_POWER2_IN
+            displayed = int(round(origin + (target - origin) * progress))
+        if shown is None:
+            shown = displayed
+            if displayed != origin:
+                times.append(round(moment, 3))
+            continue
+        if displayed != shown:
+            times.append(round(moment, 3))
+            shown = displayed
+        if displayed == target and moment + 1e-9 >= land:
+            break
+    if shown != target:
+        times.append(round(land, 3))
+    return times
 
 
 def kind_paths(kind):
@@ -329,7 +357,13 @@ def _counter_lock(start, end, stage):
         lock = float(stage["lock_at"])
     else:
         lock = min(float(end) - 0.08, float(start) + 0.9)
-    return min(max(lock, float(start) + 0.12), float(end) - 0.04)
+    lock = min(max(lock, float(start) + 0.12), float(end) - 0.04)
+    # A one-word lock lands in about four frames. Stretch it so the count
+    # changes often enough to read, and still finishes inside the shot.
+    readable = float(start) + MIN_COUNT_SECONDS
+    if lock < readable:
+        lock = min(readable, float(end) - 0.04)
+    return lock
 
 
 def _money(stage):
@@ -361,8 +395,8 @@ def _as_pop(event, label=None):
     return event
 
 
-def _negative_hit(at, lands_on=""):
-    return {
+def _negative_hit(at, lands_on="", under_words=False):
+    hit = {
         "at": round(float(at), 3),
         "sound_at": round(float(at), 3),
         "kind": "error",
@@ -376,6 +410,11 @@ def _negative_hit(at, lands_on=""):
         "band": "noise",
         "lands_on": lands_on,
     }
+    # The hook pair sits under the first words. Later negative beats keep
+    # the voice-relative level.
+    if under_words:
+        hit["mix_offset_db"] = HOOK_NEGATIVE_DB
+    return hit
 
 
 def decorate_events(motif, events, stage, start, end):
@@ -407,12 +446,29 @@ def decorate_events(motif, events, stage, start, end):
         for event in events:
             if event["kind"] != "marker":
                 continue
+            # A whoosh on a stroke the cut erases is a hit on a pop-on.
+            if float(end) - float(event["at"]) < MIN_DRAW_SECONDS:
+                event["mute"] = True
+                event["mute_reason"] = "nothing drawn"
+                event["label"] = "Callout swish"
+                continue
             # The pack has no marker squeak. A quiet swish covers the draw.
             event.update({
                 "file": SWISH_2, "combo": "callout", "label": "Callout swish",
                 "fixed_file": True, "under_db": 18.0, "band": "mid",
                 "trim": round(draw, 3), "fade_frames": 3,
             })
+    if motif in {"phone_frame", "broll_card"} and isinstance(stage.get("highlight"), dict):
+        highlight = stage["highlight"]
+        highlight_at = float(highlight.get("at", start + 0.4))
+        phrase = str(highlight.get("target_text") or highlight.get("text") or "").strip()
+        for event in events:
+            if event.get("kind") != "pop" or event.get("label") == "Graphic entrance":
+                continue
+            if abs(float(event.get("at", 0)) - highlight_at) > 0.02:
+                continue
+            _as_pop(event, "Underline")
+            event["lands_on"] = f"underline: {phrase}" if phrase else "underline"
     if motif == "doc_fan":
         for index, event in enumerate(events):
             if event["kind"] == "error":
@@ -446,12 +502,14 @@ def decorate_events(motif, events, stage, start, end):
                 event.setdefault("label", "Word Pop")
     if motif == "counter":
         money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
-        negative = _negative_meaning(stage) and not money
-        land = round(_counter_lock(start, end, stage), 3)
         origin = int(stage.get("from") or 0)
         target = int(stage.get("value") if stage.get("value") is not None else 0)
+        # Reaching 0 is the clean result. "0 errors left" is a success, not a buzzer.
+        negative = _negative_meaning(stage) and not money and target != 0
+        land = round(_counter_lock(start, end, stage), 3)
         events = [event for event in events if event.get("kind") != "ticking"]
-        for moment in count_change_times(start, land, origin, target):
+        changes = count_change_times(start, land, origin, target)
+        for moment in changes:
             events.append({
                 "at": moment, "sound_at": moment, "kind": "ticking",
                 "file": UI_TICK, "combo": "25", "label": "Counter tick",
@@ -463,6 +521,7 @@ def decorate_events(motif, events, stage, start, end):
         # Ka Ching has about 90 ms of mechanism noise before the hit.
         attack = 0.09 if money else 0.0
         landing_file = KA_CHING if money else (WRONG_ANSWER if negative else BELL_5)
+        landing_at = changes[-1] if changes else land
         for event in events:
             if event["kind"] != "ding":
                 continue
@@ -473,8 +532,8 @@ def decorate_events(motif, events, stage, start, end):
                 "trim_frames": 14, "fade_frames": 3,
                 "band": "noise" if negative else "high",
                 "role": "negative" if negative else "landing",
-                "at": land,
-                "sound_at": round(max(0.0, land - attack), 3),
+                "at": landing_at,
+                "sound_at": round(max(0.0, landing_at - attack), 3),
             })
             event.pop("mute", None)
             event.pop("mute_reason", None)
@@ -538,6 +597,37 @@ def decorate_events(motif, events, stage, start, end):
                 })
         if not _money(stage) and _negative_meaning(stage):
             events.append(_negative_hit(card["at"]))
+        if stage.get("variant") == "receipt":
+            # Month chips share the card unless one still has its own tween.
+            # A pop that is not on one of those frames is a hit on nothing.
+            months = list(stage.get("items") or ["JAN", "FEB", "MAR", "APR", "MAY"])
+            leftovers = [event for event in events if event.get("kind") == "ticking"]
+            card_at = float(card["at"])
+            chip_at = [
+                float(leftovers[index]["at"]) if index < len(leftovers) else card_at
+                for index in range(len(months))
+            ]
+            entrances = [card_at] + chip_at
+            frame = 1.0 / 30.0
+
+            def _on_entrance(moment):
+                moment = float(moment)
+                return any(abs(moment - item) <= frame + 0.002 for item in entrances)
+
+            for event in events:
+                if event.get("label") != "List Tick" or event.get("mute"):
+                    continue
+                if not _on_entrance(event.get("sound_at", event["at"])):
+                    event["mute"] = True
+                    event["mute_reason"] = "no entrance"
+            card_frame = first_frame_ms(card_at)
+            heard = [
+                event for event in events
+                if not event.get("mute") and event.get("role") == "pop"
+                and abs(float(event.get("sound_at", event.get("at", 0))) - card_frame) <= frame + 0.002
+            ]
+            if not heard:
+                events.append(_as_pop({"at": card_frame, "kind": "pop"}, "Graphic entrance"))
     if motif == "numbered_list":
         for index, event in enumerate(events):
             label = "Graphic entrance" if index == 0 else "List Tick"
@@ -562,7 +652,8 @@ def decorate_events(motif, events, stage, start, end):
                 event["label"] = "Graphic entrance"
                 event["combo"] = "8"
             elif event["kind"] == "pop":
-                event.update({"combo": "19", "label": "Word Pop", "sound_at": _land(event["at"], end, 0.26)})
+                # The card is on screen at this frame. A hit 0.26s later misses it.
+                _as_pop(event, "Word Pop")
             elif event["kind"] == "error":
                 event.update({
                     "file": WRONG_ANSWER, "combo": "24", "label": "Wrong Answer",
@@ -602,7 +693,7 @@ def decorate_events(motif, events, stage, start, end):
                 event["mute_reason"] = "pop-on"
         if motif == "hero_board" and _negative_meaning(stage):
             pop_at = next((event["at"] for event in events if event.get("kind") == "pop"), start)
-            events.append(_negative_hit(pop_at))
+            events.append(_negative_hit(pop_at, under_words=True))
     defaults = {
         "pop": (None, "19", "Word Pop"),
         "whoosh": (None, "8", "Panel slide"),

@@ -2323,18 +2323,29 @@ def mix_cues(voice, rate, cues, library=None):
         target = voice_lufs - under
         gain_db = float(np.clip(target - cue_lufs, -40.0, 12.0))
         gain = 10 ** (gain_db / 20.0)
-        from kallaway_pack import MAKEUP_FILES, PEAK_CEILING
+        from kallaway_pack import MAKEUP_FILES, PEAK_CEILING, POP_GAIN_DB, TICK_GAIN_DB
         cue_name = Path(str(prepared_cue.get("file") or "")).name
         peak_linear = float(info.get("peak_linear") or 1.0)
-        if cue_name in MAKEUP_FILES:
-            # Already peak-bound in load(). Do not duck this under the voice.
+        if cue_name == "Pop 1.mp3":
+            # Peak-bound in load(), then 4 dB under that so the limiter leaves the voice.
+            gain_db = POP_GAIN_DB
+            gain = 10 ** (gain_db / 20.0)
+        elif cue_name == "Ui Sound 12.mp3":
+            gain_db = TICK_GAIN_DB
+            gain = 10 ** (gain_db / 20.0)
+        elif cue_name in MAKEUP_FILES:
             gain = 1.0
             gain_db = 0.0
         elif cue_name == "Wrong Answer.mp3":
+            # Under the voice. Cap the peak, and do not lift it to the pop ceiling.
             ceiling_gain = PEAK_CEILING / max(peak_linear, 1e-8)
             if gain > ceiling_gain:
                 gain = ceiling_gain
                 gain_db = 20.0 * math.log10(max(gain, 1e-8))
+        offset_db = float(prepared_cue.get("mix_offset_db") or 0.0)
+        if offset_db:
+            gain_db += offset_db
+            gain *= 10 ** (offset_db / 20.0)
         offset = int(round(body_at * RATE))
         chunk = prepared[offset:]
         if offset > 0 and len(chunk):

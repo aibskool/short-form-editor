@@ -2025,9 +2025,14 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Wrong Answer", landing["file"])
         self.assertEqual(landing.get("role"), "negative")
         self.assertNotIn("Bell", landing["file"])
-        self.assertAlmostEqual(landing["at"], 7.57, delta=0.02)
-        self.assertAlmostEqual(max(event["at"] for event in neg_ticks), landing["at"], delta=0.02)
+        # The spoken lock is the first frame. The roll stretches to about 0.4s
+        # so the count can be read, and the last tick shares that landing frame.
+        self.assertGreaterEqual(len(neg_ticks), 8)
+        self.assertLessEqual(len(neg_ticks), 10)
+        self.assertAlmostEqual(landing["at"], 7.45 + 0.40, delta=0.05)
+        self.assertAlmostEqual(max(event["at"] for event in neg_ticks), landing["at"], delta=0.001)
         self.assertAlmostEqual(landing["sound_at"], landing["at"], delta=0.02)
+        self.assertGreater(landing["at"] - neg_ticks[0]["at"], 0.25)
 
     def test_the_hero_pop_lands_with_the_board(self):
         events = stage_events("hero_board", 1.855, 4.3, {"value": "56"})
@@ -2421,6 +2426,121 @@ class KallawayTests(unittest.TestCase):
         left = attach_stop_release(vowel + loud, rate, [(0.08, 0.40), (0.80, 1.05)])
         self.assertAlmostEqual(left[0][1], 0.40, places=2)
         self.assertGreater(left[1][0], 0.70)
+
+    def test_one_tick_lands_on_each_on_screen_number(self):
+        from kallaway_pack import _counter_lock, count_change_times
+        errors = stage_events("counter", 20.440, 21.870, {
+            "from": 56, "value": 0, "negative": True, "label": "ERRORS LEFT",
+        })
+        ticks = [event["at"] for event in errors if event["kind"] == "ticking" and not event.get("mute")]
+        ding = next(event for event in errors if event["kind"] == "ding")
+        self.assertEqual(len(ticks), 21)
+        for gone in (20.540, 20.640, 20.673):
+            self.assertNotIn(gone, ticks)
+        self.assertIn("Bell 5", ding["file"])
+        self.assertEqual(ding.get("role"), "landing")
+        self.assertAlmostEqual(ding["at"], 21.367, delta=0.002)
+        self.assertAlmostEqual(ticks[-1], ding["at"], delta=0.001)
+        ideas = stage_events("counter", 49.371, 50.656, {
+            "from": 8, "value": 30, "suffix": "+", "label": "AI BUSINESS IDEAS",
+        })
+        idea_ticks = [event["at"] for event in ideas if event["kind"] == "ticking" and not event.get("mute")]
+        self.assertEqual(len(idea_ticks), 15)
+        for gone in (49.538, 49.704, 49.738, 49.804, 49.904):
+            self.assertNotIn(gone, idea_ticks)
+        self.assertIn(49.767, idea_ticks)
+        lock = _counter_lock(7.450, 8.665, {"lock_at": 7.45})
+        changes = count_change_times(7.450, lock, 0, 56)
+        self.assertGreaterEqual(len(changes), 8)
+        self.assertLessEqual(len(changes), 10)
+        roll = stage_events("counter", 7.450, 8.665, {
+            "from": 0, "value": 56, "negative": True, "lock_at": 7.45,
+            "label": "ACCESSIBILITY ERRORS",
+        })
+        roll_ticks = [event for event in roll if event["kind"] == "ticking" and not event.get("mute")]
+        self.assertEqual(len(roll_ticks), len(changes))
+
+    def test_receipt_pops_land_on_the_first_frame(self):
+        events = stage_events("quote_card", 21.870, 23.800, {
+            "variant": "receipt", "text": "COMPLIANCE PASS", "label": "CHARGE THE CLIENT",
+        })
+        times = [
+            round(float(event.get("sound_at", event["at"])), 3)
+            for event in events
+            if event.get("role") == "pop" and not event.get("mute")
+        ]
+        self.assertIn(21.866, times)
+        for gone in (21.950, 22.144, 22.242, 22.339):
+            self.assertNotIn(gone, times)
+
+    def test_a_callout_that_never_draws_is_silent(self):
+        events = stage_events("phone_frame", 37.266, 39.429, {
+            "callout": {"at": 39.359, "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.2, "draw": 0.36},
+        })
+        marker = next(event for event in events if event["kind"] == "marker")
+        self.assertTrue(marker.get("mute"))
+        self.assertEqual(marker.get("mute_reason"), "nothing drawn")
+        drawn = stage_events("phone_frame", 0.0, 3.0, {
+            "callout": {"at": 1.2, "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.2},
+        })
+        kept = next(event for event in drawn if event["kind"] == "marker")
+        self.assertFalse(kept.get("mute"))
+        self.assertIn("Swish 2", kept["file"])
+
+    def test_an_underline_is_labeled_with_its_phrase(self):
+        events = stage_events("phone_frame", 27.3, 30.664, {
+            "highlight": {"at": 29.484, "target_text": "49 businesses"},
+            "enter_after": 0.2,
+        })
+        line = next(event for event in events if event.get("label") == "Underline")
+        self.assertAlmostEqual(line["at"], 29.484, places=3)
+        self.assertEqual(line["lands_on"], "underline: 49 businesses")
+        self.assertIn("Pop 1", line["file"])
+        fee = stage_events("phone_frame", 32.044, 35.499, {
+            "highlight": {"at": 32.844, "target_text": "approximately $6,500"},
+        })
+        other = next(event for event in fee if event.get("label") == "Underline")
+        self.assertEqual(other["lands_on"], "underline: approximately $6,500")
+
+    def test_pop_and_tick_gains_leave_the_voice_room(self):
+        from kallaway_pack import POP_1, UI_TICK, WRONG_ANSWER, pack_ready
+        if not pack_ready() and not (Path(__file__).resolve().parent / "sfx" / "Pop 1.mp3").is_file():
+            return
+        rate = 48000
+        voice = 0.2 * np.sin(2 * np.pi * 180 * np.arange(int(rate * 2.0)) / rate)
+        cues = [
+            {"kind": "pop", "at": 0.3, "file": POP_1, "under_db": 6, "role": "pop"},
+            {"kind": "ticking", "at": 0.8, "file": UI_TICK, "under_db": 6, "role": "tick"},
+        ]
+        _mixed, report = mix_cues(voice, rate, cues)
+        by_name = {Path(row["file"]).name: row for row in report}
+        self.assertAlmostEqual(by_name["Pop 1.mp3"]["gain_db"], -4.0, places=2)
+        self.assertAlmostEqual(by_name["Ui Sound 12.mp3"]["gain_db"], -6.0, places=2)
+        plain = {"kind": "error", "at": 1.2, "file": WRONG_ANSWER, "under_db": 6, "role": "negative"}
+        ducked = dict(plain, mix_offset_db=-4.0)
+        _a, level = mix_cues(voice, rate, [plain])
+        _b, lower = mix_cues(voice, rate, [ducked])
+        self.assertAlmostEqual(lower[0]["gain_db"], level[0]["gain_db"] - 4.0, places=2)
+
+    def test_the_style_gate_counts_ticks_and_pop_frames(self):
+        from check_kallaway_style import _picture_sfx_errors
+        stage = {"motif": "counter", "from": 56, "value": 0, "negative": True, "label": "ERRORS LEFT"}
+        events = stage_events("counter", 20.440, 21.870, stage)
+        shot = {"layout": "split", "start": 20.440, "end": 21.870, "stage": stage}
+        self.assertEqual(_picture_sfx_errors([shot], events), [])
+        orphan = {
+            "at": 22.242, "sound_at": 22.242, "kind": "pop", "role": "pop",
+            "label": "List Tick", "mute": False,
+        }
+        receipt = {
+            "motif": "quote_card", "variant": "receipt", "text": "COMPLIANCE PASS",
+            "items": ["JAN", "FEB", "MAR", "APR", "MAY"],
+        }
+        card = stage_events("quote_card", 21.870, 23.800, receipt)
+        card_shot = {"layout": "split", "start": 21.870, "end": 23.800, "stage": receipt}
+        self.assertEqual(_picture_sfx_errors([card_shot], card), [])
+        problems = _picture_sfx_errors([card_shot], card + [orphan])
+        self.assertTrue(any("22.242" in item for item in problems))
 
 
 if __name__ == "__main__":

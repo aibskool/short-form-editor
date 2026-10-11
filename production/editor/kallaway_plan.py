@@ -555,6 +555,8 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
             for event in stage_events(motif, start, end, stage):
                 event = dict(event)
                 landing = _lands_on(motif, stage)
+                if event.get("label") == "Underline" and str(event.get("lands_on") or "").strip():
+                    landing = event["lands_on"]
                 event["lands_on"] = landing
                 for extra in event.get("also") or []:
                     extra.setdefault("lands_on", landing)
@@ -614,12 +616,14 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
                     })
         if text:
             if previous is None and _negative_meaning({"text": text}):
+                from kallaway_pack import HOOK_NEGATIVE_DB
                 events.append({
                     "at": round(at, 3), "sound_at": round(at, 3), "kind": "error", "combo": "24",
                     "file": "00 Viral Reels Essentials/Wrong Answer.mp3",
                     "label": "Wrong Answer", "fixed_file": True, "fixed_lead": True,
                     "role": "negative", "under_db": 6.0, "band": "noise",
                     "lands_on": f"chapter header: {text}",
+                    "mix_offset_db": HOOK_NEGATIVE_DB,
                 })
             previous = text
     if shots:

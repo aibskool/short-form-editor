@@ -30,6 +30,82 @@ def _walk_strings(value, found):
             _walk_strings(item, found)
 
 
+def _picture_sfx_errors(shots, sfx, fps=30.0):
+    """Ticks match on-screen number changes. Pops land on a first visible frame.
+
+    A count tick is one Ui Sound per integer the video frame actually shows.
+    A pop more than one frame from an element's entrance is a hit on nothing.
+    """
+    from kallaway_pack import _counter_lock, count_change_times, first_frame_ms
+    fps = float(fps or 30)
+    frame = 1.0 / fps
+    tol = frame + 0.002
+    found = []
+    entrances = []
+    for shot in shots:
+        for motif, start, end, stage in stage_windows(shot):
+            stage = stage or {}
+            if motif == "counter":
+                land = _counter_lock(start, end, stage)
+                origin = int(stage.get("from") or 0)
+                raw_value = stage.get("value")
+                target = int(0 if raw_value is None else raw_value)
+                changes = count_change_times(start, land, origin, target, fps)
+                ticks = [
+                    cue for cue in sfx
+                    if not cue.get("mute") and cue.get("role") == "tick"
+                    and float(start) - 0.02
+                    <= float(cue.get("sound_at", cue.get("at", 0)))
+                    <= float(end) + 0.02
+                ]
+                if len(ticks) != len(changes):
+                    label = stage.get("label") or "counter"
+                    found.append(
+                        f"sfx: {label} has {len(ticks)} ticks for {len(changes)} "
+                        "on-screen number changes"
+                    )
+                entrances.append(float(start))
+            elif motif == "quote_card" and stage.get("variant") == "receipt":
+                events = stage_events(motif, start, end, stage)
+                months = list(stage.get("items") or ["JAN", "FEB", "MAR", "APR", "MAY"])
+                leftovers = [event for event in events if event.get("kind") == "ticking"]
+                card = float(events[0]["at"]) if events else float(start)
+                entrances.append(card)
+                for index in range(len(months)):
+                    entrances.append(float(leftovers[index]["at"]) if index < len(leftovers) else card)
+            else:
+                for event in stage_events(motif, start, end, stage):
+                    if event.get("mute"):
+                        continue
+                    if event.get("role") == "pop" or event.get("kind") in {"pop", "paper"}:
+                        entrances.append(float(event.get("at", start)))
+
+    def _near(moment, anchors):
+        moment = float(moment)
+        return any(
+            abs(moment - item) <= tol or abs(moment - first_frame_ms(item, fps)) <= tol
+            for item in anchors
+        )
+
+    for cue in sfx:
+        if cue.get("mute") or cue.get("role") != "pop":
+            continue
+        heard = float(cue.get("sound_at", cue.get("at", 0)))
+        visual = float(cue.get("at", heard))
+        label = str(cue.get("label") or "pop")
+        if label == "List Tick":
+            near = _near(heard, entrances)
+        else:
+            near = abs(heard - visual) <= tol or abs(heard - first_frame_ms(visual, fps)) <= tol
+            if not near:
+                near = _near(heard, entrances)
+        if not near:
+            found.append(
+                f"sfx: {label} at {heard:.3f}s is more than 1 frame from an element's first visible frame"
+            )
+    return found
+
+
 def _boxes_hit(a, b):
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
@@ -390,6 +466,8 @@ def check(timeline_path, words_path=None, project=None):
             if landing and not hit:
                 errors.append(
                     f"sfx: placement log has no row for {label} at {heard:.3f}s on {landing}")
+    if shots and sfx:
+        errors.extend(_picture_sfx_errors(shots, sfx, float((data.get("output") or {}).get("fps") or 30)))
     tighten_ranges = data.get("source_ranges") or []
     source_words = data.get("source_words") or []
     if tighten_ranges and source_words:

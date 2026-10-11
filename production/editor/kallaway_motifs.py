@@ -328,9 +328,8 @@ def _stage_events(motif, start, end, stage=None):
             events.append({"at": _clamp(float(events[-1]["at"]) + 0.26, start, end), "kind": "error"})
         return events
     if motif == "counter":
-        lock = stage.get("lock_at")
-        lock_at = float(lock) if lock is not None else min(end - 0.08, start + 0.9)
-        lock_at = min(max(lock_at, start + 0.12), end - 0.04)
+        from kallaway_pack import _counter_lock
+        lock_at = _counter_lock(start, end, stage)
         ticks = _times(start, lock_at, 4, 0.8)
         events = [{"at": t, "kind": "ticking"} for t in ticks]
         events.append({"at": round(lock_at, 3), "kind": "ding"})
@@ -792,8 +791,8 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             body = (f'<div class="counter{dense}"><div id="{ident}-num" class="count-num{tone}">{_esc(stage.get("prefix") or "")}{origin}{_esc(stage.get("suffix") or "")}</div>'
                     f'{grid}{label_html}</div>')
         origin = int(stage.get("from") or 0)
-        lock = float(stage.get("lock_at") or min(end - 0.08, start + 0.9))
-        lock = min(max(lock, start + 0.12), end - 0.04)
+        from kallaway_pack import _counter_lock
+        lock = _counter_lock(start, end, stage)
         # The digits land on the bell. The tick loop uses this same span.
         roll = max(0.12, lock - start)
         shown = json.dumps(f"{target:,}")
