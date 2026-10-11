@@ -1111,7 +1111,9 @@ def settle_join_tails(samples, rate, ranges, words):
             lead = max(0.0, float(next_word["start"]) - nxt)
         latest = min(nxt - 0.02, word_end + _pause_budget(word) - lead)
         # The word tail stays. A gap is shortened from the next word, not from this end.
-        floor_end = max(begin + 0.05, word_end)
+        # Do not force the join 50 ms past the word: that is the pause, and a
+        # mid-phrase pause is already capped at 40 ms.
+        floor_end = max(begin, word_end)
         if latest < floor_end:
             latest = floor_end
         if _tail_released(samples, rate, end, times, frames) and floor_end - 1e-9 <= end <= latest + 0.005:
@@ -1125,7 +1127,9 @@ def settle_join_tails(samples, rate, ranges, words):
                 break
             moment = round(moment - 0.005, 4)
         new_end = found if found is not None else end
-        if not _tail_released(samples, rate, new_end, times, frames):
+        # A sentence tail that is still the vowel moves forward onto the release.
+        # A mid-phrase join stays inside the 40 ms cap.
+        if _ends_sentence(word) and not _tail_released(samples, rate, new_end, times, frames):
             ceiling = word_end + 0.16
             if next_word is not None:
                 ceiling = min(ceiling, float(next_word["start"]) - 0.012)
@@ -1137,7 +1141,8 @@ def settle_join_tails(samples, rate, ranges, words):
                 moment = round(moment + 0.005, 4)
         if new_end > nxt - 0.004:
             carry = round(new_end, 4)
-        updated.append((begin, round(new_end, 4)))
+        if new_end - begin > 0.01:
+            updated.append((begin, round(new_end, 4)))
     return updated
 
 
