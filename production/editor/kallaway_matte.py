@@ -12,6 +12,7 @@ the same soft contact shadow. The result is a straight-alpha QuickTime on the
 same frames as the picture.
 """
 import hashlib
+import math
 import os
 import subprocess
 import warnings
@@ -115,7 +116,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-spike"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.11
@@ -924,13 +925,26 @@ def _raw_writer(path, width, height, fps, pix_fmt, codec_args):
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
 
+def trim_frame_count(begin, end, fps):
+    """Frames a CFR ``trim`` keeps: presentation time in ``[begin, end)``.
+
+    Rounding the duration lands a frame early or late, and the cut-frame
+    check then scores the wrong picture. The count is the source frames
+    whose time falls in the window, which is what the concat actually emits.
+    """
+    rate = float(fps or 30)
+    start_n = int(math.ceil(float(begin) * rate - 1e-6))
+    end_n = int(math.ceil(float(end) * rate - 1e-6))
+    return max(0, end_n - start_n)
+
+
 def tightened_cut_frames(ranges, fps):
     """First frame index of each segment after the opening one."""
     cuts = []
     acc = 0
     rate = float(fps or 30)
     for begin, end in list(ranges or [])[:-1]:
-        acc += max(1, int(round((float(end) - float(begin)) * rate)))
+        acc += max(1, trim_frame_count(begin, end, rate))
         cuts.append(acc)
     return cuts
 
@@ -1191,6 +1205,35 @@ def _warp_alpha(seed_alpha, seed_gray, gray):
         cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
 
+def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
+    """Rebuild a frame whose flowed edge pulled the crown into the leaves.
+
+    The coarse matte is the one to trust when this frame is worse than the
+    frame just before it. A cold refine does not blend that previous edge
+    back in. Returns the refined tuple, or None when nothing is wrong.
+    """
+    if reference_person is None or not _opening_frame_fails(
+            person, rgb, reference_person, reference_rgb):
+        return None
+    repaired = refine_frame(np.asarray(rgb), np.asarray(coarse, dtype=np.float32), None)
+    if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
+        binary = np.asarray(repaired[0]) >= 0.5
+        for _step in range(16):
+            if not _opening_frame_fails(
+                    binary.astype(np.float32), rgb, reference_person, reference_rgb):
+                break
+            nxt = _shrink_green_crown(binary, rgb, steps=1)
+            if np.array_equal(nxt, binary):
+                break
+            binary = nxt
+        repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None)
+    if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
+        soft, ring = fringe_green_fractions(rgb, repaired[0])
+        raise RuntimeError(
+            f"crown fringe stayed after a cold refine (in {soft:.3f} out {ring:.3f})")
+    return repaired
+
+
 def _rematte_failed_opening(refined, frames, seed_index):
     """Re-matte an opening frame that still holds foliage the stable frame does not.
 
@@ -1283,6 +1326,7 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
         ["-c:v", "qtrle", "-pix_fmt", "argb"])
     cut_at = set(int(frame) for frame in (cuts or []) if int(frame) > 0)
     previous = None
+    prev_emit = None
     written = 0
     next_index = 0
     opening = []
@@ -1304,12 +1348,13 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
             print(f"refined {written} frames", flush=True)
 
     def flush_opening():
-        nonlocal previous, opening
+        nonlocal previous, opening, prev_emit
         if not opening:
             return
         refined, previous = _refine_opening(opening)
-        for person, straight, out_a, _state in refined:
+        for index, (person, straight, out_a, _state) in enumerate(refined):
             emit(person, straight, out_a)
+            prev_emit = (person, opening[index][0])
         opening = []
 
     try:
@@ -1318,6 +1363,7 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
                 flush_opening()
                 previous = None
                 opening = []
+                prev_emit = None
             pair = read_pair()
             if pair is None:
                 flush_opening()
@@ -1332,7 +1378,16 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
                 continue
             rgb, coarse_frame = pair
             person, straight, out_a, previous = refine_frame(rgb, coarse_frame, previous)
+            reference = None if prev_emit is None else prev_emit
+            repaired = restabilize_crown(
+                person, rgb, coarse_frame,
+                None if reference is None else reference[0],
+                None if reference is None else reference[1])
+            if repaired is not None:
+                person, straight, out_a, previous = repaired
+                print(f"repaired crown fringe at frame {written}", flush=True)
             emit(person, straight, out_a)
+            prev_emit = (person, rgb)
     finally:
         for proc in (rgb_proc, mask_proc):
             if proc.stdout:

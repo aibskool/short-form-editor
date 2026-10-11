@@ -1818,6 +1818,33 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(ring, 0.155)
         self.assertGreater(int(binary[120, 80]), 0)
 
+    def test_cut_frames_follow_the_frames_a_trim_keeps(self):
+        from kallaway_matte import tightened_cut_frames, trim_frame_count
+        # 1.23 frames of time is two source frames. Rounding the duration keeps one.
+        self.assertEqual(trim_frame_count(6.527, 6.568, 30), 2)
+        cuts = tightened_cut_frames([(0.0, 6.527), (6.527, 6.568), (6.568, 7.0)], 30)
+        self.assertEqual(cuts[0], trim_frame_count(0.0, 6.527, 30))
+        self.assertEqual(cuts[1], cuts[0] + 2)
+
+    def test_a_flow_smear_on_the_crown_is_rebuilt_from_the_coarse_matte(self):
+        from kallaway_matte import fringe_fails, restabilize_crown
+        height, width = 200, 160
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (28, 36, 30)
+        rgb[40:78, 36:124] = (36, 168, 42)
+        rgb[90:190, 40:120] = (220, 170, 150)
+        body = np.zeros((height, width), np.float32)
+        body[90:190, 40:120] = 1
+        bumped = body.copy()
+        bumped[60:90, 48:112] = 1
+        self.assertIsNone(restabilize_crown(body, rgb, body, body, rgb))
+        repaired = restabilize_crown(bumped, rgb, body, body, rgb)
+        self.assertIsNotNone(repaired)
+        failed, _soft, ring = fringe_fails(rgb, repaired[0])
+        self.assertFalse(failed)
+        self.assertLess(ring, 0.155)
+        self.assertGreater(float(repaired[0][120, 80]), 0.9)
+
     def test_foliage_inside_the_matte_is_dropped(self):
         from kallaway_matte import _refine_opening, refine_frame
         height, width = 160, 120
