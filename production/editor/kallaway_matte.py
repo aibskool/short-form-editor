@@ -2568,7 +2568,7 @@ def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_h
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
     token = (
-        f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|hand={float(hand_card):.1f}"
+        f"{BOUNDARY_RAMP_RECIPE}|{EDGE_RECIPE}|card={float(ramp_card):.1f}|hand={float(hand_card):.1f}"
         f"|scale={float(scale):.4f}|shoulder={float(shoulder_y):.2f}")
     if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
