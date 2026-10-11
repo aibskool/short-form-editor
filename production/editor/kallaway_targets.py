@@ -324,3 +324,24 @@ def place_targets(stage, screen=None):
     scroll["to"] = scroll_to
     stage["scroll"] = scroll
     return stage["frame"]
+
+
+def refit_recorded_frame(stage, screen):
+    """Aim a measured pan at the handset that will actually be drawn.
+
+    The plan measures the screenshot on the theme stage. A split caption then
+    lengthens that stage, and the handset grows with it. Recomputing the pan
+    for the drawn screen keeps a 9:16 recording flush with the glass. A pan
+    left over from the shorter stage letterboxes a black band under the page.
+    """
+    if not isinstance(stage, dict) or not stage.get("frame"):
+        return None
+    anchored = False
+    for key in ("callout", "highlight"):
+        block = stage.get(key)
+        if isinstance(block, dict) and block.get("target_text"):
+            anchored = True
+            break
+    if not anchored:
+        return None
+    return place_targets(stage, screen)
