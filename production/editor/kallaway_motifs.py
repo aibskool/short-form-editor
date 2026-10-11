@@ -137,6 +137,20 @@ def motion_window(stage, start, end):
         return {"entrance_end": entrance_end, "scroll_start": None, "scroll_end": None, "img_h": img_h}
     cues = [moment for moment in (_cue_time(stage.get("callout")), _cue_time(stage.get("highlight"))) if moment is not None]
     cue = min(cues) if cues else None
+    if scroll.get("at") is not None:
+        # An authored start runs on its own clock. It does not have to finish
+        # before the circle, because the circle is parented to the same pan.
+        scroll_start = round(float(scroll["at"]), 3)
+        span = float(scroll["duration"]) if scroll.get("duration") is not None else max(0.8, min(1.4, end - scroll_start - 0.05))
+        span = max(0.2, min(span, max(0.2, end - scroll_start - 0.02)))
+        scroll_end = round(min(end - 0.02, scroll_start + span), 3)
+        return {
+            "entrance_end": entrance_end,
+            "scroll_start": scroll_start,
+            "scroll_end": scroll_end,
+            "scroll_authored": True,
+            "img_h": img_h,
+        }
     if cue is None:
         scroll_start = round(start + 0.12, 3)
         span = float(scroll["duration"]) if scroll.get("duration") is not None else max(0.45, end - start - 0.3)
@@ -161,7 +175,12 @@ def motion_window(stage, start, end):
 def draw_moment(cue, motion, end):
     """First moment a stroke may appear: after the entrance, the pan, the push, and on the word if the word is later."""
     settled = float(motion["entrance_end"])
-    if motion.get("scroll_end") is not None:
+    # A scroll that starts with the shot has to settle before the stroke.
+    # A scroll authored to start at the word, or after it, moves with the circle.
+    scroll_start = motion.get("scroll_start")
+    holds = not motion.get("scroll_authored")
+    if motion.get("scroll_end") is not None and holds and (
+            scroll_start is None or float(scroll_start) < float(cue) - 0.05):
         settled = max(settled, float(motion["scroll_end"]))
     if motion.get("push_end") is not None:
         settled = max(settled, float(motion["push_end"]))
@@ -194,6 +213,7 @@ def resolve_annotations(stage, start, end, screen=None):
         "scroll_end": motion["scroll_end"],
         "push_start": motion.get("push_start"),
         "push_end": motion.get("push_end"),
+        "scroll_authored": bool(motion.get("scroll_authored")),
     }
     for key in ("callout", "highlight"):
         block = stage.get(key)
@@ -569,6 +589,15 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             animations.append(
                 f'tl.fromTo("#{ident}-pan",{{yPercent:{fro:.2f}}},{{yPercent:{to:.2f},duration:{span:.3f},'
                 f'ease:"power1.inOut",immediateRender:false}},{scroll_start:.3f});')
+        zoom = stage.get("zoom") or {}
+        zoom_scale = float(zoom.get("scale") or 1.0)
+        if zoom_scale > 1.02:
+            # Scale the recording inside the glass. The bezel stays put, the
+            # callout is inside the pan, and fewer lines fill the screen.
+            ox = float(zoom.get("x", 0.5)) * 100.0
+            oy = float(zoom.get("y", 0.42)) * 100.0
+            animations.append(
+                f'tl.set("#{ident}-pan",{{scale:{zoom_scale:.3f},transformOrigin:"{ox:.1f}% {oy:.1f}%"}},{start + 0.02:.3f});')
         if stage.get("callout"):
             at = float(stage["callout"]["at"])
             draw = float(stage["callout"].get("draw") or DRAW_SECONDS)

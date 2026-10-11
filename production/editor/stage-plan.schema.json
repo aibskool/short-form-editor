@@ -127,6 +127,7 @@
           "properties": {
             "from": {"type": "number"},
             "to": {"type": "number"},
+            "at": {"type": "number", "description": "Timeline second the pan starts. It runs on its own clock and does not hold the circle."},
             "duration": {"type": "number", "description": "Seconds the pan takes. It holds after that so a later circle can land on the framed detail."}
           },
           "description": "Pan a phone screenshot. 0 is the top of the image and 1 is the bottom."
@@ -235,6 +236,10 @@
         "prefix": {"type": "string"},
         "suffix": {"type": "string"},
         "scroll": {"type": "object"},
+        "zoom": {
+          "type": "object",
+          "description": "Scale the recording inside the phone glass. scale is a multiplier. x and y are the transform origin as fractions of the pan, so a callout on the left stays in frame while body type grows."
+        },
         "desaturate": {"type": "number"},
         "progress": {"type": "boolean"},
         "chip": {"type": "object"},

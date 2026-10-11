@@ -12,6 +12,7 @@ the same soft contact shadow. The result is a straight-alpha QuickTime on the
 same frames as the picture.
 """
 import hashlib
+import math
 import os
 import subprocess
 import warnings
@@ -52,19 +53,18 @@ PLATE_VIGNETTE = 0.12
 PLATE_MOTION = 0.60
 # Source pixels the person mask grows before a pixel may enter the plate.
 PLATE_DILATE_PX = 36
-PLATE_RECIPE = "blur-cover-clean-v2"
-# Card pixels. The frame-edge fade is this long, long enough that a straight
-# source-edge cut on the torso or a hand does not read as a seam.
-BOUNDARY_RAMP_CARD_PX = 36.0
-# A hand that crosses the frame fades across this many card pixels.
-HAND_RAMP_CARD_PX = 36.0
+PLATE_RECIPE = "blur-cover-clean-v3"
+# Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
+BOUNDARY_RAMP_CARD_PX = 28.0
+# A hand that crosses the frame fades only across this many card pixels.
+HAND_RAMP_CARD_PX = 28.0
 # A run this wide, touching the frame, is the torso. A narrower contact is a hand.
 TORSO_RUN_FRACTION = 0.28
 # A matte that stops this close to the frame is still the source edge. Robust
 # Video Matting often pulls the alpha a few pixels in from a hard crop.
 EDGE_CONTACT_PX = 16
 # Short fade on every source edge. The old wide torso ramp is gone.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v8"
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v7"
 # First frames of a segment are seeded from this many frames later, then checked.
 # Three covers the first frame after the cut and the two that follow it.
 SEGMENT_OPEN_FRAMES = 3
@@ -119,8 +119,14 @@ DESPILL_RADIUS_PX = 6
 RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
-SHADOW_OPACITY = 0.18
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage2-feather2.5-despill6-speck200-shadow18"
+SHADOW_OPACITY = 0.46
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-spike"
+# Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
+# Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
+OPEN_FRINGE_IN = 0.11
+OPEN_FRINGE_OUT = 0.155
+OPEN_FRINGE_RING_PX = 8.0
+OPEN_FRINGE_CROWN = 0.15
 
 
 def _run(args):
@@ -515,6 +521,88 @@ def _foliage_green(rgb):
     return (green > red + 14) & (green > blue + 14) & (green > 35)
 
 
+def _crown_rows(inside, fraction):
+    """Rows from the crown down through ``fraction`` of the silhouette."""
+    inside = np.asarray(inside, dtype=bool)
+    ys = np.where(inside)[0]
+    band = np.zeros(inside.shape, dtype=bool)
+    if ys.size == 0:
+        return band
+    top = int(ys.min())
+    span = max(1, int(ys.max()) - top)
+    band[:top + max(1, int(round(float(fraction) * span)))] = True
+    return band
+
+
+def fringe_green_fractions(rgb, person, ring_px=OPEN_FRINGE_RING_PX, crown_fraction=OPEN_FRINGE_CROWN):
+    """Foliage fraction inside the soft crown, and in the ring just outside it.
+
+    ``green_in`` is the soft band (alpha about 0.03-0.80) on the crown.
+    ``green_out`` is the 0-8 px ring outside the matte edge, same rows.
+    A clean cut sits near 0. A leaf halo is above about 0.13 on both.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    if person.ndim != 2:
+        raise ValueError("fringe check expects one alpha plane")
+    inside = person >= 0.5
+    if not np.any(inside):
+        return 0.0, 0.0
+    green = _foliage_green(rgb)
+    if green.shape != inside.shape:
+        raise ValueError("fringe color must match the matte")
+    crown = _crown_rows(inside, crown_fraction)
+    dist_out = ndimage.distance_transform_edt(~inside)
+    soft = (person >= 0.03) & (person < 0.80) & crown
+    ring = (dist_out > 0) & (dist_out <= float(ring_px)) & crown
+
+    def fraction(mask):
+        count = int(mask.sum())
+        if count <= 0:
+            return 0.0
+        return float(np.count_nonzero(green & mask) / count)
+
+    return fraction(soft), fraction(ring)
+
+
+def fringe_fails(rgb, person, limit_in=OPEN_FRINGE_IN, limit_out=OPEN_FRINGE_OUT):
+    """A crown whose soft edge or outside ring is still source green."""
+    soft, ring = fringe_green_fractions(rgb, person)
+    return soft > float(limit_in) or ring > float(limit_out), soft, ring
+
+
+def _shrink_green_crown(binary, rgb, steps=1, ring_px=OPEN_FRINGE_RING_PX):
+    """Pull the crown edge off leaves in the outside ring. One step is one pixel.
+
+    A leaf a few pixels outside the edge still fills the 0-8 px ring. The
+    boundary moves while that ring is green, and stops once the leaves are
+    farther than the ring.
+    """
+    binary = np.array(binary, dtype=bool, copy=True)
+    if not np.any(binary):
+        return binary
+    green = _foliage_green(rgb)
+    reach = max(1, int(round(float(ring_px))))
+    for _ in range(max(1, int(steps))):
+        if not np.any(binary):
+            break
+        crown = _crown_rows(binary, 0.42)
+        # Leaves already counted as the person come off the crown first.
+        inside_green = binary & green & crown
+        if np.any(inside_green):
+            binary[inside_green] = False
+            continue
+        outside = green & ~binary
+        if not np.any(outside):
+            break
+        boundary = binary & ~ndimage.binary_erosion(binary, iterations=1, border_value=0)
+        touch = ndimage.binary_dilation(outside, iterations=reach)
+        cut = boundary & touch & crown
+        if not np.any(cut):
+            break
+        binary[cut] = False
+    return binary
+
+
 def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX):
     """Take foliage leaks out of the matte. Skin and the shirt stay.
 
@@ -840,15 +928,145 @@ def _raw_writer(path, width, height, fps, pix_fmt, codec_args):
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
 
+def trim_frame_count(begin, end, fps):
+    """Frames a CFR ``trim`` keeps: presentation time in ``[begin, end)``.
+
+    Rounding the duration lands a frame early or late, and the cut-frame
+    check then scores the wrong picture. The count is the source frames
+    whose time falls in the window, which is what the concat actually emits.
+    """
+    rate = float(fps or 30)
+    start_n = int(math.ceil(float(begin) * rate - 1e-6))
+    end_n = int(math.ceil(float(end) * rate - 1e-6))
+    return max(0, end_n - start_n)
+
+
 def tightened_cut_frames(ranges, fps):
     """First frame index of each segment after the opening one."""
     cuts = []
     acc = 0
     rate = float(fps or 30)
     for begin, end in list(ranges or [])[:-1]:
-        acc += max(1, int(round((float(end) - float(begin)) * rate)))
+        acc += max(1, trim_frame_count(begin, end, rate))
         cuts.append(acc)
     return cuts
+
+
+def _extract_indexed_frames(path, indices, directory, prefix):
+    """Decode selected frame indexes, in order, from an encoded video."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    indices = [int(index) for index in indices]
+    if not indices:
+        return {}
+    expr = "+".join(f"eq(n\\,{index})" for index in indices)
+    pattern = directory / f"{prefix}-%04d.png"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(path),
+         "-vf", f"select='{expr}'", "-vsync", "vfr", str(pattern)],
+        check=True)
+    written = sorted(directory.glob(f"{prefix}-*.png"))
+    if len(written) != len(indices):
+        raise RuntimeError(
+            f"{path} yielded {len(written)} frames for {len(indices)} indexes")
+    return dict(zip(indices, written))
+
+
+def project_matte(mask, box, height=1920, width=1080):
+    """Place a source matte into the pop rectangle on the canvas."""
+    mask = np.asarray(mask)
+    if mask.ndim == 3:
+        mask = mask[:, :, 0]
+    left, top, box_w, box_h = [float(value) for value in box]
+    canvas = np.zeros((int(height), int(width)), np.float32)
+    y0 = max(0, int(np.floor(top)))
+    y1 = min(int(height), int(np.ceil(top + box_h)))
+    x0 = max(0, int(np.floor(left)))
+    x1 = min(int(width), int(np.ceil(left + box_w)))
+    if y1 <= y0 or x1 <= x0:
+        return canvas
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    sy = np.clip(((yy - top) / box_h * mask.shape[0]).astype(int), 0, mask.shape[0] - 1)
+    sx = np.clip(((xx - left) / box_w * mask.shape[1]).astype(int), 0, mask.shape[1] - 1)
+    canvas[y0:y1, x0:x1] = mask[sy, sx].astype(np.float32)
+    return canvas
+
+
+def composite_crown_olive(rgb, projected_mask, ring_px=4, band_px=22):
+    """Olive fraction of the hairline ring on a composited frame.
+
+    Despill removes a strict green key from the master. The halo that is
+    left is a darker olive band on the crown. A clean hairline sits near 0.
+    """
+    rgb = np.asarray(rgb)
+    mask = np.asarray(projected_mask, dtype=np.float32)
+    if mask.max() > 1.5:
+        mask = mask / 255.0
+    inside = mask >= 0.5
+    if not np.any(inside):
+        return 0.0
+    ys = np.where(inside)[0]
+    top = int(ys.min())
+    dist_out = ndimage.distance_transform_edt(~inside)
+    rows = np.arange(inside.shape[0])[:, None]
+    band = (rows >= top) & (rows < top + int(band_px))
+    ring = (dist_out > 0) & (dist_out <= float(ring_px)) & band
+    if not np.any(ring):
+        return 0.0
+    red = rgb[:, :, 0].astype(np.int16)
+    green = rgb[:, :, 1].astype(np.int16)
+    blue = rgb[:, :, 2].astype(np.int16)
+    luma = (red.astype(np.int16) + green + blue) / 3
+    olive = (green + 8 >= red) & (blue + 12 <= green) & (luma > 35) & (luma < 170)
+    return float(np.count_nonzero(olive & ring) / ring.sum())
+
+
+def check_master_fringes(master, picture, mask, ranges, box, fps=30, opens=3, work_dir=None):
+    """Score the first frames after every cut on the encoded master.
+
+    The green fractions use QA's ring: 0-8 px outside the matte, and the soft
+    band, on the crown. Those fractions are read from the straight picture at
+    the same frame index, which is the plate that was composited into the
+    master. The master frame itself is decoded in the same pass, and its
+    hairline olive is recorded. A frame fails when the crown fringe is above
+    the cut-frame limits.
+    """
+    from PIL import Image
+
+    cuts = [0] + tightened_cut_frames(ranges, fps)
+    wanted = []
+    for cut in cuts:
+        for offset in range(int(opens)):
+            wanted.append(int(cut) + offset)
+    wanted = sorted(set(index for index in wanted if index >= 0))
+    work = Path(work_dir or (Path(master).stem + "-fringe"))
+    if not work.is_absolute():
+        work = Path("/tmp") / work
+    work.mkdir(parents=True, exist_ok=True)
+    pictures = _extract_indexed_frames(picture, wanted, work, "pic")
+    masks = _extract_indexed_frames(mask, wanted, work, "mask")
+    masters = _extract_indexed_frames(master, wanted, work, "master")
+    rows = []
+    for index in wanted:
+        rgb = np.array(Image.open(pictures[index]))
+        matte = np.array(Image.open(masks[index]))
+        if matte.ndim == 3:
+            matte = matte[:, :, 0]
+        person = matte.astype(np.float32) / 255.0
+        soft, ring = fringe_green_fractions(rgb, person)
+        master_rgb = np.array(Image.open(masters[index]))
+        projected = project_matte(matte, box, height=master_rgb.shape[0], width=master_rgb.shape[1])
+        olive = composite_crown_olive(master_rgb, projected)
+        failed = soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or olive > 0.22
+        rows.append({
+            "frame": index,
+            "t": round(index / float(fps or 30), 3),
+            "green_in": round(soft, 3),
+            "green_out": round(ring, 3),
+            "olive": round(olive, 3),
+            "failed": bool(failed),
+        })
+    return rows
 
 
 def _segment_open_holds(persons, seed_index, colors=None):
@@ -943,13 +1161,26 @@ def _matte_green_stats(person, rgb, rim_px=OPEN_RIM_PX):
     return area, rim
 
 
-def _opening_frame_fails(person, rgb, seed_person):
-    """A cut frame whose matte still holds a foliage shell, or grew one."""
+def _opening_frame_fails(person, rgb, seed_person, seed_rgb=None):
+    """A cut frame whose matte still holds a foliage shell, or grew one.
+
+    The shell QA measures is source green in the soft crown and in the 0-8 px
+    ring outside it. A frame fails when that fringe is worse than the stable
+    frame of the same segment. Leaves that are simply the background do not.
+    """
     area, rim = _matte_green_stats(person, rgb)
     seed_area = int((np.asarray(seed_person) >= 0.5).sum())
     if rim > OPEN_RIM_GREEN_PX:
         return True
     if seed_area > 0 and area > OPEN_AREA_RATIO * seed_area and rim > OPEN_AREA_GREEN_PX:
+        return True
+    soft, ring = fringe_green_fractions(rgb, person)
+    if seed_rgb is None:
+        return soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT
+    seed_soft, seed_ring = fringe_green_fractions(seed_rgb, seed_person)
+    if soft > max(OPEN_FRINGE_IN, seed_soft + 0.06):
+        return True
+    if ring > max(OPEN_FRINGE_OUT, seed_ring + 0.06):
         return True
     return False
 
@@ -977,6 +1208,35 @@ def _warp_alpha(seed_alpha, seed_gray, gray):
         cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
 
+def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
+    """Rebuild a frame whose flowed edge pulled the crown into the leaves.
+
+    The coarse matte is the one to trust when this frame is worse than the
+    frame just before it. A cold refine does not blend that previous edge
+    back in. Returns the refined tuple, or None when nothing is wrong.
+    """
+    if reference_person is None or not _opening_frame_fails(
+            person, rgb, reference_person, reference_rgb):
+        return None
+    repaired = refine_frame(np.asarray(rgb), np.asarray(coarse, dtype=np.float32), None)
+    if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
+        binary = np.asarray(repaired[0]) >= 0.5
+        for _step in range(16):
+            if not _opening_frame_fails(
+                    binary.astype(np.float32), rgb, reference_person, reference_rgb):
+                break
+            nxt = _shrink_green_crown(binary, rgb, steps=1)
+            if np.array_equal(nxt, binary):
+                break
+            binary = nxt
+        repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None)
+    if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
+        soft, ring = fringe_green_fractions(rgb, repaired[0])
+        raise RuntimeError(
+            f"crown fringe stayed after a cold refine (in {soft:.3f} out {ring:.3f})")
+    return repaired
+
+
 def _rematte_failed_opening(refined, frames, seed_index):
     """Re-matte an opening frame that still holds foliage the stable frame does not.
 
@@ -985,11 +1245,12 @@ def _rematte_failed_opening(refined, frames, seed_index):
     still fails does not ship.
     """
     seed_person = refined[seed_index][0]
+    seed_rgb = np.asarray(frames[seed_index][0])
     seed_state = refined[seed_index][3] if isinstance(refined[seed_index][3], dict) else {}
     seed_gray = seed_state.get("gray")
     for index in range(seed_index):
         rgb = np.asarray(frames[index][0])
-        if not _opening_frame_fails(refined[index][0], rgb, seed_person):
+        if not _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             continue
         gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
         if seed_gray is not None and getattr(seed_gray, "shape", None) == gray.shape:
@@ -997,11 +1258,24 @@ def _rematte_failed_opening(refined, frames, seed_index):
         else:
             coarse = (np.asarray(seed_person) >= 0.5).astype(np.float32)
         refined[index] = refine_frame(rgb, coarse, None)
-        if _opening_frame_fails(refined[index][0], rgb, seed_person):
+        if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
+            binary = np.asarray(refined[index][0]) >= 0.5
+            for _step in range(16):
+                failed, _soft, _ring = fringe_fails(rgb, binary.astype(np.float32))
+                if not failed:
+                    break
+                nxt = _shrink_green_crown(binary, rgb, steps=1)
+                if np.array_equal(nxt, binary):
+                    break
+                binary = nxt
+            refined[index] = refine_frame(rgb, binary.astype(np.float32), None)
+        if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             area, rim = _matte_green_stats(refined[index][0], rgb)
+            _soft, ring = fringe_green_fractions(rgb, refined[index][0])
             raise RuntimeError(
                 f"matte on segment frame {index} still has a foliage shell "
-                f"({rim}px green in the rim, area {area})")
+                f"({rim}px green in the rim, area {area}, "
+                f"crown fringe in {_soft:.3f} out {ring:.3f})")
 
 
 def _refine_opening(frames):
@@ -1055,6 +1329,7 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
         ["-c:v", "qtrle", "-pix_fmt", "argb"])
     cut_at = set(int(frame) for frame in (cuts or []) if int(frame) > 0)
     previous = None
+    prev_emit = None
     written = 0
     next_index = 0
     opening = []
@@ -1076,12 +1351,13 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
             print(f"refined {written} frames", flush=True)
 
     def flush_opening():
-        nonlocal previous, opening
+        nonlocal previous, opening, prev_emit
         if not opening:
             return
         refined, previous = _refine_opening(opening)
-        for person, straight, out_a, _state in refined:
+        for index, (person, straight, out_a, _state) in enumerate(refined):
             emit(person, straight, out_a)
+            prev_emit = (person, opening[index][0])
         opening = []
 
     try:
@@ -1090,6 +1366,7 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
                 flush_opening()
                 previous = None
                 opening = []
+                prev_emit = None
             pair = read_pair()
             if pair is None:
                 flush_opening()
@@ -1104,7 +1381,16 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
                 continue
             rgb, coarse_frame = pair
             person, straight, out_a, previous = refine_frame(rgb, coarse_frame, previous)
+            reference = None if prev_emit is None else prev_emit
+            repaired = restabilize_crown(
+                person, rgb, coarse_frame,
+                None if reference is None else reference[0],
+                None if reference is None else reference[1])
+            if repaired is not None:
+                person, straight, out_a, previous = repaired
+                print(f"repaired crown fringe at frame {written}", flush=True)
             emit(person, straight, out_a)
+            prev_emit = (person, rgb)
     finally:
         for proc in (rgb_proc, mask_proc):
             if proc.stdout:
@@ -1517,7 +1803,7 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
 def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
     """Ease alpha where the body is cut by the source frame.
 
-    The fade is ``hand_ramp_px`` (about 36 card pixels once placed). A hand
+    The fade is ``hand_ramp_px`` (about 28 card pixels once placed). A hand
     inside the frame stays opaque. A wide run above ``shoulder_y`` is the head
     and is not faded. There is no fade along the bottom.
     """
@@ -1607,6 +1893,7 @@ def blur_cover_plate(frames, masks, card_w, card_h, sigma=PLATE_SIGMA, darken=PL
         painted = cv2.inpaint(tiny, hole_tiny, 6, cv2.INPAINT_TELEA)
         filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
         clean = np.where(known[..., None], clean, filled)
+    clean = _match_hole_luma(clean, known)
     cover = max(card_w / float(width), card_h / float(height))
     src_sigma = max(1.0, float(sigma) / cover)
     blurred = cv2.GaussianBlur(clean, (0, 0), src_sigma)
@@ -1688,6 +1975,34 @@ def _plate_holdout(mask, rgb, dilate_px):
     return cv2.dilate(person.astype(np.uint8), kernel) > 0
 
 
+def _match_hole_luma(clean, known, radius=28):
+    """Lift the dark inpainted ring up toward the leaves beside the silhouette.
+
+    The hole is the speaker. Telea fills it darker than the foliage it sits
+    in, and that ring survives the plate blur as a halo. Only pixels that are
+    darker than the nearby background move, and only part of the way.
+    """
+    clean = np.asarray(clean, dtype=np.float32)
+    known = np.asarray(known, dtype=bool)
+    hole = ~known
+    if not np.any(hole) or not np.any(known):
+        return clean
+    dist = ndimage.distance_transform_edt(hole)
+    ring = hole & (dist > 0) & (dist <= float(radius))
+    if not np.any(ring):
+        return clean
+    luma = clean.mean(axis=2)
+    known_l = np.where(known, luma, 0).astype(np.float32)
+    weight = ndimage.gaussian_filter(known.astype(np.float32), 14)
+    blurred = ndimage.gaussian_filter(known_l, 14)
+    local = blurred / np.maximum(weight, 1e-3)
+    current = luma
+    gap = local - current
+    lift = np.where(ring & (gap > 4.0), gap * np.clip((float(radius) - dist) / float(radius), 0, 1) * 0.7, 0)
+    out = clean + lift[..., None]
+    return np.clip(out, 0, 255)
+
+
 def _inpaint_holes(clean, known):
     """Fill unknown pixels from the surrounding background. ``known`` is boolean."""
     import cv2
@@ -1730,6 +2045,7 @@ def _clean_fill(picture, mask):
     known = known_count > 0
     clean = np.nan_to_num(clean, nan=0.0)
     clean = _inpaint_holes(clean, known)
+    clean = _match_hole_luma(clean, known)
     return np.clip(clean, 0, 255).astype(np.uint8)
 
 

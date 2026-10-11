@@ -1538,6 +1538,78 @@ def excise_internal_silence(samples, rate, ranges, max_keep=0.04, min_gap=0.11, 
     return rebuilt or list(ranges)
 
 
+# Air after an aligned word that a pause target is not allowed to eat.
+# The aligned end already holds the decay, including a quiet /ts/ or /s/.
+WORD_DECAY_MARGIN = 0.02
+
+
+def protect_aligned_tails(ranges, words, samples=None, rate=RATE, margin=WORD_DECAY_MARGIN):
+    """Put a trimmed tail back when the cut landed inside an aligned word.
+
+    A gap trim may only remove frames outside the aligned spans plus
+    ``margin``. It may not shorten a word to hit a pause length. A quiet
+    fricative stays with the word even when it sits under the full-band
+    level a silence trim treats as air. Room tone after that consonant
+    stays cut. The restore stops at the next range, so a pause between
+    words stays cut.
+    """
+    samples = None if samples is None else np.asarray(samples, dtype=np.float64)
+    spans = []
+    for word in words or []:
+        start = float(word["start"])
+        stop = float(word["end"]) + float(margin)
+        if stop > start + 0.02:
+            spans.append((start, stop))
+    ordered = [(float(begin), float(end)) for begin, end in (ranges or [])]
+    if not spans or not ordered:
+        return ordered
+
+    def audible_until(start, stop, floor_db=-48.0):
+        """Last moment in the window that is still above the room."""
+        if samples is None or stop <= start:
+            return float(stop)
+        last = float(start)
+        moment = float(start)
+        while moment < stop:
+            a = int(max(0.0, moment) * rate)
+            b = int(min(len(samples), (moment + 0.012) * rate))
+            if b - a >= 8:
+                chunk = samples[a:b]
+                level = _db(math.sqrt(float(np.dot(chunk, chunk)) / len(chunk)))
+                if level > floor_db:
+                    last = min(float(stop), moment + 0.012)
+            moment += 0.008
+        return last
+
+    rebuilt = []
+    for index, (begin, end) in enumerate(ordered):
+        nxt = ordered[index + 1][0] if index + 1 < len(ordered) else None
+        guard = end
+        for start, stop in spans:
+            if stop <= begin + 0.01 or start >= end + 0.45:
+                continue
+            if start < end + 0.02 and stop > begin:
+                cap = stop
+                if nxt is not None:
+                    cap = min(cap, nxt - 0.004)
+                if cap <= end + 0.004:
+                    continue
+                # A range that already reaches the aligned word has not been
+                # shortened. The decay margin is the consonant, not the pause
+                # after it, and room tone in that margin is not put back.
+                word_end = stop - float(margin)
+                if end + 0.004 >= word_end:
+                    continue
+                heard = audible_until(end, cap)
+                guard = max(guard, min(cap, heard + float(margin)))
+        if nxt is not None:
+            guard = min(guard, nxt - 0.004)
+        if guard < begin + 0.02:
+            guard = begin + 0.02
+        rebuilt.append((begin, guard))
+    return rebuilt
+
+
 def extend_closing_hold(ranges, source_duration, hold=0.10):
     """Keep a short silent hold after the last word when the source still has it."""
     if not ranges or hold <= 0:
@@ -1858,6 +1930,8 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     snap_quiet_word_ends(samples, RATE, ranges, refined)
     ranges = attach_stop_release(samples, RATE, ranges, words=refined)
     ranges = close_unreleased_word_gaps(samples, RATE, ranges, refined)
+    # Last. A pause target must not have eaten the consonant to get there.
+    ranges = protect_aligned_tails(ranges, refined, samples, RATE)
     # A tenth of a second after the last word, when the source still has it.
     # The closing face can use this hold without crossing back over a picture cut.
     ranges = extend_closing_hold(ranges, duration, hold=0.10)
