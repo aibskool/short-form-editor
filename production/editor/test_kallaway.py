@@ -1187,6 +1187,11 @@ class KallawayTests(unittest.TestCase):
         events = stage_events("phone_frame", phone["start"], phone["end"], phone["stage"])
         whoosh = next(event for event in events if event["kind"] == "whoosh")
         self.assertGreaterEqual(whoosh["at"], phone["start"] + 0.18)
+        self.assertFalse(whoosh.get("mute"))
+        held = stage_events("phone_frame", 8.665, 13.455, {"motif": "phone_frame"})
+        swipe = next(event for event in held if event["kind"] == "whoosh")
+        self.assertTrue(swipe.get("mute"))
+        self.assertEqual(swipe.get("mute_reason"), "no entrance")
 
     def test_vault_pages_keep_body_lines_and_keep_moving(self):
         colors = {"text": "#fff", "muted": "#aaa", "accent": "#54C947", "accent_strong": "#43AD38",
@@ -1830,13 +1835,22 @@ class KallawayTests(unittest.TestCase):
             "lands_on": "keyword box: WEBSITE", "under_db": 13,
         }], 30, {}, UNDER_DB)
         self.assertEqual(kept[0]["file"], "sfx/Pop 2.wav")
+        from kallaway_pack import keyword_pop_file
+        pop = keyword_pop_file()
+        self.assertIsNotNone(pop)
+        self.assertFalse(Path(pop).is_absolute())
+        self.assertTrue(str(pop).startswith("27 Pops"))
+        self.assertNotIn("Pop 2.wav", pop)
         for bed in beds:
             self.assertIn("Ui 30", bed["file"])
             self.assertTrue(bed.get("budget_free"))
             self.assertGreaterEqual(bed["loop"], 0.12)
             landing = min(bells, key=lambda bell: abs(bell["at"] - (bed["at"] + bed["loop"])))
             self.assertAlmostEqual(bed["at"] + bed["loop"], landing["at"], delta=0.02)
-            self.assertIn("Bell 5", landing["file"])
+            self.assertTrue(any(name in landing["file"] for name in ("Bell 5", "Bell 6", "Bell 7")))
+        heard_bells = [bell["file"] for bell in sorted(bells, key=lambda bell: bell["at"])]
+        self.assertEqual(len(set(heard_bells)), 3)
+        self.assertIn("Bell 5", heard_bells[0])
 
     def test_a_count_up_tick_that_starts_in_a_short_gap_still_rolls(self):
         from kallaway_plan import anchor_sfx
@@ -2084,7 +2098,7 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(pin - (top + box), -1)
 
     def test_a_measured_band_follows_the_head_between_beard_and_pin(self):
-        from kallaway_style import FULL_INK_TOP, assign_full_captions
+        from kallaway_style import FULL_BASE_FRAC, PIN_BASE_CLEAR, assign_full_captions
         theme, _, _, _ = load_theme("dark")
         shots = [{"id": "full", "layout": "full", "start": 4.0, "end": 5.2, "scale": 1.0}]
         samples = [
@@ -2096,14 +2110,16 @@ class KallawayTests(unittest.TestCase):
             {"full": {"chin": 960.0, "beard": 1202.0, "pin": 1265.0, "track": samples}},
             theme["layout"])
         font = shots[0]["caption_px"]
-        self.assertLess(font, 42)
+        self.assertGreaterEqual(font, 54)
+        self.assertEqual(font, 67)
         self.assertEqual(len(shots[0]["caption_track"]), 2)
         # The head rises on the second sample, so the caption rises with it.
         self.assertLess(shots[0]["caption_track"][1]["y"], shots[0]["caption_track"][0]["y"])
         for point, sample in zip(shots[0]["caption_track"], samples):
             css = point["y"] / 100 * 1920
-            ink_top = css + FULL_INK_TOP * font
-            self.assertGreaterEqual(ink_top - sample["beard"], 25)
+            baseline = css + FULL_BASE_FRAC * font
+            self.assertGreaterEqual(sample["pin"] - baseline, 30)
+            self.assertAlmostEqual(sample["pin"] - baseline, PIN_BASE_CLEAR, delta=0.2)
 
     def test_full_face_baseline_is_per_take(self):
         from kallaway_matte import frame_popout

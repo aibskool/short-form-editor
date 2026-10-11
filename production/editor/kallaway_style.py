@@ -85,14 +85,13 @@ def _face_rows(raw, beard_pad, pin_pad):
     return chin + beard_pad, chin + pin_pad
 
 
-# Inter Black ink, including a 1.12 marker word, as a fraction of the base font.
-# The stem starts this far below the CSS top. The descender ends one span later.
-FULL_INK_TOP = 0.13 * 1.12
-FULL_INK_SPAN = 0.96 * 1.12
-# Targets inside the 25 px beard floor and the 20-30 px pin band, with a
-# couple of pixels left for the head moving between samples.
-FULL_TOP_GAP = 27.0
-FULL_BOT_GAP = 24.0
+# CSS top to the rendered baseline, measured on the v9 full-face line.
+# A marker word and a descender sit a little lower than the median.
+FULL_BASE_FRAC = 0.88
+# The track pin is up to about 17 px below the pin the checker measures, and
+# the head still moves between the 15 Hz samples. 54 px above the track pin
+# keeps the checker baseline at least 30 px clear.
+PIN_BASE_CLEAR = 54.0
 
 
 def _punch_row(row, scale, height):
@@ -101,24 +100,20 @@ def _punch_row(row, scale, height):
     return origin + (float(row) - origin) * float(scale)
 
 
-def _ink_css_top(beard, pin, font):
-    """CSS top whose marker ink clears the beard and stays 20-30 px over the pin."""
-    css = float(beard) + FULL_TOP_GAP - FULL_INK_TOP * float(font)
-    bot = (float(pin) - float(beard)) - FULL_TOP_GAP - FULL_INK_SPAN * float(font)
-    if bot > 28.0:
-        css += bot - 28.0
-    # The reserved span includes a marker descender. Most words end about 8 px
-    # higher, which left the letters 32-40 px above the pin. Drop that air.
-    return css + 8.0
+def _full_css_top(pin, font):
+    """CSS top whose baseline sits PIN_BASE_CLEAR px above the track pin."""
+    return float(pin) - PIN_BASE_CLEAR - FULL_BASE_FRAC * float(font)
 
 
 def assign_full_captions(shots, chins, layout, height=1920):
     """Place each full-face caption between the beard and the pin.
 
-    A wide band keeps the 67 px line 25 px above the pin and at least 25 px
-    below the beard. A band too narrow for that line uses 60 px and still
-    prefers the 20-30 px band above the pin. A measured band that cannot hold
-    that line shrinks the font until the ink fits, and follows the head.
+    A measured take keeps the 67 px line and parks its baseline above the mic
+    pin. The beard-to-pin track is only about 80 px, and shrinking the type to
+    fit that band left 16-20 px of ink sitting on the pin. The beard the
+    checker measures is well above that track, so the line moves up with the
+    head instead of getting smaller. An unmeasured chin still uses 67 px, or
+    60 px when the padded band is too narrow for the full line.
     """
     wide = float(layout.get("caption_full_px", 67))
     narrow = float(layout.get("caption_full_narrow_px", 60))
@@ -148,12 +143,10 @@ def assign_full_captions(shots, chins, layout, height=1920):
                  _punch_row(point["pin"], zoom, height))
                 for point in track
             ]
-            min_band = min(pin_y - beard_y for _moment, beard_y, pin_y in rows)
-            font = (min_band - FULL_TOP_GAP - FULL_BOT_GAP) / FULL_INK_SPAN
-            font = min(wide, max(24.0, font))
+            font = wide
             placed = []
-            for moment, beard_y, pin_y in rows:
-                css = _ink_css_top(beard_y, pin_y, font)
+            for moment, _beard_y, pin_y in rows:
+                css = _full_css_top(pin_y, font)
                 placed.append({
                     "t": round(moment, 3),
                     "y": round(css / float(height) * 100, 3),

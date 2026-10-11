@@ -472,13 +472,28 @@ def _shift_counters(timeline, originals, starts):
             cue["sound_at"] = round(float(cue["sound_at"]) + delta, 3)
 
 
+def _pack_file_label(pack):
+    """Pack-relative path. An absolute wav beside the editor is not a pack file."""
+    path = Path(pack)
+    if not path.is_absolute():
+        return pack
+    from kallaway_pack import HERE, pack_dir
+    resolved = path.resolve()
+    for root in (pack_dir(), HERE / "sfx"):
+        try:
+            return str(resolved.relative_to(root.resolve()))
+        except ValueError:
+            continue
+    return path.name
+
+
 def sfx_placement_rows(cues):
     """Audible cues only: when they play, which pack file, and the picture they hit."""
     rows = []
     for cue in cues or []:
         if cue.get("mute"):
             continue
-        pack = str(cue.get("file") or "")
+        pack = _pack_file_label(str(cue.get("file") or ""))
         rows.append({
             "time": round(float(cue.get("sound_at", cue.get("at", 0))), 3),
             "file": Path(pack).name,
@@ -553,12 +568,17 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
                 })
         if header.get("payoff_style") == "box":
             from kallaway_pack import keyword_pop_file
-            events.append({
-                "at": round(at + 0.06, 3), "kind": "pop", "combo": "20",
-                "file": keyword_pop_file(), "label": "Word Pop", "fixed_file": True,
-                "band": "high", "sound_at": round(at + 0.06, 3),
-                "lands_on": f"keyword box: {header.get('payoff') or header.get('emphasis') or text}",
-            })
+            # The header slides for 0.24s starting 0.12s after the cut.
+            # The pop hits the frame the box is fully on, not the still-hidden start.
+            fully_on = round(at + 0.36, 3)
+            pop_file = keyword_pop_file()
+            if pop_file:
+                events.append({
+                    "at": fully_on, "kind": "pop", "combo": "20",
+                    "file": pop_file, "label": "Word Pop", "fixed_file": True,
+                    "band": "high", "sound_at": fully_on,
+                    "lands_on": f"keyword box: {header.get('payoff') or header.get('emphasis') or text}",
+                })
         if text:
             previous = text
     if shots:

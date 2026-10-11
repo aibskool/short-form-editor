@@ -111,37 +111,19 @@ def resolve(file):
 
 
 def keyword_pop_file():
-    """Pop 2 for the keyword box.
+    """Pack-relative pop for the keyword box.
 
-    The pack copy is `Pop 2.mp3`. When that file is not in the local pack, the
-    playbook's Combo 20 mix (Pop 1 plus a dull hit at about 40%) is written once
-    beside the editor and used under the Pop 2 name.
+    The pack file is `Pop 2.mp3`. A Pop 1 mix written beside the editor is not
+    that file, and an absolute path to the mix does not exist in the pack.
+    When this copy of the pack has no Pop 2, the cue uses Pop 4, the other
+    short pop that is actually in the folder.
     """
-    packed = resolve("27 Pops, Zaps & Switches/Pop 2.mp3")
-    if packed.is_file():
-        return "27 Pops, Zaps & Switches/Pop 2.mp3"
-    dest = HERE / "sfx" / "Pop 2.wav"
-    if dest.is_file() and dest.stat().st_size > 1000:
-        return str(dest)
-    pop = resolve(POP_1)
-    hit = resolve(HIT_DULL)
-    if not hit.is_file():
-        hit = resolve(DEEP_HIT)
-    if not pop.is_file() or not hit.is_file():
-        return POP_1
-    pop_samples, _info = load(pop)
-    hit_samples, _info = load(hit)
-    mixed = np.array(pop_samples, dtype=np.float64, copy=True)
-    take = min(len(mixed), len(hit_samples), int(0.28 * RATE))
-    mixed[:take] += 0.40 * np.asarray(hit_samples[:take], dtype=np.float64)
-    peak = float(np.max(np.abs(mixed))) if len(mixed) else 0.0
-    if peak > 0.98:
-        mixed *= 0.98 / peak
-    mixed = mixed[:int(0.45 * RATE)]
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    from kallaway_audio import write_wav
-    write_wav(dest, mixed.astype(np.float32))
-    return str(dest)
+    packed = "27 Pops, Zaps & Switches/Pop 2.mp3"
+    if resolve(packed).is_file():
+        return packed
+    if resolve(POP_4).is_file():
+        return POP_4
+    return None
 
 
 def kind_paths(kind):
@@ -313,6 +295,12 @@ def decorate_events(motif, events, stage, start, end):
         for event in events:
             if event["kind"] == "whoosh":
                 event["label"] = "Graphic entrance"
+    if motif == "phone_frame" and not stage.get("enter_after") and not stage.get("scan") and not stage.get("scroll"):
+        # A held handset only drifts. A swipe on that cut has no entrance to land on.
+        for event in events:
+            if event.get("kind") == "whoosh":
+                event["mute"] = True
+                event["mute_reason"] = "no entrance"
     if motif in {"phone_frame", "broll_card", "hand_circle"}:
         draw = 0.45 if motif == "hand_circle" else float((stage.get("callout") or {}).get("draw") or 0.36)
         for event in events:
@@ -761,6 +749,7 @@ def _restore_isolated_entrances(flat, extra=5, gap=0.75, budget=None, duration=N
     muted = [
         index for index, cue in enumerate(flat)
         if cue.get("mute") and cue.get("label") in labels and float(cue.get("under_db") or 0) < 20
+        and cue.get("mute_reason") not in {"no entrance", "no visual", "gap"}
     ]
     if duration is None and flat:
         duration = max(float(cue["at"]) for cue in flat)
@@ -951,6 +940,38 @@ def _separate_fixed(flat, combo, rotation):
         cursor += 1
 
 
+def _separate_bells(flat):
+    """A reel does not land on Bell 5 four times.
+
+    The first counter keeps Bell 5. Later counter bells and list ticks take
+    Bell 7 and Bell 6. Once each pack bell has been used, the next cue repeats
+    a bell other than Bell 5.
+    """
+    rotation = [BELL_5, BELL_7, BELL_6]
+    previous = None
+    used = []
+    order = sorted(
+        (index for index, cue in enumerate(flat)
+         if not cue.get("mute") and "Bell" in str(cue.get("file") or "")
+         and (cue.get("label") in {"Number Counter", "List Tick"})),
+        key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
+    )
+    for index in order:
+        fresh = [name for name in rotation if name not in used]
+        if fresh:
+            chosen = fresh[0]
+        else:
+            chosen = next((name for name in rotation if name != previous and name != BELL_5), None)
+            if chosen is None:
+                chosen = next(name for name in rotation if name != previous)
+        if chosen == previous:
+            chosen = next(name for name in rotation if name != previous)
+        flat[index]["file"] = chosen
+        previous = chosen
+        if chosen not in used:
+            used.append(chosen)
+
+
 def _separate_whooshes(flat):
     """Heard whooshes alternate files even after the density pass drops one."""
     previous = None
@@ -1067,11 +1088,12 @@ def finish_sfx(cues, fps, unders, under_db):
         key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])),
     )
     for index in heard:
-        # Combo 20 on the keyword box is Pop 2, not the rotating cycle.
+        # Combo 20 on the keyword box keeps its pack file, not the rotating cycle.
         if flat[index].get("fixed_file") and flat[index].get("file"):
             continue
         flat[index]["file"] = POP_CYCLE[pop_turn % len(POP_CYCLE)]
         pop_turn += 1
+    _separate_bells(flat)
     for cue in flat:
         if cue.get("mute") or cue.get("file"):
             continue
