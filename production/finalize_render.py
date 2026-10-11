@@ -21,7 +21,7 @@ def run(args):
 
 def measure(path, target, peak):
     result = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
-                  f"loudnorm=I={target}:TP={peak}:LRA=7:print_format=json", "-f", "null", "-"])
+                  f"loudnorm=I={target}:TP={peak}:LRA=11:print_format=json", "-f", "null", "-"])
     blocks = re.findall(r'\{\s*"input_i".*?\}', result.stderr, re.S)
     if not blocks:
         raise RuntimeError("FFmpeg returned no loudness measurement")
@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--receipt", required=True)
-    parser.add_argument("--target-lufs", type=float, default=-14.2)
+    parser.add_argument("--target-lufs", type=float, default=-14.0)
     parser.add_argument("--true-peak", type=float, default=-1.0)
     parser.add_argument("--codec-headroom-db", type=float, default=0.8,
                         help="Extra limiter headroom before AAC encoding; verify the decoded final peak")
@@ -49,7 +49,7 @@ def main():
     video_duration = next(float(s['duration']) for s in source_probe['streams'] if s.get('codec_type') == 'video')
     measured = measure(source, args.target_lufs, limiter_ceiling)
     # Second pass uses the actual mixed render, including sound accents.
-    effect = (f"loudnorm=I={args.target_lufs}:TP={limiter_ceiling}:LRA=7:"
+    effect = (f"loudnorm=I={args.target_lufs}:TP={limiter_ceiling}:LRA=11:"
               f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
               f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
               f"offset={measured['target_offset']}:linear=true,"
@@ -57,7 +57,7 @@ def main():
               # after resampling so an AAC timestamp gap cannot truncate the tail.
               f"aresample=48000,asetpts=N/SR/TB,atrim=duration={video_duration}")
     run(["ffmpeg", "-hide_banner", "-v", "error", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0",
-         "-c:v", "copy", "-af", effect, "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         "-c:v", "copy", "-af", effect, "-c:a", "aac", "-b:a", "256k", "-ar", "48000",
          "-t", str(video_duration), "-movflags", "+faststart", str(output)])
     decoded = run(["ffmpeg", "-hide_banner", "-v", "error", "-i", str(output), "-f", "null", "-"])
     if decoded.stderr.strip():
