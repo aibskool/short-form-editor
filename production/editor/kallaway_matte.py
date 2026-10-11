@@ -117,7 +117,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge-rimgray"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge-rimgray-contour6"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -913,6 +913,41 @@ def _drop_olive_leak(binary, rgb, min_area=250):
     return cleaned
 
 
+def _smooth_column_contour(binary, sigma=6.0, max_move=12):
+    """Round a stair-stepped silhouette. The body does not move.
+
+    Optical flow can leave the 0.5 contour on a staircase when this frame and
+    the warped previous frame disagree by more than the contour blur. That
+    staircase is the roughness the cut-frame check measures. A short gaussian
+    along the top of each column takes the stair out, and the move is capped
+    so a real shoulder or a raised hand stays where it is.
+    """
+    binary = np.asarray(binary, dtype=bool)
+    if not np.any(binary):
+        return binary
+    height, width = binary.shape
+    present = binary.any(axis=0)
+    if int(present.sum()) < 8:
+        return binary
+    top = np.argmax(binary, axis=0).astype(np.float64)
+    index = np.flatnonzero(present)
+    filled = np.interp(np.arange(width, dtype=np.float64), index, top[index])
+    smoothed = ndimage.gaussian_filter1d(filled, float(sigma))
+    delta = np.clip(smoothed - filled, -float(max_move), float(max_move))
+    target = np.rint(filled + delta).astype(np.int32)
+    current = np.rint(top).astype(np.int32)
+    cleaned = np.array(binary, copy=True)
+    for x in index:
+        start = int(current[x])
+        stop = int(target[x])
+        if stop == start:
+            continue
+        lo = max(0, min(start, stop))
+        hi = min(height, max(start, stop))
+        cleaned[lo:hi, x] = stop < start
+    return cleaned
+
+
 def _drop_background_rim(binary, rgb, rim_px=8, match=12):
     """Drop plate-colored pixels in the outer 8 px of the matte. Skin stays.
 
@@ -1094,6 +1129,11 @@ def refine_frame(rgb, coarse, previous=None, hold_edge=False):
         binary = rounded >= 0.5
         binary = ndimage.binary_fill_holes(binary)
         binary = _drop_specks(binary)
+    binary = _drop_foliage(binary, rgb)
+    binary = _drop_olive_leak(binary, rgb)
+    binary = _drop_background_rim(binary, rgb)
+    binary = _smooth_column_contour(binary)
+    # A fill can land on a leaf or the plate. The drops put that back.
     binary = _drop_foliage(binary, rgb)
     binary = _drop_olive_leak(binary, rgb)
     binary = _drop_background_rim(binary, rgb)
