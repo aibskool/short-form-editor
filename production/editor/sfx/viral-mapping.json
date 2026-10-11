@@ -1,12 +1,8 @@
 {
   "pop": {
-    "primary": "27 Pops, Zaps & Switches/Pop 3.mp3",
-    "alternates": [
-      "27 Pops, Zaps & Switches/Pop 5.mp3",
-      "27 Pops, Zaps & Switches/Pop 1.mp3",
-      "00 Viral Reels Essentials/Cartoon Pop.mp3"
-    ],
-    "notes": "Combo #19 Word Pop: Pop 3, alternate with Pop 5"
+    "primary": "27 Pops, Zaps & Switches/Pop 1.mp3",
+    "alternates": [],
+    "notes": "Every pop-on uses Pop 1. Pop 3, Pop 4, and Pop 5 are retired."
   },
   "pop_roll_grid_fill": {
     "primary": "27 Pops, Zaps & Switches/Multi Pop 6.mp3",
@@ -72,12 +68,9 @@
     "notes": "APPROXIMATE - no paste/clack file in pack. Switch 1 is a short mechanical clack (combo #17)"
   },
   "counter_ticking": {
-    "primary": "24 UI Sounds/Ui 30.wav",
-    "alternates": [
-      "35 Money & Cash/Bank Note Counter.mp3",
-      "35 Money & Cash/Cash Counting Machine.mp3"
-    ],
-    "notes": "Combo #25 Number Counter: Ui 30 looped under the count + Bell 5 on final number. Clock Tension 7 (40 Mystery) is in the index but NOT in Drive"
+    "primary": "24 UI Sounds/Ui Sound 12.mp3",
+    "alternates": [],
+    "notes": "One Ui Sound 12 tick per displayed number, peaked at -6.1 dBFS. The last tick is on the frame the final number lands. A roll faster than every 50 ms slows to about 8-10 steps over at least 0.4 s. The roll counts as one cue toward the 20-per-minute cap. Ui 30 is retired."
   },
   "ding_success": {
     "primary": "30 Notifications & Alerts/Alert Positive Correct.mp3",
@@ -103,13 +96,9 @@
     "notes": "GAP - no pen/marker/scribble/writing sound anywhere in the 1,000-file index"
   },
   "error_wrong_buzz": {
-    "primary": "18 Fails & Buzzers/Buzzer 2.mp3",
-    "alternates": [
-      "31 Error Sounds/Error 02.mp3",
-      "18 Fails & Buzzers/Buzzer 1.mp3",
-      "31 Error Sounds/Windows Error Sound.mp3"
-    ],
-    "notes": "Combo #24 Wrong Answer: Buzzer 2 (pair with Alert Positive Correct)"
+    "primary": "00 Viral Reels Essentials/Wrong Answer.mp3",
+    "alternates": [],
+    "notes": "Wrong Answer on a genuinely bad beat, about 4 dB under the voice. A win, money in, or a cleared count such as 0 errors left gets a bell or Ka-Ching instead."
   },
   "vacuum_suck_merge": {
     "primary": "04 Swishes & Swooshes/Backwards Swoosh.wav",

@@ -18,3 +18,7 @@ production/pilots/
 *.wav
 *.mp3
 production/editor/sfx/viral-pack/
+# Brandon's three defaults are committed. The rest of the pack stays local.
+!production/editor/sfx/Pop 1.mp3
+!production/editor/sfx/Wrong Answer.mp3
+!production/editor/sfx/Ui Sound 12.mp3
