@@ -70,7 +70,7 @@
   "counter_ticking": {
     "primary": "24 UI Sounds/Ui Sound 12.mp3",
     "alternates": [],
-    "notes": "One Ui Sound 12 tick per displayed number. The last tick is on the frame the final number lands. Ui 30 is retired."
+    "notes": "One Ui Sound 12 tick per displayed number, peaked at -6.1 dBFS. The last tick is on the frame the final number lands. A roll faster than every 50 ms slows to about 8-10 steps over at least 0.4 s. The roll counts as one cue toward the 20-per-minute cap. Ui 30 is retired."
   },
   "ding_success": {
     "primary": "30 Notifications & Alerts/Alert Positive Correct.mp3",
@@ -98,7 +98,7 @@
   "error_wrong_buzz": {
     "primary": "00 Viral Reels Essentials/Wrong Answer.mp3",
     "alternates": [],
-    "notes": "Every negative beat uses Wrong Answer. A negative count lands on it instead of a bell."
+    "notes": "Wrong Answer on a genuinely bad beat, about 4 dB under the voice. A win, money in, or a cleared count such as 0 errors left gets a bell or Ka-Ching instead."
   },
   "vacuum_suck_merge": {
     "primary": "04 Swishes & Swooshes/Backwards Swoosh.wav",

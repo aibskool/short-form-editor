@@ -3,16 +3,17 @@
 The pack is royalty-free in a video and may not be redistributed as a library.
 Point SFX_PACK_DIR at a local copy (default: production/editor/sfx/viral-pack).
 Files are used as supplied. The only edits are a timeline trim, a short fade
-where a long file is cut, and clip gain. Pop 1 and Ui Sound 12 are the
-exception that is turned up or down to just under clipping. Nothing else
-quieter than full scale is turned up. No EQ, pitch shift, time-stretch, or
-filtering.
+where a long file is cut, and clip gain. Pop 1 is peaked 4 dB under full scale
+and Ui Sound 12 is peaked 6 dB under, so a click does not drive the voice
+limiter. Nothing else quieter than full scale is turned up. No EQ, pitch
+shift, time-stretch, or filtering.
 
 Pop 1, Wrong Answer, and Ui Sound 12 are committed under production/editor/sfx/
 and are the defaults for every pop-on, negative beat, and count-up tick.
 """
 import math
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -88,10 +89,11 @@ CALLOUT_ROTATION = [SWISH_2, SWOOSH_FAST, SIMPLE_WHOOSH]
 # Playbook S5, dB under the voice, with no music. Pops and ticks sit mid-range
 # of -10 to -16. Dings and the cash register sit mid-range of -8 to -12.
 # Marker draws use the quiet end because the pack has no squeak.
+# Wrong Answer sits about 4 dB under the voice, never up at the words.
 UNDER_FROM_SHEET = {
     "pop": 13.0, "click": 13.0, "typing": 13.0, "ticking": 13.0,
     "marker": 18.0, "paper": 10.0,
-    "error": 6.0, "whoosh": 10.0, "riser": 10.0, "ding": 10.0, "bass": 6.0,
+    "error": 4.0, "whoosh": 10.0, "riser": 10.0, "ding": 10.0, "bass": 6.0,
 }
 
 _CACHE = {}
@@ -118,9 +120,11 @@ _COMMITTED = {
     WRONG_ANSWER: HERE / "sfx" / "Wrong Answer.mp3",
     UI_12: HERE / "sfx" / "Ui Sound 12.mp3",
 }
-# Just under clipping. Pop 1 peaks hot; Ui Sound 12 is quiet and already peak-bound.
-_PEAK_TARGET = 10 ** (-0.1 / 20.0)
-_PEAK_FILES = {"Pop 1.mp3", "Ui Sound 12.mp3"}
+# 4 dB and 6 dB under a -0.1 dBFS peak. Near 0 dBFS, these clicks made the
+# voice limiter pump 2–5 dB and mask the word underneath.
+_PEAK_DB = {"Pop 1.mp3": -4.1, "Ui Sound 12.mp3": -6.1}
+_PEAK_LINEAR = {name: 10 ** (db / 20.0) for name, db in _PEAK_DB.items()}
+NEGATIVE_UNDER_DB = 4.0
 
 
 def resolve(file):
@@ -157,9 +161,9 @@ def _decode(path):
 def load(path):
     """Decode once. Gain only.
 
-    Anything peaking above 0 dBFS is turned down. Pop 1 and Ui Sound 12 are
-    also moved to just under clipping: Pop 1 is hot, Ui Sound 12 is quiet and
-    already peak-bound, so loudness is not the target. Nothing else is turned up.
+    Anything peaking above 0 dBFS is turned down. Pop 1 is then set to -4.1
+    dBFS and Ui Sound 12 to -6.1 dBFS. The mixer is not allowed to boost
+    those peaks back up. Nothing else quieter than full scale is turned up.
     """
     path = str(path)
     if path not in _CACHE:
@@ -167,11 +171,12 @@ def load(path):
         peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
         clip_db = 0.0
         name = Path(path).name
-        if name in _PEAK_FILES and peak > 1e-8:
-            gain = _PEAK_TARGET / peak
+        if name in _PEAK_LINEAR and peak > 1e-8:
+            target = _PEAK_LINEAR[name]
+            gain = target / peak
             samples = samples * gain
             clip_db = 20.0 * math.log10(gain)
-            peak = _PEAK_TARGET
+            peak = target
         elif peak > 1.0:
             samples = samples * (1.0 / peak)
             clip_db = -20.0 * math.log10(peak)
@@ -255,48 +260,108 @@ def _land(at, end, delay):
 
 
 def _count_land(start, value, span=0.9):
-    """When a power2.out count first rounds to its target.
+    """When the displayed count first reaches its target.
 
-    The tween keeps running, but the digits have already landed. The bell or
-    the cash register belongs on that frame, not at the end of the ease.
+    The bell, the cash register, or Wrong Answer belongs on that frame.
     """
     _times, land = count_tick_times(start, value, span)
     return land
 
 
-def count_tick_times(start, value, span=0.9, fps=30.0):
-    """One time per displayed integer of a power2.out roll, on the 30 fps grid.
-
-    The number starts at 0. Each later frame whose rounded digits differ from
-    the previous frame is a tick. The last tick is the frame the target lands.
-    """
-    value = max(1, int(value or 1))
-    start = float(start)
-    span = float(span)
-    fps = float(fps or 30)
-    frames = int(math.floor(span * fps + 1e-6))
-    times = []
+def _power2_steps(value, span, fps):
+    """Displayed integers of a power2.out roll, offsets from the start."""
+    frames = int(math.floor(float(span) * fps + 1e-6))
+    offsets = []
+    shown = []
     prev = 0
-    land = None
     for index in range(frames + 1):
         moment = index / fps
         if moment > span + 1e-9:
             break
         progress = min(1.0, moment / span)
         ease = 1.0 - (1.0 - progress) ** 2
-        shown = int(round(value * ease))
-        if shown == prev:
+        number = int(round(value * ease))
+        if number == prev:
             continue
-        stamp = round(start + moment, 3)
-        times.append(stamp)
-        prev = shown
-        if shown >= value:
-            land = stamp
+        offsets.append(round(moment, 3))
+        shown.append(number)
+        prev = number
+        if number >= value:
             break
-    if land is None:
-        land = round(start + span, 3)
-        if not times or abs(times[-1] - land) > 1e-6:
-            times.append(land)
+    return offsets, shown
+
+
+def _quantize_roll(value, steps):
+    """``steps`` monotonic values that finish on ``value``."""
+    shown = []
+    prev = 0
+    for index in range(1, steps + 1):
+        if index == steps:
+            number = value
+        else:
+            number = int(round(value * index / float(steps)))
+            if number <= prev:
+                number = prev + 1
+            if number >= value:
+                number = value
+        if number == prev:
+            continue
+        shown.append(number)
+        prev = number
+        if number >= value:
+            break
+    return shown
+
+
+def _space_roll(count, fps):
+    """At least two frames between changes, and at least 0.4 s overall."""
+    gap_frames = 2
+    frames = [(index + 1) * gap_frames for index in range(count)]
+    if frames[-1] / fps < 0.4 - 1e-9:
+        last = int(math.ceil(0.4 * fps - 1e-9))
+        if count == 1:
+            frames = [max(last, gap_frames)]
+        else:
+            frames = []
+            for index in range(count):
+                frame = int(round((index + 1) * last / float(count)))
+                frame = max(frame, gap_frames)
+                if frames and frame - frames[-1] < gap_frames:
+                    frame = frames[-1] + gap_frames
+                frames.append(frame)
+            if frames[-1] < last:
+                frames[-1] = last
+    return [round(frame / fps, 3) for frame in frames]
+
+
+def count_roll(value, span=0.9, fps=30.0):
+    """Offsets and displayed values for one count-up.
+
+    A power2.out roll that changes faster than every 50 ms blurs the ticks.
+    That roll slows to about 8–10 changes spread over at least 0.4 s. A roll
+    that already steps slower than 50 ms keeps one tick per integer.
+    """
+    value = max(1, int(value or 1))
+    fps = float(fps or 30.0)
+    offsets, shown = _power2_steps(value, float(span), fps)
+    gaps = [b - a for a, b in zip(offsets, offsets[1:])]
+    if offsets and (not gaps or min(gaps) >= 0.050 - 1e-3):
+        return offsets, shown
+    if len(shown) > 10:
+        shown = _quantize_roll(value, 9)
+    if not shown:
+        shown = [value]
+    return _space_roll(len(shown), fps), shown
+
+
+def count_tick_times(start, value, span=0.9, fps=30.0):
+    """One time per displayed number, on the same grid as the picture.
+
+    The last time is the frame the target lands.
+    """
+    offsets, _shown = count_roll(value, span, fps)
+    times = [round(float(start) + offset, 3) for offset in offsets]
+    land = times[-1] if times else round(float(start) + float(span), 3)
     return times, land
 
 
@@ -306,11 +371,35 @@ _NEGATIVE_BITS = (
     "not be reached", "loss", "lost", "error", "fail", "gone", "ends",
     "upfront", "stop charg",
 )
+# "0 errors left", a win, and money coming in are successes. The word
+# "errors" in that copy still gets a bell, not Wrong Answer.
+_SUCCESS = re.compile(
+    r"(?:^|[^0-9])0\s+errors?\b|\bzero\s+errors?\b|\bno\s+errors?\b|"
+    r"\bmoney in\b|\b(?:won|win|winning|success)\b"
+)
+
+
+def _copy_blob(*parts):
+    flat = []
+    for part in parts:
+        if isinstance(part, dict):
+            flat.append(part.get("text") or "")
+            flat.append(part.get("label") or "")
+        else:
+            flat.append(part)
+    return " ".join(str(part or "") for part in flat).lower()
+
+
+def success_copy(*parts):
+    """A win, money in, or a cleared error count. Not a loss."""
+    return _SUCCESS.search(_copy_blob(*parts)) is not None
 
 
 def negative_copy(*parts):
     """True when the on-screen words are a loss, a warning, or a mistake."""
-    blob = " ".join(str(part or "") for part in parts).lower()
+    blob = _copy_blob(*parts)
+    if _SUCCESS.search(blob):
+        return False
     return any(bit in blob for bit in _NEGATIVE_BITS)
 
 
@@ -340,7 +429,7 @@ def _wrong(at, lands_on=""):
         "kind": "error", "file": WRONG_ANSWER, "at": round(float(at), 3),
         "sound_at": round(float(at), 3), "combo": "24", "label": "Wrong Answer",
         "role": "negative", "fixed_file": True, "fixed_lead": True,
-        "budget_free": True, "under_db": 6.0, "band": "noise",
+        "budget_free": True, "under_db": NEGATIVE_UNDER_DB, "band": "noise",
     }
     # Leave lands_on unset when this is a companion. An empty string blocks
     # the parent picture name, and the cue is then muted as having no visual.
@@ -356,7 +445,7 @@ def _as_wrong(event):
         "kind": "error", "file": WRONG_ANSWER, "at": at, "sound_at": at,
         "combo": "24", "label": "Wrong Answer", "role": "negative",
         "fixed_file": True, "fixed_lead": True, "budget_free": True,
-        "under_db": 6.0, "band": "noise",
+        "under_db": NEGATIVE_UNDER_DB, "band": "noise",
     })
     for key in ("trim_frames", "fade_frames", "trim", "fade_out", "rotate"):
         event.pop(key, None)
@@ -394,11 +483,13 @@ def _landing(at, file, label, attack=0.0):
 
 
 def _counter_negative(stage):
-    """The landing number is a loss. A struck label is the old number leaving."""
+    """The landing number is a loss. A cleared count or a win is a bell."""
+    chip = stage.get("chip")
+    if success_copy(stage.get("label"), stage.get("text"), chip):
+        return False
     if stage.get("negative"):
         return True
-    chip = stage.get("chip")
-    if isinstance(chip, dict) and chip.get("tone") in {"amber", "warning"}:
+    if isinstance(chip, dict) and chip.get("tone") in {"amber", "warning"} and negative_copy(chip.get("text")):
         return True
     if stage.get("strike"):
         return False
@@ -514,11 +605,12 @@ def decorate_events(motif, events, stage, start, end):
                 add_pop(ticks[index]["at"])
             else:
                 add_pop(land)
-        for moment in tick_times:
+        for index, moment in enumerate(tick_times):
             companions.append({
                 "kind": "ticking", "file": UI_12, "at": moment, "sound_at": moment,
                 "combo": "25", "label": "Count tick", "role": "tick",
-                "budget_free": True, "fixed_file": True, "fixed_lead": True,
+                # The roll spends one slot. The other digits are free.
+                "budget_free": index != 0, "fixed_file": True, "fixed_lead": True,
                 "under_db": 13.0, "band": "high",
             })
         for event in events:
@@ -675,9 +767,9 @@ def decorate_events(motif, events, stage, start, end):
         event.setdefault("band", _band(event))
         event.setdefault("role", _role(event))
     chip = stage.get("chip")
-    chip_tone = chip.get("tone") if isinstance(chip, dict) else ""
     chip_text = chip.get("text") if isinstance(chip, dict) else (chip if isinstance(chip, str) else "")
-    if events and motif != "counter" and (chip_tone in {"amber", "warning"} or negative_copy(chip_text)):
+    # Amber is a color. Wrong Answer plays only when the words are a loss.
+    if events and motif != "counter" and negative_copy(chip_text):
         at = float(events[0].get("at") or start)
         if not _has_error_near(events, at):
             events.append(_wrong(at))
@@ -986,13 +1078,44 @@ def _thin_close_whooshes(flat, budget, gap=2.5):
             break
 
 
+def _charge_tick_rolls(flat):
+    """A tick roll spends one cue. Pops stay outside the cap.
+
+    Digits closer than half a second belong to the same roll. The first of
+    them spends the slot. The rest are free, so a 9-tick roll is not 9 cues.
+    """
+    ticks = [
+        index for index, cue in enumerate(flat)
+        if not cue.get("mute") and (cue.get("role") == "tick" or (
+            cue.get("kind") == "ticking" and "Ui Sound 12" in str(cue.get("file") or "")
+        ))
+    ]
+    ticks.sort(key=lambda index: float(flat[index].get("sound_at", flat[index]["at"])))
+    group = []
+    previous = None
+
+    def close():
+        for nth, index in enumerate(group):
+            flat[index]["budget_free"] = nth != 0
+            flat[index]["role"] = "tick"
+        group.clear()
+
+    for index in ticks:
+        moment = float(flat[index].get("sound_at", flat[index]["at"]))
+        if previous is not None and moment - previous > 0.45:
+            close()
+        group.append(index)
+        previous = moment
+    close()
+
+
 def _limit_density(flat):
     """Stay at or under 20 SFX per minute. Beds under 20 dB do not spend the budget.
 
-    Pops do not spend it: every pop-on gets Pop 1. Count-up ticks and Wrong
-    Answer do not either. A tick on every displayed digit, and a negative hit
-    on every bad beat, cannot fit a 20-per-minute cap on a 20 second reel.
-    Whooshes, landings, impacts, and list bells still spend the budget.
+    Pops do not spend it: every pop-on gets Pop 1. A tick roll spends one
+    slot, not one per digit. Wrong Answer does not spend a slot, so a bad
+    beat is never dropped to make the cap. Whooshes, landings, impacts, and
+    list bells still spend the budget.
     """
     for cue in flat:
         if cue.get("kind") == "pop" or cue.get("role") == "pop":
@@ -1000,18 +1123,12 @@ def _limit_density(flat):
             cue.setdefault("role", "pop")
             if not cue.get("file"):
                 cue["file"] = POP_1
-        elif (
-            not cue.get("mute")
-            and cue.get("kind") == "ticking"
-            and (cue.get("role") == "tick" or "Ui Sound 12" in str(cue.get("file") or ""))
-        ):
-            cue["budget_free"] = True
-            cue["role"] = "tick"
         elif cue.get("kind") == "error" or cue.get("role") == "negative":
             cue["budget_free"] = True
             cue.setdefault("role", "negative")
             if not cue.get("file"):
                 cue["file"] = WRONG_ANSWER
+    _charge_tick_rolls(flat)
     _dedupe_same_frame(flat)
     _collapse_repeats(flat)
     _mute_stacked_openings(flat)

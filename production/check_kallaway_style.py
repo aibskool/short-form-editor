@@ -309,7 +309,12 @@ def check(timeline_path, words_path=None, project=None):
     for shot in shots:
         for motif, start, end, stage in stage_windows(shot):
             if motif == "highlight_box":
-                pops = [event for event in stage_events(motif, start, end, stage) if event["kind"] == "pop"]
+                # The card itself pops on its first frame. The highlighted line
+                # is the later pop, and that line waits out the entrance.
+                pops = [
+                    event for event in stage_events(motif, start, end, stage)
+                    if event["kind"] == "pop" and float(event["at"]) > start + 0.05
+                ]
                 if pops and float(pops[0]["at"]) + 0.001 < start + ENTRANCE_SECONDS:
                     errors.append(
                         f"callout: highlight on {shot.get('id', motif)} starts at {pops[0]['at']} "

@@ -693,7 +693,6 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         label = stage.get("label") or ""
         prefix = json.dumps(str(stage.get("prefix") or ""))
         suffix = json.dumps(str(stage.get("suffix") or ""))
-        variable = ident.replace("-", "_") + "n"
         label_html = f'<div class="mono count-label">{_esc(label)}</div>' if label else ""
         thumbs = []
         tick_events = [event for event in events if event["kind"] == "ticking"]
@@ -742,11 +741,16 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
             dense = " dense" if thumbs else ""
             body = (f'<div class="counter{dense}"><div id="{ident}-num" class="count-num">{_esc(stage.get("prefix") or "")}0{_esc(stage.get("suffix") or "")}</div>'
                     f'{grid}{label_html}</div>')
+        from kallaway_pack import count_roll
+        offsets, shown = count_roll(target)
+        steps_js = json.dumps([[off, num] for off, num in zip(offsets, shown)])
+        roll_end = offsets[-1] if offsets else 0.4
         animations.append(
-            f'const {variable}={{v:0}};'
-            f'tl.to({variable},{{v:{target},duration:0.9,ease:"power2.out",'
-            f'onUpdate:()=>{{const el=document.getElementById("{ident}-num");'
-            f'if(el) el.textContent={prefix}+Math.round({variable}.v).toLocaleString("en-US")+{suffix};}}}},{start});')
+            f'const {ident.replace("-", "_")}roll={{t:0}};'
+            f'tl.to({ident.replace("-", "_")}roll,{{t:{roll_end:.4f},duration:{roll_end:.4f},ease:"none",'
+            f'onUpdate:()=>{{const el=document.getElementById("{ident}-num");if(!el)return;'
+            f'let n=0;for(const pair of {steps_js}){{if({ident.replace("-", "_")}roll.t+0.008>=pair[0])n=pair[1];}}'
+            f'el.textContent={prefix}+Number(n).toLocaleString("en-US")+{suffix};}}}},{start:.4f});')
         animations.append(_pop(f"#{ident}-num", start))
 
     elif motif == "highlight_box":

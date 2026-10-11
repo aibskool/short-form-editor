@@ -748,9 +748,12 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(len(rows), len(cues))
         for row in rows:
             self.assertFalse(row["clustered"], row)
+            self.assertLessEqual(row["gain_db"], 12.0, row)
+            if row.get("peak_capped"):
+                self.assertLessEqual(row["gain_db"], 0.0, row)
+                continue
             self.assertTrue(row["ok"], row)
             self.assertLessEqual(abs(row["error_db"]), 2.0, row)
-            self.assertLessEqual(row["gain_db"], 12.0, row)
 
     def test_leading_silence_does_not_crush_the_voice(self):
         from kallaway_pack import pack_ready
@@ -1535,7 +1538,9 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(all("Ui Sound 12" in extra["file"] for extra in digit_ticks))
         self.assertEqual(digit_ticks[-1]["at"], ding["at"])
         self.assertEqual(digit_ticks[-1]["sound_at"], ding["sound_at"])
-        self.assertTrue(all(extra.get("budget_free") for extra in digit_ticks))
+        charged = [extra for extra in digit_ticks if not extra.get("budget_free")]
+        self.assertEqual(len(charged), 1)
+        self.assertEqual(charged[0]["at"], digit_ticks[0]["at"])
         card_pops = [extra for extra in ding["also"] if extra.get("role") == "pop"]
         self.assertTrue(card_pops)
         self.assertTrue(all(extra["file"].endswith("Pop 1.mp3") for extra in card_pops))
@@ -1584,20 +1589,52 @@ class KallawayTests(unittest.TestCase):
         self.assertFalse(any(event.get("mute") for event in offers))
         self.assertTrue(any(extra.get("role") == "negative" for extra in offers[0].get("also") or []))
         self.assertTrue(any("Ka Ching" in extra.get("file", "") for extra in offers[1].get("also") or []))
-        from kallaway_pack import POP_1, UI_12, WRONG_ANSWER, _PEAK_TARGET, load, resolve
+        from kallaway_pack import POP_1, UI_12, WRONG_ANSWER, _PEAK_LINEAR, load, resolve
         pop_samples, pop_info = load(resolve(POP_1))
         tick_samples, tick_info = load(resolve(UI_12))
         wrong_samples, wrong_info = load(resolve(WRONG_ANSWER))
         self.assertLessEqual(float(np.max(np.abs(pop_samples))), 1.0)
         self.assertLessEqual(float(np.max(np.abs(tick_samples))), 1.0)
-        self.assertAlmostEqual(float(np.max(np.abs(pop_samples))), _PEAK_TARGET, places=3)
-        self.assertAlmostEqual(float(np.max(np.abs(tick_samples))), _PEAK_TARGET, places=3)
+        self.assertAlmostEqual(float(np.max(np.abs(pop_samples))), _PEAK_LINEAR["Pop 1.mp3"], places=3)
+        self.assertAlmostEqual(float(np.max(np.abs(tick_samples))), _PEAK_LINEAR["Ui Sound 12.mp3"], places=3)
         self.assertLess(pop_info["clip_gain_db"], 0.0)
         self.assertGreater(tick_info["clip_gain_db"], 0.0)
         self.assertLess(float(np.max(np.abs(wrong_samples))), 0.6)
         self.assertEqual(wrong_info["clip_gain_db"], 0.0)
-        from kallaway_pack import count_tick_times
+        self.assertAlmostEqual(20.0 * np.log10(float(np.max(np.abs(pop_samples)))), -4.1, places=1)
+        self.assertAlmostEqual(20.0 * np.log10(float(np.max(np.abs(tick_samples)))), -6.1, places=1)
+        popped = (np.clip(pop_samples, -1, 1) * 32767.0).astype("<i2").tobytes()
+        phoned = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "s16le", "-ar", "48000", "-ac", "1",
+             "-i", "pipe:0", "-af", "highpass=f=300", "-f", "s16le", "pipe:1"],
+            input=popped, capture_output=True, check=True).stdout
+        phone = np.frombuffer(phoned, dtype="<i2").astype(np.float64) / 32768.0
+        phone_peak = float(np.max(np.abs(phone))) if len(phone) else 0.0
+        self.assertGreater(phone_peak, 10 ** (-18.0 / 20.0))
+        from kallaway_pack import count_roll, count_tick_times, negative_copy, success_copy
+        self.assertFalse(negative_copy("0 errors left"))
+        self.assertTrue(success_copy("0 errors left"))
+        self.assertTrue(negative_copy("3 errors"))
+        self.assertFalse(negative_copy("money in"))
+        cleared = stage_events("counter", 1.0, 3.0, {"value": 8, "label": "0 errors left"})
+        cleared_land = next(event for event in cleared if event.get("role") == "landing" or event.get("kind") == "ding")
+        self.assertIn("Bell", cleared_land["file"])
+        self.assertNotIn("Wrong Answer", cleared_land["file"])
         times, land = count_tick_times(6.0, 15)
+        offsets, shown = count_roll(15)
+        self.assertEqual(times[-1], land)
+        self.assertEqual(len(times), len(set(times)))
+        self.assertEqual(shown[-1], 15)
+        self.assertGreaterEqual(len(times), 8)
+        self.assertLessEqual(len(times), 10)
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        self.assertGreaterEqual(min(gaps), 0.050)
+        self.assertGreaterEqual(times[-1] - 6.0, 0.4)
+        slow = stage_events("counter", 6.0, 8.0, {"value": 15, "prefix": "$", "suffix": "K"})
+        slow_land = next(event for event in slow if event.get("role") == "landing")
+        slow_ticks = [extra for extra in slow_land["also"] if extra.get("role") == "tick"]
+        self.assertEqual([extra["at"] for extra in slow_ticks], times)
+        self.assertEqual(slow_ticks[-1]["at"], slow_land["at"])
         self.assertEqual(times[-1], land)
         self.assertEqual(len(times), len(set(times)))
         self.assertGreater(len(times), 4)

@@ -1749,7 +1749,7 @@ def process_voice(source, output, target_lufs=-14, true_peak=-1.5, presence_hz=4
 # dings and the cash register -8 to -12, impacts -4 to -8.
 UNDER_DB = {
     "pop": 13.0, "click": 13.0, "typing": 13.0, "ticking": 13.0,
-    "marker": 18.0, "paper": 10.0, "error": 6.0,
+    "marker": 18.0, "paper": 10.0, "error": 4.0,
     "whoosh": 10.0, "riser": 10.0, "ding": 10.0, "bass": 6.0,
 }
 _MOMENTARY_S = 0.400
@@ -1858,6 +1858,58 @@ def _load_wav(path):
     return _resample(samples, rate, RATE)
 
 
+_LIMIT_CEILING = 10 ** (-1.8 / 20.0)
+
+
+def _limiter_gr(peak):
+    if peak <= _LIMIT_CEILING:
+        return 0.0
+    return 20.0 * math.log10(peak / _LIMIT_CEILING)
+
+
+def _extra_gain_reduction(voice, start, chunk, gain):
+    """How many extra dB the voice limiter would pull because of this cue.
+
+    The voice already sits near the ceiling. A click on that peak ducks the
+    word after it. This is that extra pull, not the voice's own limiting.
+    """
+    if gain <= 0 or len(chunk) == 0 or len(voice) == 0:
+        return 0.0
+    if start < 0:
+        chunk = chunk[-start:]
+        start = 0
+    stop = min(len(voice), start + len(chunk))
+    if stop <= start:
+        return 0.0
+    heard = chunk[:stop - start] * float(gain)
+    spoken = voice[start:stop]
+    voice_peak = float(np.max(np.abs(spoken)))
+    mix_peak = float(np.max(np.abs(spoken + heard)))
+    return max(0.0, _limiter_gr(mix_peak) - _limiter_gr(voice_peak))
+
+
+def _gain_under_voice(voice, start, chunk, gain, abs_cap):
+    """Turn a cue down until it cannot pump the voice by a full dB.
+
+    ``abs_cap`` is the loudest peak allowed before that check.
+    """
+    if len(chunk) == 0:
+        return gain
+    peak = float(np.max(np.abs(chunk)))
+    if abs_cap is not None and peak > 1e-8 and peak * gain > abs_cap:
+        gain = abs_cap / peak
+    if _extra_gain_reduction(voice, start, chunk, gain) <= 0.6:
+        return gain
+    lo, hi = 0.0, 1.0
+    for _step in range(14):
+        mid = (lo + hi) / 2.0
+        if _extra_gain_reduction(voice, start, chunk, gain * mid) <= 0.6:
+            lo = mid
+        else:
+            hi = mid
+    return gain * lo
+
+
 def _cue_for_mix(cue, library, variant_use):
     """Resolve one cue to a pack path. Muted cues are not played."""
     if cue.get("mute"):
@@ -1891,7 +1943,7 @@ def mix_cues(voice, rate, cues, library=None):
     lands on that time and the gain is not taken from the silence. Gain is
     clamped so a bad measurement cannot boost a cue by tens of dB.
     """
-    from kallaway_pack import render
+    from kallaway_pack import NEGATIVE_UNDER_DB, render
     voice = _resample(voice, rate, RATE)
     weighted_voice = _k_weight(voice, RATE)
     mixed = np.array(voice, dtype=np.float64, copy=True)
@@ -1920,6 +1972,37 @@ def mix_cues(voice, rate, cues, library=None):
         gain = 10 ** (gain_db / 20.0)
         offset = int(round(body_at * RATE))
         chunk = prepared[offset:]
+        # Pop 1 and the tick stay 4 dB and 6 dB under full scale. The loudness
+        # match must not boost a short click back to 0 dBFS, or the limiter
+        # pumps the word under it. Wrong Answer stays about 4 dB under the
+        # voice peak, including the first words.
+        name = Path(str(prepared_cue.get("file") or "")).name
+        cap = None
+        cap_db = None
+        if name == "Pop 1.mp3":
+            cap = 10 ** (-4.1 / 20.0)
+            cap_db = -4.1
+        elif name == "Ui Sound 12.mp3":
+            cap = 10 ** (-6.1 / 20.0)
+            cap_db = -6.1
+        elif name == "Wrong Answer.mp3" or prepared_cue.get("kind") == "error":
+            origin = int(round(max(0.0, placed - 0.04) * RATE))
+            stop = int(round(min(len(voice), (placed + 0.30) * RATE)))
+            window = voice[origin:max(origin + 1, stop)]
+            voice_peak = float(np.max(np.abs(window))) if len(window) else 0.0
+            file_peak = float(np.max(np.abs(chunk))) if len(chunk) else 0.0
+            if voice_peak < 1e-3:
+                cap = file_peak if file_peak > 1e-8 else None
+            else:
+                cap = voice_peak * (10 ** (-NEGATIVE_UNDER_DB / 20.0))
+                cap_db = round(20.0 * math.log10(max(cap, 1e-8)), 2)
+        peak_capped = False
+        if cap is not None and len(chunk):
+            held = gain
+            gain = _gain_under_voice(voice, int(round(placed * RATE)), chunk, gain, cap)
+            if gain < held - 1e-4:
+                peak_capped = True
+                gain_db = 20.0 * math.log10(max(gain, 1e-8))
         if offset > 0 and len(chunk):
             fade_n = min(len(chunk), int(round(0.005 * RATE)))
             chunk[:fade_n] *= np.linspace(0.0, 1.0, fade_n)
@@ -1942,6 +2025,8 @@ def mix_cues(voice, rate, cues, library=None):
             "target_lufs": round(target, 2),
             "gain_db": round(gain_db, 2),
             "gain": round(gain, 5),
+            "peak_capped": peak_capped,
+            "peak_cap_db": cap_db,
             "file": str(prepared_cue["file"]),
             "combo": cue.get("combo"),
             "label": cue.get("label"),
