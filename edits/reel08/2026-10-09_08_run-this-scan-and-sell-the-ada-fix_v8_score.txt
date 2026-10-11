@@ -1,20 +1,25 @@
-Reel 08 v8. Clean-plate editor, with word tails kept and a lighter, longer matte edge. Stage plan v8.
+Reel 08 v8, rendered from editor 1620fa7. Stage plan v8. No music.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 54.07s, 1622 frames, H.264, AAC 48 kHz, 98,295,469 bytes.
-SHA-256: f331fcaf8c18d7f42d57a8ed371155d2fd4f628356e3ba2208a5c2546277f8b9
+1080x1920, 30 fps, 54.07s, 1622 frames, H.264, AAC 48 kHz, 98,540,521 bytes.
+SHA-256: c6a103f890b61985a0b161188bb12d17bba9abf92308eeceb6dedaa40d420a26
 Loudness: I=-14.15 LUFS, LRA=2.7 LU, true peak=-1.74 dBTP. No music.
 Style check passed. output_short_shots on the output frames is empty.
 Receipt: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-receipt.json
 
+The previous master (f331fcaf) is parked as …_v8-qaedge.mp4 and is not this file.
+
 Audio
-A pause is taken from the start of the next word. The outgoing word is not shortened to hit the gap. Sentence ends keep 130 ms. browser. keeps its whole 135 ms pause, because the release sits inside that pause. builds. keeps about 180 ms, because the /z/ is still up 50 ms past the mark and that tail stays, on top of the 130 ms lead. flag. is a 20 ms source pause, so nothing was added. Whisper on this file heard websites, looks, errors, buttons, it's, pass, builds, businesses, fees, sites, That's, offers, ideas, plus, guide, and client, and it heard $6,500. The keep range for client is one piece, source 89.968–90.658.
+A pause is taken from the start of the next word. The outgoing word is not shortened to hit the gap. A range that already reaches the aligned word stays on that end, so the 40 ms mid-phrase cap is kept. Sentence ends are 130 ms. browser. keeps its whole 135 ms pause. flag. is a 20 ms source pause. builds. is 130 ms; the aligned end already holds the /z/. Whisper on this file heard websites, looks, errors, buttons, it's, pass, builds, businesses, fees, sites, That's, offers, ideas, plus, guide, and client, and it heard $6,500. It heard "selling yet" for "selling it", and "lending" for "landing". The keep range for client is one piece, source 89.968–90.658.
+
+Encoded cut-frame check
+check_master_fringes on this mp4, with the straight picture and the matte at the same frame index. 31 cuts, the first three frames of each, 93 frames. 0 failed. Limits are green_in 0.11, green_out 0.155, and olive 0.22. The highest scores are green_in 0.09 at frame 131, green_out 0.14 at frame 130, and olive 0.084. During the matte, crown fringe was rebuilt at frames 6, 7, 8, 195, 196, 1346, and 1381 before the encode.
 
 Plate and edge
-The card fill is the clean plate. Side-band Laplacian variance on the first split cut is 2.34 left and 1.94 right. Skin-colored pixels in those bands: 0. The outline shadow is light. In the 1–8 px ring outside the matte, on the crown and the shoulders, the first three frames of every cut were compared with the plate (shoulders) and with the stage just outside the hair (crown). Green pixels that are greener than that background: at most 2. Pixels more than 18 levels darker: at most 28, and the median darkening is about 3 levels. Crown green and crown dark counts are 0. A shoulder row that used to end 9 px inside the frame, with a 4 px ramp, now starts the ramp at the frame and runs 71 px. The torso rows that meet the source edge fade across that ramp. The head keeps the matte's own short feather.
+Plate recipe blur-cover-clean-v3. The card fade is 28 px. Side-band Laplacian variance on frame 55 is 2.56 left and 2.25 right. Skin-colored pixels in those bands: 0. A shoulder row on that frame has a maximum step of 2 luma levels, so the edge is not a one-pixel seam.
 
 Framing
-Face 215 px, crown 70 px above y1408, scale 0.3555. Split captions are one Inter Black line, highest caption at 63.86%. Full-face and punch captions are 67 px. Phones are 632 px wide, left 170 inside the 972 px stage, centered at x540, top 8. Punches land at 5.466 and 53.333.
+Face 215 px, crown 70 px above y1408, scale 0.3555. Split captions are one Inter Black line, highest caption at 63.86%. Phones passed the style check (centered, at least 65% of the stage). Punches are shot-03 at 5.50s and shot-24 at 53.33s.
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json

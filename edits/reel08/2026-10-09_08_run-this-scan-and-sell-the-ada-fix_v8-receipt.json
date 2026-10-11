@@ -1,8 +1,8 @@
 {
-  "verified_at": "2026-10-11T07:15:05.012125+00:00",
+  "verified_at": "2026-10-11T08:27:46.972383+00:00",
   "output_filename": "2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4",
-  "bytes": 98295469,
-  "sha256": "f331fcaf8c18d7f42d57a8ed371155d2fd4f628356e3ba2208a5c2546277f8b9",
+  "bytes": 98540521,
+  "sha256": "c6a103f890b61985a0b161188bb12d17bba9abf92308eeceb6dedaa40d420a26",
   "complete_decode": "passed",
   "video_reencoded_during_finalization": false,
   "target_lufs": -14.0,
@@ -49,7 +49,7 @@
       "nb_frames": "2535"
     }
   ],
-  "visual_review": "Checked the first three frames of every cut on this file. The 1-8 px ring outside the matte has no green fringe and only a light outline. Shoulder crops that meet the source edge use the longer ramp.",
+  "visual_review": "Encoded cut-frame check: 93 frames, the first three after each of 31 cuts, 0 failed. Max green_in 0.09, green_out 0.14, olive 0.084. Limits are 0.11, 0.155, and 0.22.",
   "subjective_sound_match": "not claimed",
   "true_peak_review_needed": false
 }
