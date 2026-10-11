@@ -1,29 +1,28 @@
-Reel 08 v8 DRAFT. This file is a candidate, not the ship. Editing QA still has editor fixes in flight (matte on the first frame after a cut, the side fade on the hands, the bottom torso fade, a live plate, and full-face captions with the baseline at least 25 px below the beard, or 60 px text centered in a narrow band). The next render waits on that commit. Measurements below are for this candidate only.
-
-Reel 08 v8 candidate, measured on this file.
+Reel 08 v8, measured on this file.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 53.60s, H.264, AAC 48 kHz, 95,364,527 bytes.
-SHA-256: 88f9d6b51f3fcd00a432edc3d584459b1a81f66c338f91e5eff5f66dc7bba1e7
-Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.73 dBTP. No music.
+1080x1920, 30 fps, 53.90s, H.264, AAC 48 kHz, 101,516,140 bytes.
+SHA-256: 9199dea15c0e0384951b853c60621dc97ddb517c3e5a65d32a9e9c202daafda9
+Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.78 dBTP. No music.
 Style check passed. output_short_shots on the output frames is empty.
+Receipt: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-receipt.json
 
 Framing
-The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The plate is the source frame scaled to cover the card, blurred (sigma about 32), darkened about 12%, with a light radial vignette. A fixed 64 px eased ramp at card scale fades the source-frame edges below the measured head into that plate. On the 3.1s frame the side-plate column jump stays under 1.7 gray levels, and the plate file itself stays under 0.5. The face row at y1480 is one continuous tone across the head. The punch at the "great" join starts at 5.500, on the frame that already shows the new take. The closing punch starts at 52.900.
+The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The plate is a live blurred cover of the source, so the foliage moves with the shot. The torso fade is 64 px where the shirt is cut by the frame. A hand inside the frame stays opaque, and a hand that crosses the edge fades across the last 20 px. The torso runs to the card bottom. On the opening frames of the split shots, the card side bands stay soft (Laplacian variance about 1.2, the same on frame 0, frame 2, and frame 8). The head on those frames is continuous. The punches land at 5.500 and 53.200.
 
 Captions
-Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.27% (top about y1215). That shot's stage ends at y1165, 50 px above the line. Hook ink on the 3.1s frame sits around y1310–1360, above the card at y1408.
-Full-face captions are Inter Black at 67 px, placed per shot from the chin, between the beard and the lapel pin. The 25.5s frame shows that line on the chest, with the whole face in frame.
+Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.07% (top about y1211). That shot's stage ends about 50 px above the line.
+Full-face captions are Inter Black. Every full and punch shot on this take had room for 67 px with the line top at least 25 px below the beard. A band too narrow for that line uses 60 px, centered between the beard and the pin. Shot 11 is placed at 48.35% (top about y928).
 
 Panel and phone
-Each split stage starts at y270 and ends about 50 px above that shot's caption. Stage heights run from 895 px (bottom y1165) to 974 px (bottom y1244). Every handset is 632 px wide, 65% of the 972 px stage, left 170, centered at x540, top 8, and ends on that shot's stage bottom. The 11.2s proof is a 632×947 handset inside a 972×955 stage. The glass on that frame reaches the bottom of the bezel (bottom 80 px mean gray 40, max 194).
+Each split stage starts at y270 and ends about 50 px above that shot's caption. Every handset is 632 px wide, 65% of the 972 px stage, centered at x540. The 11.2s phone shows the Astra scan with the 56-error result filling the glass.
 
 Mocks
-The 3.1s hero board shows 56 and three filled cells. The 8.2s counter shows 56 with three labeled rows. The 15.7s thumbnails show three cards with interior marks. The quote, the offer pair, and the document fan each have interior structure above the flat charcoal floor.
+The 3.1s hero board shows 56 and three filled cells. The 8.2s counter shows 56 with three rows. The 15.7s thumbnails show three cards with faces and notes. The quote, the offer pair, and the document fan each have interior structure.
 
 Audio
-This voice stream is the same mix as the measured take (MD5 828847784e181293b6b51e3295cfaf17). Whisper base.en hears "If you build websites", "cloud browser", "it's clean", "compliance pass", "AI builds fast", "about $6,500", "attorney fees", "all the errors", and "first client".
+The keep range for "client" is one piece, from 89.986s to 90.670s in the source. The style check reports no keep-range gap inside an aligned word.
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
-19 landed cues. Ui 30 rolls the 56 counter from 7.609, the 56-to-0 countdown from 20.494, and the 30+ counter from 49.281. Bell 5 lands each final number at 7.729, 21.394, and 50.159. The charge card uses Cash Register Ka Ching at 22.107. The three rolls are budget-free, so they do not spend the density cap.
+17 rows. Each Ui 30 roll is one event with its Bell 5, so the reel has 14 events in 53.90s, 15.6 per minute. The rolls are 7.609 (bell 8.424), 20.523 (bell 21.307), and 49.498 (bell 50.260). Cash Register Ka Ching lands at 22.136.
