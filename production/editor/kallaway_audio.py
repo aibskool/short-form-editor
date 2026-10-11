@@ -1326,9 +1326,9 @@ def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
         for moment, voiced, hiss, full in zip(times, speech_frames, high_frames, full_frames):
             if moment < begin or moment > end:
                 continue
-            # A bump under -32 dB is room air. Counting it kept the pause after
-            # "websites" at about 220 ms and the one after "builds" at about 170.
-            if full >= full_thresh:
+            # Hiss alone used to keep a -34 dB rustle, and the pause after
+            # "websites" measured about 220 ms. Speech and a loud full band stay.
+            if voiced >= speech_thresh or full >= full_thresh:
                 last = float(moment)
         cap = min(end, last + float(max_quiet))
         if end - cap > 0.02 and cap - begin > 0.05:
@@ -1337,12 +1337,12 @@ def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
     return rebuilt
 
 
-def attach_stop_release(samples, rate, ranges, max_gap=0.10, min_gap=0.02):
+def attach_stop_release(samples, rate, ranges, max_gap=0.10, min_gap=0.02, words=None):
     """Pull a quiet stop burst back onto the word in front of the closure.
 
-    A 20–100 ms hole with a soft burst just after it is the /k/ or /d/ sitting
-    on the far side of the join. A louder onset is the next word, and a longer
-    pause is a real gap, so neither is glued shut.
+    A 20–100 ms hole inside one word, with a soft burst just after it, is the
+    /k/ or /d/ sitting on the far side of the join. A pause between words is
+    left cut. A louder onset is the next word.
     """
     samples = np.asarray(samples, dtype=np.float64)
     ordered = [(float(begin), float(end)) for begin, end in ranges or []]
@@ -1369,14 +1369,18 @@ def attach_stop_release(samples, rate, ranges, max_gap=0.10, min_gap=0.02):
             moment += 0.004
         if found is None:
             return None
-        last = found + 0.012
+        last = found
         moment = found
-        while moment < min(end, found + 0.05):
+        while moment < min(end, found + 0.08):
             level = rms_db(moment, min(end, moment + 0.01))
-            if level < -46.0 or level > -28.0:
+            # Stay on the release. A louder window is the next vowel, and
+            # stepping into it is a cut through the word.
+            if level > -30.0 or level < -56.0:
                 break
             last = min(end, moment + 0.01)
             moment += 0.004
+        if last <= found + 0.005:
+            return None
         return last
 
     rebuilt = [ordered[0]]
@@ -1384,9 +1388,25 @@ def attach_stop_release(samples, rate, ranges, max_gap=0.10, min_gap=0.02):
         prev_begin, prev_end = rebuilt[-1]
         gap = begin - prev_end
         if min_gap - 1e-4 <= gap <= max_gap + 1e-4:
+            holder = None
+            if words is not None:
+                for word in words:
+                    start = float(word["start"])
+                    stop = float(word["end"])
+                    if start + 0.02 < begin and stop - 0.01 > prev_end:
+                        holder = stop
+                        break
+                if holder is None:
+                    if begin <= rebuilt[-1][1] + 1e-4:
+                        rebuilt[-1] = (rebuilt[-1][0], max(rebuilt[-1][1], end))
+                    else:
+                        rebuilt.append((begin, end))
+                    continue
             released = burst_end(prev_end, begin, end)
             if released is not None:
-                attached = min(end - 0.02, released + 0.035)
+                attached = min(end - 0.02, released)
+                if holder is not None:
+                    attached = min(attached, holder + 0.03)
                 if attached <= begin + 0.005:
                     rebuilt[-1] = (prev_begin, end)
                     continue
@@ -1509,9 +1529,9 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     # (the stop in "ends") without gluing that air back in.
     ranges = seal_word_interiors(ranges, refined)
     ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
-    ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.08)
+    ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
-    ranges = attach_stop_release(samples, RATE, ranges)
+    ranges = attach_stop_release(samples, RATE, ranges, words=refined)
     # A tenth of a second after the last word, when the source still has it.
     # The closing face can use this hold without crossing back over a picture cut.
     ranges = extend_closing_hold(ranges, duration, hold=0.10)

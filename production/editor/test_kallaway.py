@@ -1828,7 +1828,9 @@ class KallawayTests(unittest.TestCase):
         vowel = _voiced(t, 180, 0.35, (t >= 0.10) & (t < 0.40))
         burst = ((t >= 0.47) & (t < 0.50)).astype(np.float64) * 0.016 * np.sin(2 * np.pi * 1400 * t)
         rest = _voiced(t, 160, 0.2, (t >= 0.55) & (t < 0.70))
-        attached = attach_stop_release(vowel + burst + rest, rate, [(0.08, 0.40), (0.47, 0.72)])
+        attached = attach_stop_release(
+            vowel + burst + rest, rate, [(0.08, 0.40), (0.47, 0.72)],
+            words=[{"word": "make", "start": 0.10, "end": 0.70}])
         self.assertGreater(attached[0][1], 0.49)
         self.assertLessEqual(attached[0][1] - 0.40, 0.16)
         loud = _voiced(t, 180, 0.35, (t >= 0.80) & (t < 1.00))
