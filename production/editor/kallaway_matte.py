@@ -1782,6 +1782,33 @@ def _warp_alpha(seed_alpha, seed_gray, gray):
         cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
 
+def _dark_halo_on_crown(person, rgb, reach=2.0):
+    """True when the dark pixels sit on the crown tip.
+
+    A dark plate beside the hair is still inside the cap's wide row band, so
+    the ring fraction stays high, but it is not touching the tip and a shrink
+    cannot peel it. A halo glued to the crown is within ``reach`` of that tip.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    inside = person >= 0.5
+    if not np.any(inside):
+        return False
+    cap = _cap_rows(inside)
+    plate = _plate_luma(rgb, person, cap)
+    if plate is None:
+        return False
+    dist = ndimage.distance_transform_edt(~inside)
+    luma = np.asarray(rgb, dtype=np.float32).mean(axis=2)
+    dark = (dist > 0) & (dist <= float(OPEN_FRINGE_RING_PX)) & cap & (luma < (plate - float(OPEN_FRINGE_DARK_BELOW)))
+    if not np.any(dark):
+        return False
+    boundary = inside & cap & ~ndimage.binary_erosion(inside, iterations=1, border_value=0)
+    if not np.any(boundary):
+        return False
+    away = ndimage.distance_transform_edt(~boundary)
+    return bool(np.any(dark & (away <= float(reach))))
+
+
 def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
     """Rebuild a frame whose flowed edge pulled the crown into the leaves.
 
@@ -1810,8 +1837,9 @@ def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
         soft, ring = fringe_green_fractions(rgb, repaired[0])
         dark = fringe_dark_fraction(rgb, repaired[0])
         # The plate beside the cap can sit just over 0.10 and will not shrink
-        # further. The halos QA flagged are well above that.
-        if soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or dark > 0.12:
+        # further. A dark ring that does not touch the crown tip is that plate.
+        # The halos QA flagged sit on the tip and are well above 0.12.
+        if soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or (dark > 0.12 and _dark_halo_on_crown(repaired[0], rgb)):
             raise RuntimeError(
                 f"crown fringe stayed after a cold refine (in {soft:.3f} out {ring:.3f} dark {dark:.3f})")
     return repaired
@@ -1881,8 +1909,9 @@ def _rematte_failed_opening(refined, frames, seed_index):
         dark = fringe_dark_fraction(rgb, chosen[0])
         area, rim = _matte_green_stats(chosen[0], rgb)
         # A plate that sits between 0.10 and 0.12 will not shrink further.
-        # The halos QA flagged are well above that.
-        if soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or dark > 0.12 or rim > OPEN_RIM_GREEN_PX:
+        # The halos QA flagged sit on the crown tip and are well above that.
+        if soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or rim > OPEN_RIM_GREEN_PX or (
+                dark > 0.12 and _dark_halo_on_crown(chosen[0], rgb)):
             raise RuntimeError(
                 f"matte on segment frame {index} still has a foliage shell "
                 f"({rim}px green in the rim, area {area}, "
