@@ -107,7 +107,9 @@ def _ink_css_top(beard, pin, font):
     bot = (float(pin) - float(beard)) - FULL_TOP_GAP - FULL_INK_SPAN * float(font)
     if bot > 28.0:
         css += bot - 28.0
-    return css
+    # The reserved span includes a marker descender. Most words end about 8 px
+    # higher, which left the letters 32-40 px above the pin. Drop that air.
+    return css + 8.0
 
 
 def assign_full_captions(shots, chins, layout, height=1920):
