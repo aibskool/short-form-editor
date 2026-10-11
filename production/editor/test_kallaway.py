@@ -2026,6 +2026,29 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(top, beard - 1)
         self.assertGreaterEqual(pin - (top + box), -1)
 
+    def test_a_measured_band_follows_the_head_between_beard_and_pin(self):
+        from kallaway_style import FULL_INK_SPAN, FULL_INK_TOP, assign_full_captions
+        theme, _, _, _ = load_theme("dark")
+        shots = [{"id": "full", "layout": "full", "start": 4.0, "end": 5.2, "scale": 1.0}]
+        samples = [
+            {"t": 4.10, "beard": 1202.0, "pin": 1283.0},
+            {"t": 4.70, "beard": 1185.0, "pin": 1265.0},
+        ]
+        assign_full_captions(
+            shots,
+            {"full": {"chin": 960.0, "beard": 1202.0, "pin": 1265.0, "track": samples}},
+            theme["layout"])
+        font = shots[0]["caption_px"]
+        self.assertLess(font, 42)
+        self.assertEqual(len(shots[0]["caption_track"]), 2)
+        for point, sample in zip(shots[0]["caption_track"], samples):
+            css = point["y"] / 100 * 1920
+            ink_top = css + FULL_INK_TOP * font
+            ink_bot = ink_top + FULL_INK_SPAN * font
+            self.assertGreaterEqual(ink_top - sample["beard"], 25)
+            self.assertGreaterEqual(sample["pin"] - ink_bot, 20)
+            self.assertLessEqual(sample["pin"] - ink_bot, 30)
+
     def test_full_face_baseline_is_per_take(self):
         from kallaway_matte import frame_popout
         theme, _, _, _ = load_theme("dark")

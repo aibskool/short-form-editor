@@ -85,12 +85,38 @@ def _face_rows(raw, beard_pad, pin_pad):
     return chin + beard_pad, chin + pin_pad
 
 
+# Inter Black ink, including a 1.12 marker word, as a fraction of the base font.
+# The stem starts this far below the CSS top. The descender ends one span later.
+FULL_INK_TOP = 0.13 * 1.12
+FULL_INK_SPAN = 0.96 * 1.12
+# Targets inside the 25 px beard floor and the 20-30 px pin band, with a
+# couple of pixels left for the head moving between samples.
+FULL_TOP_GAP = 27.0
+FULL_BOT_GAP = 24.0
+
+
+def _punch_row(row, scale, height):
+    """Source row after a punch scales the picture around 30% of the frame."""
+    origin = 0.30 * float(height)
+    return origin + (float(row) - origin) * float(scale)
+
+
+def _ink_css_top(beard, pin, font):
+    """CSS top whose marker ink clears the beard and stays 20-30 px over the pin."""
+    css = float(beard) + FULL_TOP_GAP - FULL_INK_TOP * float(font)
+    bot = (float(pin) - float(beard)) - FULL_TOP_GAP - FULL_INK_SPAN * float(font)
+    if bot > 28.0:
+        css += bot - 28.0
+    return css
+
+
 def assign_full_captions(shots, chins, layout, height=1920):
     """Place each full-face caption between the beard and the pin.
 
     A wide band keeps the 67 px line 25 px above the pin and at least 25 px
     below the beard. A band too narrow for that line uses 60 px and still
-    prefers the 20-30 px band above the pin.
+    prefers the 20-30 px band above the pin. A measured band that cannot hold
+    that line shrinks the font until the ink fits, and follows the head.
     """
     wide = float(layout.get("caption_full_px", 67))
     narrow = float(layout.get("caption_full_narrow_px", 60))
@@ -108,11 +134,34 @@ def assign_full_captions(shots, chins, layout, height=1920):
         beard, pin = _face_rows(raw, beard_pad, pin_pad)
         if pin <= beard + 40:
             pin = beard + pin_pad
-        room = pin - beard - below - 20.0
         measured = isinstance(raw, dict) and raw.get("beard") is not None
+        track = list(raw.get("track") or []) if measured else []
+        zoom = 1.0
+        if shot.get("layout") == "punch_in" and float(shot.get("scale") or 1) > 1:
+            zoom = float(shot["scale"])
+        if measured and track:
+            rows = [
+                (float(point["t"]),
+                 _punch_row(point["beard"], zoom, height),
+                 _punch_row(point["pin"], zoom, height))
+                for point in track
+            ]
+            min_band = min(pin_y - beard_y for _moment, beard_y, pin_y in rows)
+            font = (min_band - FULL_TOP_GAP - FULL_BOT_GAP) / FULL_INK_SPAN
+            font = min(wide, max(24.0, font))
+            placed = []
+            for moment, beard_y, pin_y in rows:
+                css = _ink_css_top(beard_y, pin_y, font)
+                placed.append({
+                    "t": round(moment, 3),
+                    "y": round(css / float(height) * 100, 3),
+                })
+            shot["caption_px"] = round(font, 1)
+            shot["caption_y"] = placed[0]["y"]
+            shot["caption_track"] = placed
+            continue
+        room = pin - beard - below - 20.0
         if measured and room < narrow * line:
-            # The mic sits close under a long beard. Shrink the line until
-            # 25 px under the beard and 20 px above the pin both fit.
             font = max(42.0, room / line)
         elif room >= wide * line:
             font = wide
@@ -372,6 +421,14 @@ def build_kallaway(spec, spec_path, project):
         animations.append(
             f'tl.set("#caption-anchor",{{top:"{shot.get("caption_y", caption_y * 100):.2f}%",'
             f'fontSize:"{caption_px_shot:.1f}px"}},{start});')
+        for point in shot.get("caption_track") or []:
+            moment = float(point["t"])
+            if moment <= start + (1.0 / 30.0):
+                continue
+            if moment >= end:
+                break
+            animations.append(
+                f'tl.set("#caption-anchor",{{top:"{float(point["y"]):.2f}%"}},{moment:.3f});')
         shot_stage = stage_box_for(shot.get("caption_y") if layout == "split" else None)
         if layout == "split" and shot.get("stage"):
             stage = dict(shot["stage"])

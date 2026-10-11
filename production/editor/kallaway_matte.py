@@ -2600,6 +2600,33 @@ def measure_beard_pin(rgb, box):
     return float(beard), float(pin)
 
 
+def _track_beard_pin(video_path, start, end, detector, width, height, fps):
+    """Beard and pin about 15 times a second, so the caption can follow the head."""
+    length = max(0.04, float(end) - float(start))
+    raw = subprocess.check_output(
+        ["ffmpeg", "-v", "error", "-ss", f"{float(start):.3f}", "-t", f"{length:.3f}",
+         "-i", str(video_path), "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+        stderr=subprocess.DEVNULL)
+    frame_bytes = int(width) * int(height) * 3
+    count = len(raw) // frame_bytes
+    step = max(1, int(round(float(fps) / 15.0)))
+    track = []
+    for index in range(0, count, step):
+        frame = np.frombuffer(
+            raw[index * frame_bytes:(index + 1) * frame_bytes], dtype=np.uint8).reshape(height, width, 3)
+        box = _largest_face(detector, frame)
+        if box is None:
+            continue
+        beard, pin = measure_beard_pin(frame, box)
+        track.append({
+            "t": round(float(start) + index / float(fps), 3),
+            "chin": round(float(box[1] + box[3]), 1),
+            "beard": round(float(beard), 1),
+            "pin": round(float(pin), 1),
+        })
+    return track
+
+
 def sample_shot_chins(video_path, shots):
     """Chin, beard, and pin for each full-face or punch shot."""
     loaded = _yunet()
@@ -2610,26 +2637,26 @@ def sample_shot_chins(video_path, shots):
     detector = cv2.FaceDetectorYN.create(
         str(model), "", (facts["width"], facts["height"]), 0.6, 0.3, 5000)
     found = {}
+    width, height = int(facts["width"]), int(facts["height"])
+    fps = float(facts["fps"] or 30)
     for shot in shots or []:
         if shot.get("layout") not in {"full", "punch_in"}:
             continue
         start, end = float(shot["start"]), float(shot["end"])
-        moments = [start + 0.12, (start + end) / 2, max(start + 0.12, end - 0.12)]
-        samples = []
-        for moment in moments:
-            frame = _read_frame(video_path, moment, facts["width"], facts["height"])
-            if frame is None:
-                continue
-            box = _largest_face(detector, frame)
-            if box is None:
-                continue
-            beard, pin = measure_beard_pin(frame, box)
-            samples.append((float(box[1] + box[3]), beard, pin))
-        if not samples:
+        track = _track_beard_pin(video_path, start, end, detector, width, height, fps)
+        if not track:
             continue
-        # The lowest beard and the highest pin. One frame's gap is the whole shot.
-        chin = max(item[0] for item in samples)
-        beard = max(item[1] for item in samples)
-        pin = min(item[2] for item in samples)
-        found[shot.get("id")] = {"chin": chin, "beard": beard, "pin": pin}
+        # A missed pin comes back as beard+190. That is not the mic. Hold the
+        # band the other frames measured, or the caption drops onto the chest.
+        real = [point["pin"] - point["beard"] for point in track if point["pin"] - point["beard"] < 140]
+        typical = float(np.median(real)) if real else 80.0
+        for point in track:
+            if point["pin"] - point["beard"] > 140:
+                point["pin"] = round(point["beard"] + typical, 1)
+        found[shot.get("id")] = {
+            "chin": max(point["chin"] for point in track),
+            "beard": max(point["beard"] for point in track),
+            "pin": min(point["pin"] for point in track),
+            "track": track,
+        }
     return found
