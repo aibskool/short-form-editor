@@ -122,7 +122,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-smooth30-now72"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-smooth30-now72-crown4"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # The render still rebuilds a leaf shell. The encoded master is scored tighter.
 OPEN_FRINGE_IN = 0.11
@@ -624,6 +624,48 @@ def fringe_dark_fractions(rgb, person, ring_px=OPEN_FRINGE_RING_PX, crown_fracti
     return fraction(soft), fraction(ring)
 
 
+def _polish_crown(person, rgb, inset_limit=6):
+    """Pull the crown edge off a dark gap until the ring is under the limit.
+
+    A dark pixel that already belongs to the matte is covered, so it leaves
+    the ring. A dark pixel in the source, just outside the hair, is stepped
+    away from: the edge moves in one pixel at a time and the gap falls outside
+    the 8 px ring. Green foliage is not pulled in.
+    """
+    person = np.array(person, dtype=np.float32, copy=True)
+    rgb = np.asarray(rgb)
+    if int((person >= 0.5).sum()) < 40:
+        return person
+    for _step in range(int(inset_limit)):
+        soft, ring = fringe_dark_fractions(rgb, person)
+        if max(soft, ring) <= MASTER_FRINGE_DARK:
+            break
+        inside = person >= 0.5
+        if not np.any(inside):
+            break
+        ys = np.where(inside)[0]
+        top, bot = int(ys.min()), int(ys.max())
+        crown = np.zeros(inside.shape, dtype=bool)
+        crown[:top + max(8, int(0.15 * max(1, bot - top))), :] = True
+        dist = ndimage.distance_transform_edt(~inside)
+        luma = rgb.astype(np.float32).mean(axis=2)
+        outer = (dist > 8.0) & (dist <= 20.0) & crown
+        floor = float(np.median(luma[outer])) if np.any(outer) else 80.0
+        dark = luma <= max(26.0, floor - 22.0)
+        # A halo already in the matte gets covered. Source leaves stay out.
+        owned = crown & dark & (person > 0.03) & (person < 0.5)
+        if np.any(owned):
+            person[owned] = 1.0
+            continue
+        bad = crown & dark & (dist > 0) & (dist <= 8.0)
+        edge = inside & ndimage.binary_dilation(bad, iterations=8)
+        edge &= ~ndimage.binary_erosion(inside, iterations=1)
+        if not np.any(edge):
+            break
+        person[edge] = 0.0
+    return person
+
+
 def _cut_dark_fringe(person, rgb):
     """Drop a dark crown halo so the plate shows instead of a black rim."""
     person = np.asarray(person, dtype=np.float32)
@@ -854,6 +896,7 @@ def refine_frame(rgb, coarse, previous=None):
         binary = _round_binary(binary, sigma=1.2)
     person = _distance_feather(binary, FEATHER_PX)
     person = _cut_dark_fringe(person, rgb)
+    person = _polish_crown(person, rgb)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
     person = np.where(core, 1.0, person).astype(np.float32)
@@ -2570,14 +2613,23 @@ def sample_shot_chins(video_path, shots):
     for shot in shots or []:
         if shot.get("layout") not in {"full", "punch_in"}:
             continue
-        moment = (float(shot["start"]) + float(shot["end"])) / 2
-        frame = _read_frame(video_path, moment, facts["width"], facts["height"])
-        if frame is None:
+        start, end = float(shot["start"]), float(shot["end"])
+        moments = [start + 0.12, (start + end) / 2, max(start + 0.12, end - 0.12)]
+        samples = []
+        for moment in moments:
+            frame = _read_frame(video_path, moment, facts["width"], facts["height"])
+            if frame is None:
+                continue
+            box = _largest_face(detector, frame)
+            if box is None:
+                continue
+            beard, pin = measure_beard_pin(frame, box)
+            samples.append((float(box[1] + box[3]), beard, pin))
+        if not samples:
             continue
-        box = _largest_face(detector, frame)
-        if box is None:
-            continue
-        chin = float(box[1] + box[3])
-        beard, pin = measure_beard_pin(frame, box)
+        # The lowest beard and the highest pin. One frame's gap is the whole shot.
+        chin = max(item[0] for item in samples)
+        beard = max(item[1] for item in samples)
+        pin = min(item[2] for item in samples)
         found[shot.get("id")] = {"chin": chin, "beard": beard, "pin": pin}
     return found

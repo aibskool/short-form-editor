@@ -450,7 +450,9 @@ def lengthen_closing_face(shots, headers=None, minimum=1.52, scene_times=None, v
         return shots
     start = float(last["start"])
     end = float(last["end"])
-    floor = start
+    # Without a scene list the start stays put. With one, the start may move
+    # back through the same take, and it stops at a picture cut within 0.08 s.
+    floor = start if not scene_times else 0.0
     if scene_times:
         on_cut = [float(moment) for moment in scene_times if float(moment) <= start + (1.0 / 30.0)]
         if on_cut and start - max(on_cut) <= 0.08:

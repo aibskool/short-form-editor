@@ -1980,6 +1980,10 @@ class KallawayTests(unittest.TestCase):
         rgb[40:55, 28:92] = (8, 8, 8)
         soft, ring = fringe_dark_fractions(rgb, person)
         self.assertGreater(max(soft, ring), MASTER_FRINGE_DARK)
+        from kallaway_matte import _polish_crown
+        polished = _polish_crown(person, rgb)
+        soft, ring = fringe_dark_fractions(rgb, polished)
+        self.assertLessEqual(max(soft, ring), MASTER_FRINGE_DARK)
 
     def test_a_long_sentence_hole_is_cut_from_the_silence(self):
         from kallaway_audio import trim_long_sentence_holes
@@ -2089,6 +2093,17 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(held[1]["start"], quantize_cut(22.933333) - 1e-6)
         self.assertGreaterEqual(held[1]["end"] - held[1]["start"], 1.50)
         self.assertLessEqual(held[1]["end"], 24.392 + 0.10 + 1e-6)
+        # No picture cut on the join: borrow from the previous shot, leave the hold.
+        short = [
+            {"layout": "split", "start": 50.656, "end": 52.306},
+            {"layout": "full", "start": 52.306, "end": 53.715},
+        ]
+        borrowed = lengthen_closing_face(
+            short, minimum=1.52, scene_times=[51.433], video_end=53.715)
+        self.assertGreaterEqual(borrowed[1]["end"] - borrowed[1]["start"], 1.50)
+        self.assertLess(borrowed[1]["start"], 52.20)
+        self.assertGreaterEqual(borrowed[0]["end"] - borrowed[0]["start"], 1.2)
+        self.assertAlmostEqual(borrowed[1]["end"], 53.715, places=3)
 
     def test_closing_hold_is_a_tenth_when_the_source_has_it(self):
         from kallaway_audio import extend_closing_hold
