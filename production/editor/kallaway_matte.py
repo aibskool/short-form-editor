@@ -116,7 +116,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -521,6 +521,21 @@ def _foliage_green(rgb):
     return (green > red + 14) & (green > blue + 14) & (green > 35)
 
 
+def _olive_leak(rgb):
+    """Shoulder foliage too olive for the saturated-leaf test.
+
+    These leaves are only a few points greener than red. Skin is redder than
+    green, and the gray shirt is not greener than red, so neither matches.
+    """
+    color = np.asarray(rgb)
+    red = color[:, :, 0].astype(np.int16)
+    green = color[:, :, 1].astype(np.int16)
+    blue = color[:, :, 2].astype(np.int16)
+    return (
+        (green > red + 6) & (green > blue + 10) & (red < 150)
+        & (blue < 100) & (green > 40) & (green < 180))
+
+
 def _crown_rows(inside, fraction):
     """Rows from the crown down through ``fraction`` of the silhouette."""
     inside = np.asarray(inside, dtype=bool)
@@ -755,6 +770,35 @@ def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX
     return cleaned
 
 
+def _drop_olive_leak(binary, rgb, min_area=250):
+    """Drop an olive blob the matte swallowed beside the shoulder.
+
+    The torso core is eroded far enough that a leaf on the shoulder does not
+    count as the shirt. A small olive speckle stays; the leak is hundreds of
+    pixels and does not reach that core.
+    """
+    binary = np.asarray(binary, dtype=bool)
+    olive = _olive_leak(rgb) & binary
+    if not np.any(olive):
+        return binary
+    labels, count = ndimage.label(olive)
+    counts = np.bincount(labels.ravel())
+    core = ndimage.binary_erosion(binary, iterations=28) if np.any(binary) else binary
+    drop = np.zeros(count + 1, dtype=bool)
+    for label in range(1, count + 1):
+        area = int(counts[label])
+        if area < int(min_area):
+            continue
+        overlap = int(np.count_nonzero((labels == label) & core))
+        if overlap * 8 < area:
+            drop[label] = True
+    if not drop.any():
+        return binary
+    cleaned = np.array(binary, copy=True)
+    cleaned[drop[labels]] = False
+    return cleaned
+
+
 def _drop_background_rim(binary, rgb, rim_px=8, match=12):
     """Drop plate-colored pixels in the outer 8 px of the matte. Skin stays.
 
@@ -911,6 +955,7 @@ def refine_frame(rgb, coarse, previous=None, hold_edge=False):
         binary = ndimage.binary_fill_holes(binary)
         binary = _drop_specks(binary)
     binary = _drop_foliage(binary, rgb)
+    binary = _drop_olive_leak(binary, rgb)
     binary = _drop_background_rim(binary, rgb)
     if hold_edge:
         alpha = binary.astype(np.float32)

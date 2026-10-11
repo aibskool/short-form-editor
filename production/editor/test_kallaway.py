@@ -1910,6 +1910,21 @@ class KallawayTests(unittest.TestCase):
         self.assertLessEqual(fringe_dark_fraction(rgb, refined[0][0]), 0.10)
         self.assertGreater(float(refined[0][0][140, 80]), 0.9)
 
+    def test_olive_foliage_on_the_shoulder_is_dropped(self):
+        from kallaway_matte import _drop_olive_leak
+        height, width = 240, 200
+        binary = np.zeros((height, width), dtype=bool)
+        binary[40:220, 60:150] = True
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (70, 88, 40)
+        rgb[binary] = (220, 170, 140)
+        # Olive leaves on the shoulder, off the eroded torso.
+        binary[150:210, 10:50] = True
+        rgb[150:210, 10:50] = (74, 84, 33)
+        cleaned = _drop_olive_leak(binary, rgb)
+        self.assertFalse(bool(cleaned[180, 30]))
+        self.assertTrue(bool(cleaned[120, 100]))
+
     def test_a_background_patch_on_the_shoulder_is_dropped(self):
         from kallaway_matte import _drop_background_rim
         height, width = 220, 180
