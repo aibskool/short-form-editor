@@ -1,0 +1,22 @@
+Reel 08 v9 QA receipt
+Master: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v9.mp4
+sha256: cb54363df38f34ed41ac3aa41422a5253371acd560d8ad9bd5f76384945bcaa1
+98,899,544 bytes · 53.633 s · 1609 frames · -14.12 LUFS · -1.69 dBTP
+Scale 0.3555, face target 215 px, crown target 70 px. Same as v8.
+v8 had 25 shots ending in a 0.71 s punch. v9 has 24. The only cut changes are the five silence trims and the closing face, which is now one 1.520 s shot.
+
+1. Captions. Full-face beard gap minimum 28 px (floor 25). Pin gap median 28 px, range 22–42; shot 15 and the closing shot sit at 22–30 on every word. The beard-to-pin band is about 80 px, so the type is 24–33 px and it follows the head, including the 1.12 punch. Split clearance at the four windows: 33 px, 30 px, 84 px, 32 px (floor 18). At 39.12–39.40 the crown is 68–71 px above the card and the eyes stay below y 1408.
+
+2. Cut-frame mattes. 93 opening frames, 0 failed, at the tightened limits of 0.03 green and 0.05 dark (max green 0.03, max dark 0.05). Listed frames on the v9 clock (15.47, 15.50, 16.80, 16.83, 17.97, 20.40, 20.43, 20.47, 22.93) all pass: dark 0.039–0.044, green at most 0.028. Crown-dome second-difference RMS is 0.72–0.83 px (v8 at 15.67 was 1.92). On a still frame at 17.97 the dome jitter peak is 2.0 px and the RMS is 0.80, measured on the columns within 50 px of the crown.
+
+3. Plate. At the 49.371 cut the card sides read luma 64.1 and 45.7, the same as the frames on either side. A missing plate would be about 17.
+
+4. Whooshes. The header is still at the 6.270 cut (mean abs 0.99) and moving by 6.390 (8.92). The phones are offstage at 27.300 and 37.266 (0.28) and sliding at 27.500 and 37.466 (115 and 38). The whooshes hit those moves: 6.257, 27.367, 37.333.
+
+5. Pauses. All five gaps are 130 ms of word time, taken after the word. Silence under −42 dB: it→The 60 ms, fees→And 110 ms, builds→Scan 90 ms, fix→That's 130 ms, Vault→30 130 ms.
+
+6. Bells. 56 at 7.570, on the end of the 0.120 s roll. 0 at 21.340, on the end of the 0.900 s roll. 30+ at 50.271, on the end of its 0.900 s roll. Pop 3 at 2.005 s. The list bell is at 21.950 and the ka-ching at 22.050, 100 ms apart.
+
+7. Seams. The alpha ramp from 1 to 254, y 1660 to 1900, is 17 px on the left and 17 px on the right.
+
+8. Drift, Pop 2, closing face. The hero board moves −24 px from 2.55 to 3.85. The phone bezel moves about −12 px from 9.70 to 11.00. Pop 2 hits the WEBSITE keyword box at 44.416. The last shot is full-face from 52.096 to 53.616, 1.520 s. The quote card before it is 1.440 s.
