@@ -1682,7 +1682,7 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
         self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
         from kallaway_plan import apply_sfx_shifts
-        apply_sfx_shifts(timeline, [{"match": "Quick Swing B", "seconds": 0.080}])
+        apply_sfx_shifts(timeline, [{"match": "Quick Swing B", "lands_on": "quote_card", "seconds": 0.080}])
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085 + 0.080, delta=0.002)
         self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12 + 3 / 30, delta=0.002)
 

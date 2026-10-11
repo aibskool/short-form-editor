@@ -441,18 +441,59 @@ def reanchor_led_sfx(timeline, original_starts, fps=30, attack_of=None):
     return timeline
 
 
+def apply_sfx_pins(timeline, pins):
+    """Restore locked whoosh files and mute flags before the lead is measured.
+
+    A density pass can mute a whoosh that already passed and then hand its file
+    to the next cue. The pin puts the file and the mute back. It runs before
+    the lead, so an unmuted cue is measured from the right file.
+    """
+    cues = list(timeline.get("sfx") or [])
+    for pin in pins or []:
+        matches = []
+        for cue in cues:
+            if pin.get("kind") and cue.get("kind") != pin["kind"]:
+                continue
+            lands = str(pin.get("lands_on") or "")
+            if lands and lands not in str(cue.get("lands_on") or ""):
+                continue
+            matches.append(cue)
+        nth = int(pin.get("nth") or 0)
+        if nth >= len(matches):
+            continue
+        cue = matches[nth]
+        name = str(pin.get("file") or "")
+        if name:
+            current = str(cue.get("file") or "")
+            if "/" in current and "/" not in name:
+                cue["file"] = current.rsplit("/", 1)[0] + "/" + name
+            else:
+                cue["file"] = name
+        if "mute" in pin:
+            if pin["mute"]:
+                cue["mute"] = True
+                cue["mute_reason"] = pin.get("mute_reason") or "lock"
+            else:
+                cue.pop("mute", None)
+                cue.pop("mute_reason", None)
+    return timeline
+
+
 def apply_sfx_shifts(timeline, shifts):
     """Move named cues by a locked offset. Other files stay where the anchor put them."""
     moved = False
     for shift in shifts or []:
         needle = str(shift.get("match") or "")
         delta = float(shift.get("seconds") or 0)
+        lands = str(shift.get("lands_on") or "")
         if not needle or abs(delta) < 1e-6:
             continue
         for cue in timeline.get("sfx") or []:
             if cue.get("mute"):
                 continue
             if needle not in str(cue.get("file") or ""):
+                continue
+            if lands and lands not in str(cue.get("lands_on") or ""):
                 continue
             cue["sound_at"] = round(float(cue.get("sound_at", cue.get("at", 0))) + delta, 3)
             moved = True

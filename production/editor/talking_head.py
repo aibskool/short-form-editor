@@ -192,7 +192,9 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
     from kallaway_beats import lengthen_closing_face, snap_shot_edges
-    from kallaway_plan import apply_sfx_shifts, reanchor_led_sfx
+    from kallaway_plan import apply_sfx_pins, apply_sfx_shifts, reanchor_led_sfx
+    if lock and lock.get("sfx_pins"):
+        apply_sfx_pins(timeline, lock["sfx_pins"])
     original_starts = [float(shot["start"]) for shot in (timeline.get("shots") or [])]
     picture_cuts = _scene_times(leveled["output"])
     timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], picture_cuts)

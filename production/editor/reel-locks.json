@@ -157,7 +157,36 @@
    "sfx_shifts": [
     {
      "match": "Quick Swing B",
+     "lands_on": "phone_frame",
      "seconds": 0.08
+    }
+   ],
+   "sfx_pins": [
+    {
+     "kind": "whoosh",
+     "lands_on": "phone_frame",
+     "nth": 0,
+     "file": "Fast Whip.wav",
+     "mute": false
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "phone_frame",
+     "nth": 1,
+     "file": "Quick Swing B.wav",
+     "mute": false
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "quote_card",
+     "file": "Movement Swipe Whoosh 2.mp3",
+     "mute": false
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "state_swap",
+     "file": "Simple Whoosh 1.wav",
+     "mute": true
     }
    ]
   },
@@ -262,6 +291,41 @@
      33.226,
      34.773
     ]
+   ],
+   "sfx_pins": [
+    {
+     "kind": "whoosh",
+     "lands_on": "phone_frame",
+     "nth": 0,
+     "file": "Fast Whip.wav",
+     "mute": true
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "phone_frame",
+     "nth": 1,
+     "file": "Fast Whip.wav",
+     "mute": false
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "phone_frame",
+     "nth": 2,
+     "file": "Fast Whip.wav",
+     "mute": true
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "quote_card",
+     "file": "Quick Swing B.wav",
+     "mute": true
+    },
+    {
+     "kind": "whoosh",
+     "lands_on": "Functionality",
+     "file": "Quick Swing B.wav",
+     "mute": true
+    }
    ]
   }
  }
