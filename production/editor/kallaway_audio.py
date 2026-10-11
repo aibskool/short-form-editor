@@ -1576,8 +1576,19 @@ def _outgoing_fade(samples, rate, end, fps=30):
     return 0.0
 
 
+def _crossfade_at(end, crossfade, join_crossfades):
+    """Per-join override, matched on the source out-point. Others keep the theme fade."""
+    for item in join_crossfades or []:
+        if abs(float(item.get("end", -1)) - float(end)) <= 0.02:
+            fade = float(item.get("seconds", crossfade))
+            if not 0 <= fade <= 0.02:
+                raise ValueError("cut crossfade must be between 0 and 20 ms")
+            return fade
+    return float(crossfade)
+
+
 def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None,
-                  range_lock=None):
+                  range_lock=None, join_crossfades=None):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
     Each word keeps its decay plus a safety tail. Mid-phrase pauses are cut
@@ -1617,30 +1628,39 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     filters = []
     expected = 0.0
     last = len(ranges) - 1
+    fades = []
     for index, (begin, end) in enumerate(ranges):
         vb, ve = video[index]
         filters.append(f"[0:v]trim=start={vb:.6f}:end={ve:.6f},setpts=PTS-STARTPTS[v{index}]")
+        this_fade = _crossfade_at(end, crossfade, join_crossfades) if index < last else 0.0
+        fades.append(this_fade)
         audio_end = end
-        if crossfade and index < last:
-            audio_end = min(ranges[index + 1][0], end + crossfade)
+        if this_fade and index < last:
+            audio_end = min(ranges[index + 1][0], end + this_fade)
         length = audio_end - begin
-        fades = ""
+        tail = ""
         if index == 0:
-            fades += ",afade=t=in:d=0.004"
-        breath = _outgoing_fade(samples, RATE, end) if index < last else 0.0
+            tail += ",afade=t=in:d=0.004"
+        # An authored join already picked its crossfade. A breath fade on top of
+        # that would dull the consonant the out-point was set to keep.
+        authored = any(
+            abs(float(item.get("end", -1)) - float(end)) <= 0.02
+            for item in (join_crossfades or []))
+        breath = 0.0 if authored or index == last else _outgoing_fade(samples, RATE, end)
         if breath:
-            fades += f",afade=t=out:st={max(0, length - breath):.6f}:d={breath:.6f}"
+            tail += f",afade=t=out:st={max(0, length - breath):.6f}:d={breath:.6f}"
         elif index == last:
-            fades += f",afade=t=out:st={max(0, length - 0.004):.6f}:d=0.004"
+            tail += f",afade=t=out:st={max(0, length - 0.004):.6f}:d=0.004"
         filters.append(
-            f"[0:a]atrim=start={begin:.6f}:end={audio_end:.6f},asetpts=PTS-STARTPTS{fades}[a{index}]")
+            f"[0:a]atrim=start={begin:.6f}:end={audio_end:.6f},asetpts=PTS-STARTPTS{tail}[a{index}]")
         expected += ve - vb
     if crossfade and len(ranges) > 1:
         # Quarter-sine curves are equal-power, so the join does not dip.
-        filters.append(f"[a0][a1]acrossfade=d={crossfade:.4f}:c1=qsin:c2=qsin[ax1]")
+        filters.append(f"[a0][a1]acrossfade=d={fades[0]:.4f}:c1=qsin:c2=qsin[ax1]")
         for index in range(2, len(ranges)):
             prev = f"ax{index - 1}"
-            filters.append(f"[{prev}][a{index}]acrossfade=d={crossfade:.4f}:c1=qsin:c2=qsin[ax{index}]")
+            filters.append(
+                f"[{prev}][a{index}]acrossfade=d={fades[index - 1]:.4f}:c1=qsin:c2=qsin[ax{index}]")
         audio_label = f"[ax{last}]"
     else:
         audio_label = "[a0]"

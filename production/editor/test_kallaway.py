@@ -1840,6 +1840,54 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(ring, 0.155)
         self.assertGreater(int(binary[120, 80]), 0)
 
+    def test_a_dark_crown_halo_fails_and_shrinks(self):
+        from kallaway_matte import _shrink_dark_crown, fringe_dark_fails
+        height, width = 200, 160
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (70, 90, 40)
+        rgb[80:190, 40:120] = (220, 170, 150)
+        rgb[74:80, 36:124] = (12, 14, 10)
+        body = np.zeros((height, width), np.float32)
+        body[80:190, 40:120] = 1
+        clean, fraction = fringe_dark_fails(rgb, body)
+        self.assertTrue(clean)
+        self.assertGreater(fraction, 0.10)
+        rgb_clear = rgb.copy()
+        rgb_clear[74:80, 36:124] = (70, 90, 40)
+        clear, _fraction = fringe_dark_fails(rgb_clear, body)
+        self.assertFalse(clear)
+        binary = body >= 0.5
+        for _ in range(16):
+            still, _fraction = fringe_dark_fails(rgb, binary.astype(np.float32))
+            if not still:
+                break
+            binary = _shrink_dark_crown(binary, rgb, steps=1)
+        still, fraction = fringe_dark_fails(rgb, binary.astype(np.float32))
+        self.assertFalse(still)
+        self.assertLess(fraction, 0.10)
+        self.assertGreater(int(binary[140, 80]), 0)
+
+    def test_a_background_patch_on_the_shoulder_is_dropped(self):
+        from kallaway_matte import _drop_background_rim
+        height, width = 220, 180
+        binary = np.zeros((height, width), dtype=bool)
+        binary[30:200, 50:130] = True
+        binary[120:170, 20:50] = True
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (70, 88, 48)
+        rgb[binary] = (220, 170, 140)
+        rgb[120:170, 20:50] = (72, 86, 50)
+        cleaned = _drop_background_rim(binary, rgb)
+        # The outer rim of the plate-colored block. The torso, and skin, stay.
+        self.assertFalse(bool(cleaned[140, 22]))
+        self.assertTrue(bool(cleaned[80, 90]))
+
+    def test_an_authored_join_uses_its_own_crossfade(self):
+        from kallaway_audio import _crossfade_at
+        authored = [{"end": 12.1, "seconds": 0.012}]
+        self.assertAlmostEqual(_crossfade_at(12.100, 0.016, authored), 0.012)
+        self.assertAlmostEqual(_crossfade_at(4.0, 0.016, authored), 0.016)
+
     def test_cut_frames_follow_the_frames_a_trim_keeps(self):
         from kallaway_matte import tightened_cut_frames, trim_frame_count
         # 1.23 frames of time is two source frames. Rounding the duration keeps one.

@@ -116,13 +116,17 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage4-fringe-feather2.5-despill6-speck200-spike"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
-OPEN_FRINGE_IN = 0.11
-OPEN_FRINGE_OUT = 0.155
+OPEN_FRINGE_IN = 0.09
+OPEN_FRINGE_OUT = 0.13
 OPEN_FRINGE_RING_PX = 8.0
 OPEN_FRINGE_CROWN = 0.15
+# Share of the cap's outside ring whose luma sits this far under the local plate.
+# A clean crown is near 0.06. The dark halo at a bad cut sits above 0.10.
+OPEN_FRINGE_DARK = 0.10
+OPEN_FRINGE_DARK_BELOW = 12.0
 
 
 def _run(args):
@@ -566,6 +570,81 @@ def fringe_fails(rgb, person, limit_in=OPEN_FRINGE_IN, limit_out=OPEN_FRINGE_OUT
     return soft > float(limit_in) or ring > float(limit_out), soft, ring
 
 
+def _cap_rows(inside, fraction=OPEN_FRINGE_CROWN):
+    """The crown cap: the top of the silhouette, before it widens into the cheeks.
+
+    The full 15% band includes the dark room beside the jaw. The fringe QA
+    measures is the cap, where the plate should show and a dark halo does not.
+    """
+    inside = np.asarray(inside, dtype=bool)
+    band = np.zeros(inside.shape, dtype=bool)
+    ys = np.where(inside)[0]
+    if ys.size == 0:
+        return band
+    top = int(ys.min())
+    span = max(1, int(ys.max()) - top)
+    limit = top + max(8, int(round(float(fraction) * span)))
+    widths = inside.sum(axis=1)
+    tip = widths[top:top + min(8, int(widths.size))]
+    tip = tip[tip > 0]
+    tip_w = max(8, int(np.median(tip))) if tip.size else 8
+    narrow = widths < tip_w * 2.4
+    band[:limit] = True
+    band &= narrow[:, None]
+    return band
+
+
+def _plate_luma(rgb, person, band):
+    """Median luma of the local background, 12–32 px outside the matte.
+
+    That ring is what the blurred plate is built from. None when the cap has
+    no background to compare against.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    inside = person >= 0.5
+    if not np.any(band):
+        return None
+    dist = ndimage.distance_transform_edt(~inside)
+    luma = np.asarray(rgb, dtype=np.float32).mean(axis=2)
+    far = (dist >= 12) & (dist <= 32) & band & (person < 0.04)
+    if int(far.sum()) < 40:
+        return None
+    return float(np.median(luma[far]))
+
+
+def fringe_dark_fraction(rgb, person, ring_px=OPEN_FRINGE_RING_PX, below=OPEN_FRINGE_DARK_BELOW,
+                         crown_fraction=OPEN_FRINGE_CROWN):
+    """Share of the cap's 0–8 px ring that is well below the local plate.
+
+    Green foliage is a separate check. This one catches a dark crown halo:
+    source pixels in that ring whose luma sits ``below`` points under the plate.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    if person.ndim != 2:
+        raise ValueError("fringe check expects one alpha plane")
+    inside = person >= 0.5
+    if not np.any(inside):
+        return 0.0
+    band = _cap_rows(inside, crown_fraction)
+    plate = _plate_luma(rgb, person, band)
+    if plate is None:
+        return 0.0
+    dist = ndimage.distance_transform_edt(~inside)
+    luma = np.asarray(rgb, dtype=np.float32).mean(axis=2)
+    ring = (dist > 0) & (dist <= float(ring_px)) & band
+    count = int(ring.sum())
+    if count < 20:
+        return 0.0
+    dark = luma < (plate - float(below))
+    return float(np.count_nonzero(dark & ring) / count)
+
+
+def fringe_dark_fails(rgb, person, limit=OPEN_FRINGE_DARK):
+    """A cap whose outside ring is a dark halo against the plate."""
+    fraction = fringe_dark_fraction(rgb, person)
+    return fraction > float(limit), fraction
+
+
 def _shrink_green_crown(binary, rgb, steps=1, ring_px=OPEN_FRINGE_RING_PX):
     """Pull the crown edge off leaves in the outside ring. One step is one pixel.
 
@@ -593,6 +672,39 @@ def _shrink_green_crown(binary, rgb, steps=1, ring_px=OPEN_FRINGE_RING_PX):
         boundary = binary & ~ndimage.binary_erosion(binary, iterations=1, border_value=0)
         touch = ndimage.binary_dilation(outside, iterations=reach)
         cut = boundary & touch & crown
+        if not np.any(cut):
+            break
+        binary[cut] = False
+    return binary
+
+
+def _shrink_dark_crown(binary, rgb, steps=1, ring_px=OPEN_FRINGE_RING_PX, below=OPEN_FRINGE_DARK_BELOW):
+    """Pull the cap edge off a dark halo. One step is one pixel.
+
+    Hair that is merely darker than the plate stays. Only the outer rim of the
+    cap moves, and only where that rim touches source that is well below the plate.
+    """
+    binary = np.array(binary, dtype=bool, copy=True)
+    if not np.any(binary):
+        return binary
+    luma = np.asarray(rgb, dtype=np.float32).mean(axis=2)
+    for _ in range(max(1, int(steps))):
+        if not np.any(binary):
+            break
+        cap = _cap_rows(binary, OPEN_FRINGE_CROWN)
+        plate = _plate_luma(rgb, binary.astype(np.float32), cap)
+        if plate is None:
+            break
+        dark = luma < (plate - float(below))
+        boundary = binary & ~ndimage.binary_erosion(binary, iterations=1, border_value=0)
+        outside = dark & ~binary
+        if not np.any(outside):
+            break
+        # A dark pixel anywhere in the 0-8 px ring still counts. The rim moves
+        # one pixel while that ring is dark, and stops once the halo is farther out.
+        reach = max(1, int(round(float(ring_px))))
+        touch = ndimage.binary_dilation(outside, iterations=reach)
+        cut = boundary & touch & cap
         if not np.any(cut):
             break
         binary[cut] = False
@@ -640,6 +752,42 @@ def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX
             if cleaned is binary:
                 cleaned = np.array(binary, copy=True)
             cleaned[rim] = False
+    return cleaned
+
+
+def _drop_background_rim(binary, rgb, rim_px=8, match=12):
+    """Drop plate-colored pixels in the outer 8 px of the matte. Skin stays.
+
+    The shoulder leak is gray and olive, not green enough for the foliage
+    test. It sits a few pixels inside the edge and matches the plate beside
+    it. Skin is redder and brighter than that plate, so the arm stays. One
+    pass only: a deeper cut starts eating the shirt, which is the same color
+    family once you leave the rim.
+    """
+    binary = np.asarray(binary, dtype=bool)
+    if not np.any(binary):
+        return binary
+    color = np.asarray(rgb, dtype=np.float32)
+    red = color[:, :, 0]
+    green = color[:, :, 1]
+    blue = color[:, :, 2]
+    skin = (red > green + 15) & (red > 155) & (red > blue)
+    dist_in = ndimage.distance_transform_edt(binary)
+    outside = ~binary
+    weight = ndimage.uniform_filter(outside.astype(np.float32), size=9, mode="nearest")
+    background = np.empty_like(color)
+    for channel in range(3):
+        blurred = ndimage.uniform_filter(color[:, :, channel] * outside, size=9, mode="nearest")
+        background[:, :, channel] = blurred / np.maximum(weight, 1e-3)
+    distance = np.sqrt(((color - background) ** 2).sum(axis=2))
+    cut = (
+        binary & ~skin & (dist_in > 0) & (dist_in <= float(rim_px))
+        & (distance <= float(match)) & (weight > 0.08)
+    )
+    if not np.any(cut):
+        return binary
+    cleaned = np.array(binary, copy=True)
+    cleaned[cut] = False
     return cleaned
 
 
@@ -755,6 +903,7 @@ def refine_frame(rgb, coarse, previous=None):
     binary = ndimage.binary_fill_holes(binary)
     binary = _drop_specks(binary)
     binary = _drop_foliage(binary, rgb)
+    binary = _drop_background_rim(binary, rgb)
     person = _distance_feather(binary, FEATHER_PX)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
@@ -1312,12 +1461,16 @@ def _opening_frame_fails(person, rgb, seed_person, seed_rgb=None):
     if seed_area > 0 and area > OPEN_AREA_RATIO * seed_area and rim > OPEN_AREA_GREEN_PX:
         return True
     soft, ring = fringe_green_fractions(rgb, person)
+    dark = fringe_dark_fraction(rgb, person)
     if seed_rgb is None:
-        return soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT
+        return soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or dark > OPEN_FRINGE_DARK
     seed_soft, seed_ring = fringe_green_fractions(seed_rgb, seed_person)
+    seed_dark = fringe_dark_fraction(seed_rgb, seed_person)
     if soft > max(OPEN_FRINGE_IN, seed_soft + 0.06):
         return True
     if ring > max(OPEN_FRINGE_OUT, seed_ring + 0.06):
+        return True
+    if dark > max(OPEN_FRINGE_DARK, seed_dark + 0.04):
         return True
     return False
 
@@ -1362,15 +1515,16 @@ def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
             if not _opening_frame_fails(
                     binary.astype(np.float32), rgb, reference_person, reference_rgb):
                 break
-            nxt = _shrink_green_crown(binary, rgb, steps=1)
+            nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
             if np.array_equal(nxt, binary):
                 break
             binary = nxt
         repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None)
     if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
         soft, ring = fringe_green_fractions(rgb, repaired[0])
+        dark = fringe_dark_fraction(rgb, repaired[0])
         raise RuntimeError(
-            f"crown fringe stayed after a cold refine (in {soft:.3f} out {ring:.3f})")
+            f"crown fringe stayed after a cold refine (in {soft:.3f} out {ring:.3f} dark {dark:.3f})")
     return repaired
 
 
@@ -1399,9 +1553,10 @@ def _rematte_failed_opening(refined, frames, seed_index):
             binary = np.asarray(refined[index][0]) >= 0.5
             for _step in range(16):
                 failed, _soft, _ring = fringe_fails(rgb, binary.astype(np.float32))
-                if not failed:
+                dark_failed, _dark = fringe_dark_fails(rgb, binary.astype(np.float32))
+                if not failed and not dark_failed:
                     break
-                nxt = _shrink_green_crown(binary, rgb, steps=1)
+                nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
                 if np.array_equal(nxt, binary):
                     break
                 binary = nxt
@@ -1409,10 +1564,11 @@ def _rematte_failed_opening(refined, frames, seed_index):
         if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             area, rim = _matte_green_stats(refined[index][0], rgb)
             _soft, ring = fringe_green_fractions(rgb, refined[index][0])
+            dark = fringe_dark_fraction(rgb, refined[index][0])
             raise RuntimeError(
                 f"matte on segment frame {index} still has a foliage shell "
                 f"({rim}px green in the rim, area {area}, "
-                f"crown fringe in {_soft:.3f} out {ring:.3f})")
+                f"crown fringe in {_soft:.3f} out {ring:.3f} dark {dark:.3f})")
 
 
 def _refine_opening(frames):

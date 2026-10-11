@@ -204,8 +204,11 @@
   },
   "09": {
    "base": "2026-10-10_09 v16",
-   "caption_full_baseline_px": 1169,
-   "note": "v16 video ranges plus the 9.188 breath restored (10.776-12.166). Scroll is in the stage plan. 21.76 stays at the v16 length.",
+   "caption_full_baseline_px": 1143,
+   "note": "v18 ranges, with the two builds cuts replaced by one removal of raw 12.100-12.372 (12 ms equal-power crossfade, out-point 12.100 so the z stays). Full-face baseline 1143 puts the g descender at or above y 1165. Scroll stays in the stage plan.",
+   "join_crossfades": [
+    {"end": 12.1, "seconds": 0.012}
+   ],
    "ranges": [
     [
      0.878,
@@ -245,14 +248,10 @@
     ],
     [
      10.776,
-     12.166
+     12.1
     ],
     [
-     12.17,
-     12.321
-    ],
-    [
-     12.386,
+     12.372,
      14.501
     ],
     [
@@ -341,17 +340,17 @@
    ],
    "caption_y": {
     "shot-00": 67.22,
-    "shot-01": 58.63,
+    "shot-01": 57.27,
     "shot-02": 66.23,
     "shot-03": 65.83,
     "shot-04": 65.83,
     "shot-05": 65.24,
-    "shot-06": 58.63,
-    "shot-07": 58.63,
+    "shot-06": 57.27,
+    "shot-07": 57.27,
     "shot-08": 64.25,
     "shot-09": 64.85,
     "shot-10": 64.85,
-    "shot-11": 58.63
+    "shot-11": 57.27
    }
   }
  }

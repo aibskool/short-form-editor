@@ -154,7 +154,8 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         handle=float(audio_cfg["join_handle_seconds"]),
         crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)),
         sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])),
-        range_lock=locked_ranges)
+        range_lock=locked_ranges,
+        join_crossfades=(lock or {}).get("join_crossfades"))
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),
