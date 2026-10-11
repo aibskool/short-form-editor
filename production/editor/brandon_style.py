@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """Brandon Meaux new-style preset.
 
-Full-face talking head, hard punch-ins, one-word captions, neon-green
-emphasis, and pack SFX. The Kallaway split-screen preset is a separate
-path and is not used here.
+Full-face talking head, hard punch-ins, short phrase captions, neon-green
+emphasis, and a sparse pass over the pack SFX. The Kallaway split-screen
+preset is a separate path and is not used here.
 
-Numbers come from EDITING_BIBLE.md. Open decisions locked for this cut:
-captions sit 70 px above the bible baseline (y 1462) so they clear
-Instagram's bottom UI; every white flash gets a shutter; Wrong Answer
-stays on real negatives; on-screen figures match the spoken words; the
-black-and-white beat is live footage; the title banner uses color-on-text
-boxes; green is #42FF40.
+Brandon's own guidelines override the editing bible wherever they differ:
+natural pauses stay, routine cuts are silent, captions are 3-6 word
+phrases, and most moments have no sound. Captions still sit at y 1462,
+on-screen figures match the spoken words, and green is #42FF40.
 """
 from __future__ import annotations
 
@@ -34,6 +32,7 @@ GREEN = (0x42, 0xFF, 0x40, 255)
 GREEN_HEX = "#42FF40"
 CAPTION_BOTTOM = 1532 - 70  # locked lift, C-15
 CAPTION_H = 65
+PUNCH = 1.12  # 12% crop, inside the 8-15% punch-in
 SR = 48000
 
 APPROVED = {
@@ -148,12 +147,12 @@ def energy_runs(y, sr=SR):
 
 
 def build_spans(words, audio, sr=SR):
-    """Keep each spoken word plus a short tail. Cut the fidgets in long pauses.
+    """Keep each spoken word, its consonant tail, and the natural pause.
 
-    Room noise between phrases stays above the speech gate, so an energy-only
-    cut leaves multi-second holes with no caption. A pause the transcript
-    marks as longer than 85 ms becomes two silent frames. The 80 ms after
-    each word, and a soft ending up to 180 ms, stays so a consonant is not clipped.
+    Connected thoughts keep their real gap. A pause longer than 0.60 s is
+    dead air and comes back to about 0.32 s, or about 0.48 s after a
+    sentence. The kept air is source room tone, never a silent sample,
+    except for two frames after the last word.
     """
     _runs, rms = energy_runs(audio, sr)
     if len(rms) == 0:
@@ -163,7 +162,6 @@ def build_spans(words, audio, sr=SR):
     for i, w in enumerate(words):
         nxt = words[i + 1]["start"] if i + 1 < len(words) else w["end"] + 1.0
         prev_end = words[i - 1]["end"] + 0.05 if i else 0.0
-        a = w["start"]
         floor = max(prev_end, w["start"] - 0.12)
         t = w["start"]
         while t > floor + 0.01:
@@ -172,6 +170,17 @@ def build_spans(words, audio, sr=SR):
                 break
             t -= 0.01
         a = max(0.0, t - 0.02)
+        # A timestamp can start before the attack. Skip that dead air and
+        # keep about 30 ms so the consonant is still there.
+        onset = w["start"]
+        limit = min(w["end"] - 0.04, w["start"] + 0.90)
+        while onset < limit:
+            hop = int(onset * 100)
+            if 0 <= hop < len(rms) and rms[hop] >= gate:
+                break
+            onset += 0.01
+        if onset > w["start"] + 0.06:
+            a = max(0.0, onset - 0.03)
         b = w["end"] + 0.08
         cap = min(w["end"] + 0.18, nxt - 0.04)
         t = w["end"]
@@ -182,64 +191,70 @@ def build_spans(words, audio, sr=SR):
             t += 0.01
             b = t
         b = min(max(b, w["end"] + 0.04), max(cap, w["end"] + 0.04))
-        if nxt - w["end"] <= 0.085:
-            b = max(b, min(nxt, w["end"] + 0.085))
-        if keeps and a <= keeps[-1][1] + 0.02:
+        # And a timestamp can run on after the syllable. Stop just after
+        # the last loud hop when the next word is not already connected.
+        if nxt - w["end"] > 0.18:
+            last = None
+            tt = a
+            while tt <= min(w["end"] + 0.02, nxt):
+                hop = int(tt * 100)
+                if 0 <= hop < len(rms) and rms[hop] >= gate:
+                    last = tt
+                tt += 0.01
+            if last is not None:
+                b = min(b, last + 0.06)
+        # A tight join stays one piece so the consonant and the breath are not cut.
+        if nxt - w["end"] <= 0.12:
+            b = max(b, min(nxt, w["end"] + 0.12))
+        if keeps and a <= keeps[-1][1] + 0.08:
             keeps[-1][1] = max(keeps[-1][1], b)
         else:
             keeps.append([a, b])
-    # Split a keep on a real hole. Transcript ends often run past the syllable,
-    # and that quiet stretch is what the gap meter reads.
     pieces = []
     for a, b in keeps:
-        i0, i1 = int(a * 100), max(int(a * 100) + 1, int(b * 100))
-        i1 = min(i1, len(rms))
-        speech = []
-        s0 = None
-        for i in range(i0, i1):
-            if rms[i] >= gate and s0 is None:
-                s0 = i
-            if rms[i] < gate and s0 is not None:
-                speech.append([s0, i])
-                s0 = None
-        if s0 is not None:
-            speech.append([s0, i1])
-        merged_speech = []
-        for s, e in speech:
-            if merged_speech and s - merged_speech[-1][1] < 3:
-                merged_speech[-1][1] = e
-            else:
-                merged_speech.append([s, e])
-        merged_speech = [m for m in merged_speech if m[1] - m[0] >= 4]
-        for s, e in merged_speech:
-            # A few milliseconds of air so the attack and the last consonant stay.
-            # Anything longer is below the gate and shows up as a voice gap.
-            pieces.append([max(a, s / 100 - 0.012), min(b, e / 100 + 0.020)])
-    pieces = [p for p in pieces if p[1] - p[0] >= 0.02]
+        if b - a < 0.02:
+            continue
+        qa = round(a * FPS) / FPS
+        qb = round(max(b, a + 1 / FPS) * FPS) / FPS
+        if pieces and qa <= pieces[-1][1] + 1 / FPS:
+            pieces[-1][1] = max(pieces[-1][1], qb)
+        else:
+            pieces.append([qa, qb])
+
+    def _sentence(src_t):
+        best = None
+        for w in words:
+            if w["end"] <= src_t + 0.04:
+                best = w
+        return bool(best and str(best["word"]).rstrip().endswith((".", "!", "?")))
+
     spans = []
     out = 0.0
     for i, (a, b) in enumerate(pieces):
-        frames = max(1, round((b - a) * FPS))
-        dur = frames / FPS
+        dur = max(1 / FPS, round((b - a) * FPS) / FPS)
         spans.append(Span(out, a, dur))
         out += dur
-        if i + 1 < len(pieces):
-            gap = pieces[i + 1][0] - b
-            if gap > 0.085:
-                sil = 1 / FPS
-                spans.append(Span(out, None, sil))
-                out += sil
-            elif gap > 1 / FPS:
-                frames = max(1, round(min(gap, 0.085) * FPS))
-                spans.append(Span(out, b, frames / FPS))
-                out += frames / FPS
-    # Tail after the last syllable. Two extra silent frames land near 70 ms
-    # once the sub-threshold decay is counted.
+        if i + 1 >= len(pieces):
+            break
+        nxt = pieces[i + 1][0]
+        gap = nxt - b
+        if gap <= 1 / FPS:
+            continue
+        if gap <= 0.60:
+            tone_end = nxt
+        else:
+            keep = 0.48 if _sentence(b) else 0.32
+            tone_end = min(nxt, round((b + keep) * FPS) / FPS)
+        tone_dur = round((tone_end - b) * FPS) / FPS
+        if tone_dur < 1 / FPS:
+            continue
+        spans.append(Span(out, b, tone_dur))
+        out += tone_dur
+    # Hard out. Two silent frames, plus the 10 ms fade on the last speech piece.
     spans.append(Span(out, None, 2 / FPS))
     out += 2 / FPS
     total = round(out * FPS) / FPS
     spans[-1].dur += total - out
-    out = total
 
     def map_src(t):
         cursor = 0.0
@@ -261,6 +276,41 @@ def build_spans(words, audio, sr=SR):
         if w["out_end"] < w["out"]:
             w["out_end"] = w["out"]
     return spans, out
+
+
+def build_phrases(words):
+    """Group every spoken word into a 3-6 word caption. Nothing is dropped."""
+    chunks = []
+    cur = []
+    for i, w in enumerate(words):
+        cur.append(w)
+        punct = str(w["word"]).rstrip().endswith((".", "!", "?"))
+        pause = False
+        if i + 1 < len(words):
+            pause = words[i + 1]["out"] - w["out_end"] >= 0.28
+        if punct or pause or len(cur) >= 6:
+            chunks.append(cur)
+            cur = []
+    if cur:
+        chunks.append(cur)
+    merged = []
+    for ch in chunks:
+        if merged and len(ch) < 3 and len(merged[-1]) + len(ch) <= 6:
+            merged[-1].extend(ch)
+        elif merged and len(merged[-1]) < 3 and len(merged[-1]) + len(ch) <= 6:
+            merged[-1].extend(ch)
+        else:
+            merged.append(list(ch))
+    phrases = []
+    for ch in merged:
+        text = " ".join(caption_text(w["word"]) for w in ch if caption_text(w["word"]))
+        phrases.append({
+            "words": ch,
+            "t0": ch[0]["out"],
+            "t1": ch[-1]["out_end"],
+            "text": text,
+        })
+    return phrases
 
 
 def _pick_cut(cands, jumps, target):
@@ -319,6 +369,7 @@ class Shot:
     push: float = 0.0
     bw: bool = False
     flash: bool = False
+    banner_off: bool = False
     plate: str = ""
     src_jump: bool = False
 
@@ -353,24 +404,10 @@ def _apply_scales(shots):
             scale = 1.0
             continue
         if prev_face and not s.src_jump:
-            scale = 1.18 if scale < 1.10 else 1.0
+            scale = PUNCH if scale < 1.06 else 1.0
         s.scale = scale
+        s.push = 0.0
         prev_face = True
-    # Slow push on face shots that do not cut into a tighter punch.
-    # A push into a punch shrinks the scale jump and the cut detector misses it.
-    face_n = sum(1 for s in shots if s.kind == "face")
-    want = max(2, round(0.40 * face_n))
-    cands = []
-    for i, s in enumerate(shots):
-        if s.kind != "face" or s.dur < 1.05 or s.bw:
-            continue
-        nxt = shots[i + 1] if i + 1 < len(shots) else None
-        if nxt and nxt.kind == "face" and nxt.scale > s.scale + 0.05:
-            continue
-        cands.append(s)
-    cands.sort(key=lambda s: -s.dur)
-    for s in cands[:want]:
-        s.push = 0.11
 
     def _pairs():
         out = []
@@ -401,35 +438,48 @@ def _apply_scales(shots):
         prev = shots[i - 1]
         if abs(s.scale - prev.scale) >= 0.10:
             s.scale = prev.scale
-            if s.scale >= 1.12:
-                s.push = 0.0
+            s.push = 0.0
+    # A punch on every cut reads as constant reframing. Leave some cuts alone.
+    for i in _pairs():
+        if _share() <= 0.62:
+            break
+        if i % 2:
+            continue
+        s = shots[i]
+        prev = shots[i - 1]
+        if s.bw or prev.bw:
+            continue
+        if abs(s.scale - prev.scale) >= 0.10:
+            s.scale = prev.scale
+            s.push = 0.0
     for i in _pairs():
         if _share() >= 0.40:
             break
         s = shots[i]
         prev = shots[i - 1]
         if abs(s.scale - prev.scale) < 0.10:
-            s.scale = 1.18 if prev.scale < 1.10 else 1.0
+            s.scale = PUNCH if prev.scale < 1.06 else 1.0
             s.push = 0.0
     return shots
 
 
 def _mark_flashes(shots):
-    starts = [(s.t0, s) for s in shots if s.t0 >= 4.55]
-    title = None
+    """Pick the banner-off cut. No white flash."""
+    for s in shots:
+        s.flash = False
+        s.banner_off = False
+    starts = [s for s in shots if 4.55 <= s.t0 <= 8.30]
     if starts:
-        title = min(starts, key=lambda it: abs(it[0] - 4.8))
-        if 4.55 <= title[0] <= 8.30:
-            title[1].flash = True
-    # Two more shutters, on the cuts back to face after an insert.
-    extra = 0
-    for i, s in enumerate(shots):
-        if extra >= 2:
-            break
-        if s.kind == "face" and i > 0 and shots[i - 1].kind != "face" and not s.flash and s.t0 > 3:
-            s.flash = True
-            extra += 1
+        min(starts, key=lambda s: abs(s.t0 - 4.8)).banner_off = True
     return shots
+
+
+def _title_off_time(shots, fallback=6.0):
+    marked = [s.t0 for s in shots if s.banner_off]
+    if marked:
+        return marked[0]
+    cands = [s.t0 for s in shots if 4.55 <= s.t0 <= 8.30]
+    return cands[0] if cands else fallback
 
 
 def _clamp_inserts(raw, duration):
@@ -509,10 +559,26 @@ def _ensure_three_long_shots(shots):
     return shots[:i] + [merged] + shots[i + 2:]
 
 
+def _source_jumps(spans):
+    """Output times where the picture leaves a hole in the source."""
+    jumps = []
+    prev = None
+    for s in spans:
+        if s.src is None:
+            if s.out > 0.05:
+                jumps.append(qframe(s.out))
+            prev = None
+            continue
+        if prev is not None and s.src > prev + 0.12:
+            jumps.append(qframe(s.out))
+        prev = s.src + s.dur
+    return jumps
+
+
 def build_shots(words, spans, inserts, bw_word=None):
     duration = spans[-1].out_end
     word_times = sorted({qframe(w["out"]) for w in words if 0.4 < w["out"] < duration - 0.4})
-    jump_times = [qframe(s.out) for s in spans if s.src is None]
+    jump_times = _source_jumps(spans)
     timeline = []
     cursor = 0.0
     opening = True
@@ -532,7 +598,7 @@ def build_shots(words, spans, inserts, bw_word=None):
         for s in timeline:
             if s.kind == "face" and s.t0 <= t < s.t1:
                 s.bw = True
-                s.scale = 1.18
+                s.scale = PUNCH
                 s.push = 0.0
                 break
     _mark_flashes(timeline)
@@ -775,7 +841,7 @@ def plan_reel(reel):
     shots = build_shots(words, spans, inserts, bw_idx)
     windows = _emphasis_windows(spec["emphasis"], words, duration, cta_t)
     cues = build_cues(words, shots, windows, spec["negatives"], cta_t, duration, spec["keyword"])
-    title_off = next((s.t0 for s in shots if s.flash), 6.0)
+    title_off = _title_off_time(shots, 6.0)
     green = green_intervals(windows, cta_t, duration, title_off)
     plan = {
         "reel": reel,
@@ -838,7 +904,7 @@ def voice_from_spans(source, spans):
     src = load_mono(source)
     out_n = int(round(spans[-1].out_end * SR))
     voice = np.zeros(out_n, np.float32)
-    for s in spans:
+    for i, s in enumerate(spans):
         if s.src is None:
             continue
         a = int(round(s.out * SR))
@@ -847,9 +913,14 @@ def voice_from_spans(source, spans):
         piece = src[b:b + n]
         if len(piece) < n:
             piece = np.pad(piece, (0, n - len(piece)))
-        # 10 ms fade into the following silence so the join does not click.
+        # 10 ms fade only where the source actually jumps, so a kept pause
+        # does not dip and the fade never sits on the next word.
+        nxt = spans[i + 1] if i + 1 < len(spans) else None
+        jumps = nxt is None or nxt.src is None or s.src is None
+        if not jumps and nxt is not None and nxt.src is not None:
+            jumps = abs((s.src + s.dur) - nxt.src) > 0.03
         fade = int(0.010 * SR)
-        if fade > 1 and a + n < out_n:
+        if jumps and fade > 1 and a + n < out_n:
             piece = piece.copy()
             piece[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
         voice[a:a + len(piece)] += piece[: max(0, out_n - a)]
@@ -908,18 +979,55 @@ def _decode_sfx(rel, trim=None):
     return y
 
 
+def _nearby_peak(y, t, sr=SR, half=0.40):
+    a = max(0, int((t - half) * sr))
+    b = min(len(y), int((t + half) * sr))
+    if b <= a:
+        return 1e-4
+    return max(float(np.max(np.abs(y[a:b]))), 1e-4)
+
+
+def level_cues(voice, cues, words):
+    """Put each transient 15 dB under the nearby voice, or 10 dB for an impact.
+
+    The shared loudness gain comes later and moves voice and effects together.
+    """
+    for c in cues:
+        vpeak = _nearby_peak(voice, c.t)
+        nxt = next((w["out"] for w in words if w["out"] >= c.t + 0.08), None)
+        peak = PEAK_AT.get(c.role, 0.0)
+        cap = None
+        if nxt is not None:
+            cap = max(peak + 0.06, nxt - c.t - 0.03)
+        base = TRIM_AT.get(c.role)
+        trim = base
+        if cap is not None:
+            trim = cap if base is None else min(base, cap)
+        if trim is not None and trim < peak + 0.05:
+            trim = peak + 0.05
+        c.trim = trim
+        y = _decode_sfx(c.path, trim)
+        fpeak = float(np.max(np.abs(y))) or 1e-6
+        rel = 10.0 if c.role == "impact" else 15.0
+        target = vpeak * 10 ** (-rel / 20.0)
+        c.gain = float(20.0 * np.log10(max(target / fpeak, 1e-8)))
+        c.rel_db = -rel
+    return cues
+
+
 def mix_sfx(cues, n_samples):
     bed = np.zeros(n_samples, np.float32)
     cache = {}
     placed = []
     for c in cues:
-        key = (c.path, TRIM_AT.get(c.role))
+        trim = getattr(c, "trim", None)
+        if trim is None:
+            trim = TRIM_AT.get(c.role)
+        key = (c.path, None if trim is None else round(float(trim), 4))
         if key not in cache:
-            cache[key] = _decode_sfx(c.path, TRIM_AT.get(c.role))
+            cache[key] = _decode_sfx(c.path, trim)
         y = cache[key]
-        peak = PEAK_AT.get(c.role, 0.0)
-        # Negative and ticks start with the file; hits with a late peak are aligned.
-        shift = peak if c.role in ("pop", "thump", "shutter", "landing", "impact", "ding") else 0.0
+        shift = PEAK_AT.get(c.role, 0.0)
         start = int(round((c.t - shift) * SR))
         gain = 10 ** (c.gain / 20)
         left = max(0, -start)
@@ -928,8 +1036,13 @@ def mix_sfx(cues, n_samples):
         b = min(n_samples, a + len(piece))
         if b > a:
             bed[a:b] += piece[: b - a]
-        placed.append({"path": c.path, "start": round(c.t - shift, 4), "gain_db": c.gain,
-                       "role": c.role, "trigger": c.trigger, "peak_on": round(c.t, 4)})
+        placed.append({
+            "path": c.path, "start": round(c.t - shift, 4), "gain_db": round(c.gain, 2),
+            "role": c.role, "trigger": c.trigger, "peak_on": round(c.t, 4),
+            "hit_offset": round(shift, 4),
+            "rel_db": getattr(c, "rel_db", None),
+            "trim": None if trim is None else round(float(trim), 3),
+        })
     return bed, placed
 
 
@@ -967,21 +1080,18 @@ def _measure_pcm(y, sr=SR):
 
 
 def fit_loudness(voice, bed):
-    """Constant gain, then a sample ceiling so a hit cannot drag the whole reel down.
+    """One gain on the whole mix, aimed at -15 LUFS.
 
-    The voice already peaks near full scale around -23 LUFS. A global turn-down
-    that chases that peak misses -14 LUFS. Clipping only the samples past
-    -2.6 dBFS holds the body and leaves room for the AAC true-peak overshoot.
+    Voice and effects move together, so a cue stays the same distance under
+    the voice. If the true peak would cross -2 dBFS, the gain comes down
+    instead of clipping.
     """
-    v = np.asarray(voice, np.float64)
-    b = np.asarray(bed, np.float64)
-    I, _TP = _measure_pcm(v)
-    v = v * 10 ** ((-15.2 - I) / 20)
-    mix = v + b
-    I2, _TP2 = _measure_pcm(mix)
-    mix = mix * 10 ** ((-14.05 - I2) / 20)
-    ceil = 10 ** (-2.6 / 20)
-    mix = np.clip(mix, -ceil, ceil)
+    mix = np.asarray(voice, np.float64) + np.asarray(bed, np.float64)
+    I, _TP = _measure_pcm(mix)
+    mix = mix * 10 ** ((-15.0 - I) / 20)
+    _I2, TP2 = _measure_pcm(mix)
+    if TP2 > -2.0:
+        mix = mix * 10 ** ((-2.0 - TP2) / 20)
     I3, TP3 = _measure_pcm(mix)
     return mix.astype(np.float32), {"I_pcm": round(I3, 2), "TP_pcm": round(TP3, 2)}
 
@@ -1006,7 +1116,7 @@ def _text_image(text, font, fill):
     return im
 
 
-def make_caption(text):
+def _word_caption(text):
     im = _text_image(text, _font("BebasNeue-Regular.ttf", 120), (255, 255, 255, 255))
     arr = np.array(im)
     alpha = arr[:, :, 3]
@@ -1030,6 +1140,48 @@ def make_caption(text):
     canvas = Image.new("RGBA", shadow.size, (0, 0, 0, 0))
     canvas.alpha_composite(shadow)
     canvas.alpha_composite(glyph, (4, 2))
+    return canvas
+
+
+def make_caption(text):
+    """One or two centered lines. The white glyph bottom is what the placer locks."""
+    words = [w for w in str(text).split() if w]
+    if not words:
+        return Image.new("RGBA", (8, CAPTION_H), (0, 0, 0, 0))
+    glyphs = [_word_caption(w) for w in words]
+    gap = 16
+    max_w = 980
+    widths = [g.size[0] for g in glyphs]
+    total = sum(widths) + gap * (len(glyphs) - 1)
+    if total <= max_w or len(glyphs) == 1:
+        groups = [glyphs]
+    else:
+        best_i, best = 1, None
+        for i in range(1, len(glyphs)):
+            left = sum(widths[:i]) + gap * max(0, i - 1)
+            right = sum(widths[i:]) + gap * max(0, len(glyphs) - i - 1)
+            score = abs(left - right)
+            if best is None or score < best:
+                best, best_i = score, i
+        groups = [glyphs[:best_i], glyphs[best_i:]]
+    line_gap = 8
+    lines = []
+    for group in groups:
+        w = sum(g.size[0] for g in group) + gap * (len(group) - 1)
+        h = max(g.size[1] for g in group)
+        im = Image.new("RGBA", (max(w, 1), max(h, 1)), (0, 0, 0, 0))
+        x = 0
+        for g in group:
+            im.alpha_composite(g, (x, h - g.size[1]))
+            x += g.size[0] + gap
+        lines.append(im)
+    width = max(im.size[0] for im in lines)
+    height = sum(im.size[1] for im in lines) + line_gap * (len(lines) - 1)
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    y = 0
+    for im in lines:
+        canvas.alpha_composite(im, ((width - im.size[0]) // 2, y))
+        y += im.size[1] + line_gap
     return canvas
 
 
@@ -1396,6 +1548,19 @@ def render_base(plan, work):
     return mask_pins(base, masked, faces, work)
 
 
+def _motion_sprite(sprite, scale, fade):
+    if scale < 0.999:
+        sprite = sprite.resize(
+            (max(1, int(round(sprite.size[0] * scale))), max(1, int(round(sprite.size[1] * scale)))),
+            Image.Resampling.BILINEAR,
+        )
+    if fade < 0.999:
+        arr = np.array(sprite)
+        arr[:, :, 3] = np.clip(arr[:, :, 3].astype(np.float32) * fade, 0, 255).astype(np.uint8)
+        sprite = Image.fromarray(arr, "RGBA")
+    return sprite
+
+
 def _paste(frame, sprite, cx, bottom=None, top=None):
     x = int(cx - sprite.size[0] / 2)
     y = int(bottom - sprite.size[1]) if bottom is not None else int(top)
@@ -1441,36 +1606,44 @@ class Overlay:
         return lines
 
     def caption_for(self, t):
-        words = self.plan["words"]
+        phrases = self.plan.get("phrases") or []
         current = None
-        for w in words:
-            # On a real pause, the next word waits until it is spoken.
-            prev_end = words[w["idx"] - 1]["out_end"] if w["idx"] else -1
-            early = 0 if prev_end >= 0 and w["out"] - prev_end >= 0.10 else 1 / FPS
-            if w["out"] - early <= t:
-                current = w
-            if w["out"] > t + 1 / FPS:
+        for ph in phrases:
+            if ph["t0"] - (1 / FPS) <= t:
+                current = ph
+            else:
                 break
-        if current is None:
+        if current is None or not current.get("text"):
             return None
-        # Hold through gaps under 250 ms, including the tail.
         nxt = None
-        for w in words:
-            if w["out"] > current["out"] + 0.01:
-                nxt = w
+        for ph in phrases:
+            if ph["t0"] > current["t0"] + 0.01:
+                nxt = ph
                 break
-        if nxt and t >= nxt["out"]:
+        if nxt and t >= nxt["t0"]:
             current = nxt
-        if nxt and (nxt["out"] - current["out_end"]) >= 0.40 and t > current["out_end"] + 0.04:
+            nxt = None
+            for ph in phrases:
+                if ph["t0"] > current["t0"] + 0.01:
+                    nxt = ph
+                    break
+        if nxt and (nxt["t0"] - current["t1"]) >= 0.40 and t > current["t1"] + 0.04:
             return None
-        if nxt is None and t > current["out_end"] + 0.20:
+        if nxt is None and t > current["t1"] + 0.20:
             return None
-        text = caption_text(current["word"])
-        if not text:
-            return None
+        text = current["text"]
         if text not in self.captions:
             self.captions[text] = make_caption(text)
         return self.captions[text]
+
+    def _hero_motion(self, t, win):
+        u = min(1.0, max(0.0, (t - win["t0"]) / 0.16))
+        ease = 1 - (1 - u) ** 3
+        scale = 0.92 + 0.08 * ease
+        fade = 1.0
+        if win["t1"] - t < 0.15:
+            fade = max(0.0, (win["t1"] - t) / 0.15)
+        return scale, fade
 
     def hero_at(self, t):
         # 07 and 09 have no comment card. A quoted keyword here was the CTA.
@@ -1505,9 +1678,6 @@ class Overlay:
     def frame(self, index):
         t = index / FPS
         fr = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        shot = next((s for s in self.plan["shots"] if s.t0 <= t < s.t1), self.plan["shots"][-1])
-        if shot.flash and t < shot.t0 + 2 / FPS:
-            return Image.new("RGBA", (W, H), (255, 252, 246, 255))
         if t < self.plan["title_off"]:
             y = 268
             for line in self.title:
@@ -1516,10 +1686,14 @@ class Overlay:
         _paste(fr, self.handle, W // 2, top=36)
         kicker, hero = self.hero_at(t)
         if hero is not None:
-            top = HERO_GLYPH_TOP - 48
-            _paste(fr, hero, W // 2, top=top)
-            if kicker is not None:
-                _paste(fr, kicker, W // 2, bottom=top - 8)
+            win = next(w for w in self.plan["windows"] if w["t0"] <= t < w["t1"])
+            scale, fade = self._hero_motion(t, win)
+            sprite = _motion_sprite(hero, scale, fade)
+            paste_y = int(round(HERO_GLYPH_TOP - 48 * scale))
+            fr.alpha_composite(sprite, ((W - sprite.size[0]) // 2, paste_y))
+            if kicker is not None and fade > 0.02:
+                kick = kicker if fade > 0.999 else _motion_sprite(kicker, 1.0, fade)
+                _paste(fr, kick, W // 2, bottom=HERO_GLYPH_TOP - 16)
         self._feature_cards(fr, t)
         cap = self.caption_for(t)
         if cap is not None:
@@ -1607,6 +1781,148 @@ def loudness_file(path):
     }
 
 
+SOUND_ID = {
+    "pop": "POP_SOFT",
+    "tick": "TAP_TICK",
+    "negative": "WRONG_ANSWER",
+    "impact": "IMPACT",
+    "thump": "THUMP",
+    "shutter": "SHUTTER",
+    "landing": "LANDING",
+    "ding": "DING",
+}
+
+
+def _purpose(role, trigger):
+    if role == "impact":
+        return "emphasize a major result"
+    if role == "negative":
+        return "set up a brief expectation that resolves immediately"
+    if str(trigger).startswith("insert"):
+        return "orient to a new element"
+    if str(trigger).startswith("hero"):
+        return "orient to a new element"
+    return "orient to a new element"
+
+
+def _span_bounds(spans, t):
+    for s in spans:
+        if s.out - 1e-4 <= t < s.out_end - 1e-4:
+            if s.src is None:
+                return None, None
+            return round(s.src, 3), round(s.src + s.dur, 3)
+    return None, None
+
+
+def _phrase_text(plan, t):
+    current = ""
+    for ph in plan.get("phrases") or []:
+        if ph["t0"] - 0.05 <= t:
+            current = ph["text"]
+        else:
+            break
+    return current
+
+
+def _visual_state(plan, t):
+    shot = next((s for s in plan["shots"] if s.t0 <= t < s.t1), plan["shots"][-1])
+    bits = [shot.kind]
+    if shot.plate:
+        bits.append(shot.plate)
+    if shot.kind == "face":
+        bits.append(f"scale {shot.scale:.2f}")
+        if shot.bw:
+            bits.append("bw")
+    hero = next((w["hero"] for w in plan["windows"] if w["t0"] <= t < w["t1"]), None)
+    if hero:
+        bits.append(f"hero {hero}")
+    elif t < plan["title_off"]:
+        bits.append("title")
+    return " ".join(bits)
+
+
+def write_cue_sheet(dest, plan, voice, bed, placed):
+    """JSON and a readable sheet. Notes state that nobody listened to the mix."""
+    dest = Path(dest)
+    by_trigger = {row["trigger"]: row for row in placed}
+    events = []
+
+    def _event(t, purpose, sound, row, notes):
+        src_in, src_out = _span_bounds(plan["spans"], t)
+        hit = 0.0 if row is None else row.get("hit_offset") or 0.0
+        measured = None
+        if sound != "NONE" and voice is not None and bed is not None:
+            vp = _nearby_peak(voice, t, half=0.35)
+            bp = _nearby_peak(bed, t, half=0.05)
+            measured = round(float(20 * np.log10(bp / vp)), 1)
+        events.append({
+            "time": round(float(t), 3),
+            "source_in": src_in,
+            "source_out": src_out,
+            "phrase": _phrase_text(plan, t),
+            "visual": _visual_state(plan, t),
+            "purpose": purpose,
+            "sound": sound,
+            "file": "" if row is None else row.get("path") or "",
+            "hit_offset": round(float(hit), 4),
+            "audio_start": None if sound == "NONE" else round(float(t) - float(hit), 4),
+            "gain_db": None if row is None else row.get("gain_db"),
+            "peak_vs_voice_db": measured if measured is not None else (None if row is None else row.get("rel_db")),
+            "trim_fade": notes,
+        })
+
+    for cue in plan["cues"]:
+        row = by_trigger.get(cue.trigger)
+        notes = "unprocessed pack file"
+        trim = getattr(cue, "trim", None)
+        if trim:
+            notes = f"trimmed to {float(trim):.2f}s with a 100 ms fade so the tail ends before the next phrase"
+        elif cue.role == "pop":
+            notes = "unprocessed pack file, 4 ms file-end fade"
+        _event(cue.t, _purpose(cue.role, cue.trigger), SOUND_ID.get(cue.role, cue.role.upper()), row, notes)
+
+    def _silent(t, notes):
+        if any(abs(t - c.t) < 0.08 for c in plan["cues"]):
+            return
+        if any(abs(t - e["time"]) < 0.05 and e["sound"] == "NONE" for e in events):
+            return
+        _event(t, "none", "NONE", None, notes)
+
+    for shot in plan["shots"]:
+        if shot.t0 > 0.02:
+            _silent(shot.t0, "clean cut, no sound")
+    for win in plan["windows"]:
+        _silent(win["t0"], "emphasis arrives with no sound")
+    for ph in plan.get("phrases") or []:
+        _silent(ph["t0"], "caption update, no sound")
+    events.sort(key=lambda e: (e["time"], e["sound"] == "NONE"))
+    notes = [
+        "No human listening check was possible.",
+        "The mix is dual-mono, so a mono fold is the same program. Levels are a constant gain against nearby voice peaks. The voice was not raised to cover an effect, and nothing was ducked.",
+        "Delivery target is -16 to -14 LUFS integrated and a true peak no higher than -1 dBTP.",
+    ]
+    payload = {"reel": plan["reel"], "notes": notes, "events": events}
+    dest.with_name(dest.stem + "-cues.json").write_text(json.dumps(payload, indent=1))
+    lines = [
+        f"# Cue sheet — reel {plan['reel']}",
+        "",
+        "No human listening check was possible.",
+        "",
+        "The mix is dual-mono. Each cue was leveled with a constant gain against the nearby voice. The voice was not raised to beat an effect.",
+        "",
+        "| time | source in | source out | phrase | visual | purpose | sound | file | hit offset | audio start | gain dB | peak vs voice | notes |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for e in events:
+        lines.append(
+            "| {time} | {source_in} | {source_out} | {phrase} | {visual} | {purpose} | {sound} | {file} | {hit_offset} | {audio_start} | {gain_db} | {peak_vs_voice_db} | {trim_fade} |".format(
+                **{k: "" if v is None else str(v).replace("|", "/") for k, v in e.items()}
+            )
+        )
+    lines += ["", "No human listening check was possible.", ""]
+    dest.with_name(dest.stem + "-cues.md").write_text("\n".join(lines))
+
+
 def render(reel, dest, work=None):
     plan = plan_reel(reel)
     preview(plan)
@@ -1626,6 +1942,7 @@ def render(reel, dest, work=None):
     voice = voice[:n]
     from brandon_v2 import clean_voice, kill_dc
     voice = clean_voice(voice, plan["reel"])
+    level_cues(voice, plan["cues"], plan["words"])
     bed, placed = mix_sfx(plan["cues"], n)
     events = sfx_events(bed)
     per_min = len(events) / plan["duration"] * 60
@@ -1673,8 +1990,8 @@ def render(reel, dest, work=None):
     loud = loudness_file(dest)
     print("loudness", loud, flush=True)
     # If the encode drifted, apply one more constant gain via a second pass.
-    if loud["I"] < -15.0 or loud["I"] > -13.0 or loud["TP"] > -1.0:
-        shift = -14.1 - loud["I"]
+    if loud["I"] < -16.0 or loud["I"] > -14.0 or loud["TP"] > -1.0:
+        shift = -15.0 - loud["I"]
         if loud["TP"] + shift > -1.15:
             shift = -1.15 - loud["TP"]
         tuned = work / "mix2.wav"
@@ -1723,6 +2040,7 @@ def render(reel, dest, work=None):
     dest.with_name(dest.stem + "-receipt.json").write_text(json.dumps(receipt, indent=1))
     from brandon_v2 import write_diff
     write_diff(dest, plan)
+    write_cue_sheet(dest, plan, voice, bed, placed)
     print("wrote", dest, digest)
     return plan
 

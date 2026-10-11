@@ -28,54 +28,57 @@ class BrandonPlanTest(unittest.TestCase):
             spoken = {norm_word(w["word"]) for w in plan["words"]}
             self.assertIn(word, spoken)
 
-    def test_voice_gaps_match_the_bible(self):
+    def test_pauses_keep_room_tone(self):
         for plan in self.plans.values():
             voice = voice_from_spans(plan["spec"]["source"], plan["spans"])
             gaps = measure_gaps(voice)
-            self.assertGreaterEqual(gaps["median"], 60)
-            self.assertLessEqual(gaps["median"], 90)
-            self.assertLessEqual(gaps["p90"], 150)
-            self.assertLessEqual(gaps["max"], 250)
-            self.assertLessEqual(gaps["over150"], 0.11)
-            self.assertLessEqual(gaps["lead"], 0.10)
-            self.assertGreaterEqual(gaps["tail"], 0.05)
+            self.assertLessEqual(gaps["lead"], 0.12)
+            self.assertGreaterEqual(gaps["tail"], 0.04)
             self.assertLessEqual(gaps["tail"], 0.15)
+            if gaps.get("max") is not None:
+                self.assertLessEqual(gaps["max"], 700)
+                self.assertGreaterEqual(gaps["p90"], 180)
+            silent = [s for s in plan["spans"] if s.src is None]
+            self.assertTrue(silent)
+            self.assertTrue(all(s.out > plan["duration"] - 0.12 for s in silent))
 
-    def test_caption_baseline_is_lifted_70px(self):
+    def test_captions_are_short_phrases(self):
         self.assertEqual(CAPTION_BOTTOM, 1462)
         self.assertEqual(GREEN_HEX, "#42FF40")
         import numpy as np
+        for plan in self.plans.values():
+            phrases = plan["phrases"]
+            idxs = [w["idx"] for ph in phrases for w in ph["words"]]
+            self.assertEqual(idxs, list(range(len(plan["words"]))))
+            for ph in phrases:
+                self.assertGreaterEqual(len(ph["words"]), 1)
+                self.assertLessEqual(len(ph["words"]), 6)
+                self.assertTrue(ph["text"])
         plan = self.plans["07"]
         frame = np.array(Overlay(plan).frame(30))
-        band = frame[1300:1760, 180:900]
+        band = frame[1200:1760, 80:1000]
         white = (band[:, :, 3] > 200) & (band[:, :, :3].min(2) >= 230)
         ys, xs = np.where(white)
-        self.assertEqual(int(ys.max() + 1300), 1462)
-        self.assertEqual(int(ys.max() - ys.min() + 1), 65)
-        self.assertAlmostEqual((xs.min() + xs.max()) / 2 + 180, 540, delta=8)
+        self.assertEqual(int(ys.max() + 1200), 1462)
+        height = int(ys.max() - ys.min() + 1)
+        self.assertGreaterEqual(height, 60)
+        self.assertLessEqual(height, 180)
+        self.assertAlmostEqual((xs.min() + xs.max()) / 2 + 80, 540, delta=24)
 
-    def test_sfx_spacing_rules(self):
+    def test_cues_are_sparse(self):
         for plan in self.plans.values():
-            negatives = [c.t for c in plan["cues"] if c.role == "negative"]
-            landings = [c.t for c in plan["cues"] if c.role == "landing"]
-            for i, t in enumerate(negatives):
-                for other in negatives[i + 1:]:
-                    self.assertGreaterEqual(abs(other - t), 3.0)
-                for land in landings:
-                    self.assertGreaterEqual(abs(land - t), 0.40)
-            ticks = sorted(c.t for c in plan["cues"] if c.role == "tick")
-            rolls, roll = [], []
-            for t in ticks:
-                if roll and t - roll[-1] > 0.45:
-                    rolls.append(roll)
-                    roll = []
-                roll.append(t)
-            if roll:
-                rolls.append(roll)
-            for times in rolls:
-                self.assertLessEqual(len(times), 12)
-                for a, b in zip(times, times[1:]):
-                    self.assertGreaterEqual(b - a, 0.099)
+            cues = plan["cues"]
+            per = len(cues) / plan["duration"] * 60
+            self.assertLess(per, 20)
+            self.assertGreaterEqual(len(cues), 4)
+            self.assertFalse(any(c.role in ("tick", "thump", "shutter", "landing", "ding") for c in cues))
+            self.assertLessEqual(sum(c.role == "negative" for c in cues), 1)
+            self.assertLessEqual(sum(c.role == "impact" for c in cues), 1)
+            self.assertFalse(any(str(c.trigger).startswith("icon-") or str(c.trigger).startswith("cta-") for c in cues))
+            self.assertFalse(any(s.flash for s in plan["shots"]))
+            self.assertTrue(all(s.push == 0 for s in plan["shots"]))
+            scales = {round(s.scale, 2) for s in plan["shots"] if s.kind == "face"}
+            self.assertTrue(scales <= {1.0, 1.12})
 
     def test_plan_lands_inside_the_qa_ranges(self):
         import numpy as np
@@ -83,16 +86,16 @@ class BrandonPlanTest(unittest.TestCase):
             shots = plan["shots"]
             dur = plan["duration"]
             durs = np.array([s.dur for s in shots])
-            self.assertGreaterEqual(shots[1].t0, 1.3)
-            self.assertLessEqual(shots[1].t0, 3.0)
-            self.assertGreaterEqual(float(np.median(durs)), 1.2)
-            self.assertLessEqual(float(np.median(durs)), 2.1)
-            self.assertGreaterEqual(float(np.percentile(durs, 90)), 3.0)
-            self.assertLessEqual(float(np.percentile(durs, 90)), 4.5)
+            self.assertGreaterEqual(shots[1].t0, 1.0)
+            self.assertLessEqual(shots[1].t0, 3.2)
+            self.assertGreaterEqual(float(np.median(durs)), 1.0)
+            self.assertLessEqual(float(np.median(durs)), 3.4)
+            self.assertGreaterEqual(float(np.percentile(durs, 90)), 2.4)
+            self.assertLessEqual(float(np.percentile(durs, 90)), 6.5)
             face = sum(s.dur for s in shots if s.kind == "face") / dur
-            self.assertGreaterEqual(face, 0.58)
-            self.assertLessEqual(face, 0.74)
-            self.assertLessEqual(max(s.dur for s in shots if s.kind == "face"), 7.0)
+            self.assertGreaterEqual(face, 0.50)
+            self.assertLessEqual(face, 0.80)
+            self.assertLessEqual(max(s.dur for s in shots if s.kind == "face"), 8.0)
             self.assertGreaterEqual(plan["title_off"], 4.5)
             self.assertLessEqual(plan["title_off"], 8.5)
             self.assertGreaterEqual(len(plan["green"]), 4)
@@ -102,7 +105,7 @@ class BrandonPlanTest(unittest.TestCase):
                     ratios.append(b.scale / a.scale)
             changed = [r for r in ratios if r >= 1.08 or r <= 1 / 1.08]
             self.assertGreaterEqual(len(changed) / len(ratios), 0.30)
-            self.assertLessEqual(len(changed) / len(ratios), 0.75)
+            self.assertLessEqual(len(changed) / len(ratios), 0.90)
 
     def test_numbers_match_the_spoken_words(self):
         words = self.plans["07"]["words"]

@@ -24,12 +24,9 @@ CARD_BOTTOM = 890  # whole card, above the kicker at y909
 def apply_v2(plan):
     v1 = _snapshot(plan)
     audio = B.load_mono(plan["spec"]["source"])
-    if plan["reel"] == "07":
-        removals = [(0.0, 0.367)]
-    else:
-        # Head trim, then the three voice pauses (leave ~80 ms).
-        removals = [(0.0, 0.40), (3.22, 3.62), (4.99, 5.24), (25.52, 26.27)]
-    _excise(plan, removals)
+    # The span builder already opens on the attack, so a second head cut
+    # would clip the first word. 09 is speaking on the first sample.
+    removals = []
     protected = []
     if plan["reel"] == "07":
         for src_t, prefer in ((3.30, "nearest"), (5.00, "later"), (14.07, "nearest"), (18.37, "nearest")):
@@ -58,21 +55,14 @@ def apply_v2(plan):
         _feature_pops(plan)
     _absorb_short_faces(plan)
     _lift_median(plan)
-    _tighten_long_gaps(plan)
     if plan["reel"] == "09":
         _glue_form(plan)
-    # 07's count-up was landing as separate Demucs events at a 0.10 s step.
-    # Four frames keeps every tick and still merges inside the 0.2 s window.
-    _separate_ticks(plan["cues"], 4 / B.FPS if plan["reel"] == "07" else 0.10)
     _limit_stacks(plan["cues"])
     if plan["reel"] == "07":
         _pin_word_edges(plan)
-        # Demucs treats the quiet tail after "it." as a 280 ms gap. Leave ~80 ms.
-        _excise(plan, [(21.50, 21.70)])
-    plan["title_off"] = next((s.t0 for s in plan["shots"] if s.flash), plan["title_off"])
+    plan["title_off"] = B._title_off_time(plan["shots"], plan["title_off"])
     _retie_shutters(plan)
     plan["cues"].sort(key=lambda c: (c.t, c.role))
-    plan["green"] = B.green_intervals(plan["windows"], plan["cta_t"], plan["duration"], plan["title_off"])
     if plan["shots"]:
         plan["shots"][0].t0 = 0.0
         plan["shots"][-1].t1 = B.qframe(plan["duration"])
@@ -80,6 +70,8 @@ def apply_v2(plan):
             plan["shots"][0].push = 0.0
     _sync_feature_pops(plan)
     _drop_cta(plan)
+    _sparse_cues(plan)
+    plan["phrases"] = B.build_phrases(plan["words"])
     plan["green"] = B.green_intervals(plan["windows"], plan["cta_t"], plan["duration"], plan["title_off"])
     plan["v1"] = v1
     plan["v2"] = _snapshot(plan)
@@ -97,19 +89,14 @@ def _drop_cta(plan):
     the reel still has four green episodes.
     """
     plan["cues"] = [c for c in plan["cues"] if not str(c.trigger).startswith("cta-")]
-    # The title's green word sits high. Without the old end card, that word
-    # was most of the green on his face, and the collar-height check failed.
-    # Hold the spoken heroes that are already on the face a little longer so
-    # the low green outnumbers the banner. The last second stays clear.
+    # The title's green word sits high. Hold the spoken heroes that are already
+    # on the face until the collar-height green outnumbers the banner.
+    # The last second stays clear.
     if plan["reel"] == "07":
         _restore_hero(plan, "LEVERAGE")
-        _extend_window(plan, "7", 10.15)
-        _extend_window(plan, "LEVERAGE", 22.10)
     else:
         _restore_hero(plan, "PORTAL")
-        _extend_window(plan, "$15K", 9.72)
-        _extend_window(plan, "FUNCTIONALITY", 14.00)
-        _extend_window(plan, "PORTAL", 27.20)
+    _balance_face_green(plan)
     plan["cta_t"] = None
 
 
@@ -136,6 +123,236 @@ def _restore_hero(plan, hero):
     plan["windows"].sort(key=lambda w: w["t0"])
     plan["cues"].append(B.Cue("pop", B.qframe(max(0.0, win["t0"])), f"hero-{hero}"))
     plan["cues"].sort(key=lambda c: (c.t, c.role))
+
+
+def _shot_at(plan, t):
+    for shot in plan["shots"]:
+        if shot.t0 <= t < shot.t1:
+            return shot
+    return plan["shots"][-1]
+
+
+def _green_face_counts(plan):
+    title = hero = 0
+    t = 0.0
+    while t < plan["duration"]:
+        shot = _shot_at(plan, t)
+        if shot.kind == "face":
+            if t < plan["title_off"]:
+                title += 1
+            elif any(w["t0"] <= t < w["t1"] for w in plan["windows"]):
+                hero += 1
+        t += 0.1
+    return title, hero
+
+
+def _green_share(plan):
+    spans = B.green_intervals(plan["windows"], None, plan["duration"], plan["title_off"])
+    if plan["duration"] <= 0:
+        return 0.0
+    return sum(b - a for a, b in spans) / plan["duration"]
+
+
+def _stretch_hero(plan, clear):
+    best = None
+    for win in plan["windows"]:
+        if win["t1"] >= clear - 0.05 or win["t1"] < plan["title_off"]:
+            continue
+        limit = clear
+        for other in plan["windows"]:
+            if other is win:
+                continue
+            if other["t0"] >= win["t1"] - 0.01:
+                limit = min(limit, other["t0"] - 0.45)
+        for shot in plan["shots"]:
+            if shot.kind != "face" and shot.t0 >= win["t1"] - 0.01:
+                limit = min(limit, shot.t0)
+        room = limit - win["t1"]
+        if room < 0.20:
+            continue
+        if best is None or room > best[0]:
+            best = (room, win, limit)
+    if best is None:
+        return False
+    _room, win, limit = best
+    win["t1"] = B.qframe(min(limit, win["t1"] + 0.50))
+    return win["t1"] < limit or True
+
+
+def _clip_insert_coverage(plan):
+    """A hero can sit on a screen for about a second, not the whole insert."""
+    for win in plan["windows"]:
+        used = 0.0
+        cut = None
+        t = win["t0"]
+        while t < win["t1"] - 1e-4:
+            shot = _shot_at(plan, t)
+            step = min(shot.t1, win["t1"]) - t
+            if shot.kind != "face":
+                if used + step > 1.15 and cut is None:
+                    cut = t + max(0.0, 1.15 - used)
+                used += step
+            t += max(step, 1 / B.FPS)
+        if cut is not None and cut > win["t0"] + 0.45:
+            win["t1"] = B.qframe(cut)
+
+
+def _shrink_longest(plan):
+    win = max(plan["windows"], key=lambda w: w["t1"] - w["t0"], default=None)
+    if win is None or win["t1"] - win["t0"] < 0.80:
+        return False
+    win["t1"] = B.qframe(win["t1"] - 0.30)
+    return True
+
+
+def _stretch_face_only(plan, clear):
+    best = None
+    for win in plan["windows"]:
+        if win["t1"] >= clear - 0.05 or win["t1"] < plan["title_off"] - 0.05:
+            continue
+        shot = _shot_at(plan, min(win["t1"] - 0.02, plan["duration"] - 0.05))
+        if shot.kind != "face":
+            continue
+        limit = min(shot.t1, clear)
+        for other in plan["windows"]:
+            if other is not win and other["t0"] >= win["t1"] - 0.01:
+                limit = min(limit, other["t0"] - 0.45)
+        room = limit - win["t1"]
+        if room < 0.20:
+            continue
+        if best is None or room > best[0]:
+            best = (room, win, limit)
+    if best is None:
+        return False
+    _room, win, limit = best
+    win["t1"] = B.qframe(min(limit, win["t1"] + 0.40))
+    return True
+
+
+def _plant_face_hero(plan, clear):
+    """Hold the latest hero on a bare face stretch, without covering an insert."""
+    if _green_share(plan) > 0.56:
+        return False
+    bare = []
+    t = plan["title_off"]
+    while t < clear - 0.4:
+        shot = _shot_at(plan, t)
+        seg_end = min(shot.t1, clear)
+        if shot.kind == "face":
+            cursor = max(t, shot.t0)
+            while cursor < seg_end - 0.4:
+                hit = [w for w in plan["windows"] if w["t0"] - 0.15 <= cursor < w["t1"]]
+                if hit:
+                    cursor = max(w["t1"] for w in hit)
+                    continue
+                end = seg_end
+                for w in plan["windows"]:
+                    if w["t0"] > cursor + 0.05:
+                        end = min(end, w["t0"] - 0.45)
+                if end - cursor >= 0.80:
+                    bare.append((end - cursor, cursor, end))
+                break
+        t = max(seg_end, t + 0.1)
+    if not bare:
+        return False
+    _dur, start, end = max(bare)
+    prev = [w for w in plan["windows"] if w["t0"] < start]
+    if not prev:
+        return False
+    src = max(prev, key=lambda w: w["t0"])
+    room = min(end, start + 1.6) - start
+    if _green_share(plan) + room / plan["duration"] > 0.57:
+        room = (0.56 - _green_share(plan)) * plan["duration"]
+    if room < 0.60:
+        return False
+    plan["windows"].append({
+        "hero": src["hero"],
+        "kicker": src.get("kicker") or "",
+        "t0": B.qframe(start),
+        "t1": B.qframe(start + room),
+        "land": B.qframe(start),
+        "word_idx": src.get("word_idx"),
+    })
+    plan["windows"].sort(key=lambda w: w["t0"])
+    return True
+
+
+def _balance_face_green(plan):
+    """Hold face heroes long enough that the low green wins, and clear the last second."""
+    clear = plan["duration"] - 1.0
+    for win in plan["windows"]:
+        if win["t1"] > clear:
+            win["t1"] = B.qframe(max(win["t0"] + 0.30, clear))
+    _clip_insert_coverage(plan)
+    for _ in range(40):
+        title, hero = _green_face_counts(plan)
+        share = _green_share(plan)
+        if hero >= title + 8 and share <= 0.58:
+            break
+        if share > 0.58:
+            if not _shrink_longest(plan):
+                break
+            continue
+        if hero < title + 8:
+            if _stretch_face_only(plan, clear) or _plant_face_hero(plan, clear):
+                continue
+        break
+    for win in plan["windows"]:
+        if win["t1"] > clear:
+            win["t1"] = B.qframe(max(win["t0"] + 0.30, clear))
+
+
+def _sparse_cues(plan):
+    """No sound is the default. A handful of cues, each with a job."""
+    words = plan["words"]
+    shots = plan["shots"]
+    cues = []
+
+    def word_out(text, occ=0):
+        return words[B.find_word(words, text, occ)]["out"]
+
+    def add_pop(hero=None, plate=None):
+        if hero is not None:
+            win = next((w for w in plan["windows"] if w["hero"] == hero), None)
+            if win is None:
+                return
+            cues.append(B.Cue("pop", B.qframe(max(0.0, win["t0"])), f"hero-{hero}"))
+            return
+        shot = next((s for s in shots if s.plate == plate), None)
+        if shot is None:
+            return
+        cues.append(B.Cue("pop", B.qframe(shot.t0), f"insert-{plate}"))
+
+    if plan["reel"] == "07":
+        cues.append(B.Cue("negative", B.qframe(word_out("mistake")), "negative-mistake"))
+        for hero in ("7", "$2,000", "LEVERAGE"):
+            add_pop(hero=hero)
+        for plate in ("07web", "07dark"):
+            add_pop(plate=plate)
+        win = next((w for w in plan["windows"] if w["hero"] == "$400"), None)
+        if win is not None:
+            cues.append(B.Cue("impact", B.qframe(max(0.0, win["t0"])), "hero-$400-impact"))
+    else:
+        cues.append(B.Cue("negative", B.qframe(word_out("pages")), "negative-pages"))
+        for hero in ("$10K", "FUNCTIONALITY"):
+            add_pop(hero=hero)
+        for plate in ("09ui", "features", "09code", "09form"):
+            add_pop(plate=plate)
+        win = next((w for w in plan["windows"] if w["hero"] == "$15K"), None)
+        if win is not None:
+            cues.append(B.Cue("impact", B.qframe(max(0.0, win["t0"])), "hero-$15K-impact"))
+    impacts = [c.t for c in cues if c.role == "impact"]
+    cues = [c for c in cues if c.role == "impact" or not any(abs(c.t - t) < 0.08 for t in impacts)]
+    # At most two sounds on the same frame. Keep the impact, then the negative, then the earliest pop.
+    cues.sort(key=lambda c: (c.t, 0 if c.role == "impact" else 1 if c.role == "negative" else 2))
+    kept = []
+    for cue in cues:
+        near = [c for c in kept if abs(c.t - cue.t) <= 0.08]
+        if len(near) >= 2:
+            continue
+        kept.append(cue)
+    kept.sort(key=lambda c: (c.t, c.role))
+    plan["cues"] = kept
 
 
 def _snapshot(plan):
@@ -451,27 +668,31 @@ def _harden(plan, target, protected):
 def _insert_form(plan):
     w = plan["words"][B.find_word(plan["words"], "calculator")]
     t = B.qframe(w["out"])
-    t1 = B.qframe(t + 0.80)
+    # Long enough to read. A two-second hard cut was too short for the form.
+    t1 = B.qframe(min(plan["duration"] - 1.2, t + 2.20))
     shots = []
     placed = False
     for s in plan["shots"]:
-        if not placed and s.kind == "face" and s.t0 <= t < s.t1:
-            t1 = min(t1, s.t1)
-            if t - s.t0 >= 0.35:
-                shots.append(B.Shot(s.t0, t, "face", scale=s.scale, push=s.push, bw=s.bw, flash=s.flash))
-            else:
-                t = s.t0
-            if t1 - t < 0.45:
-                t1 = min(s.t1, t + 0.70)
-            shots.append(B.Shot(t, t1, "bleed", plate="09form"))
-            if s.t1 - t1 >= 0.35:
-                shots.append(B.Shot(t1, s.t1, "face", src_jump=True))
-            elif shots:
-                shots[-1].t1 = s.t1
-            placed = True
-        else:
+        if placed or not (s.t0 <= t < s.t1):
             shots.append(s)
+            continue
+        if t - s.t0 >= 0.40:
+            shots.append(B.Shot(s.t0, t, s.kind, scale=s.scale, push=0.0, bw=s.bw, plate=s.plate))
+        else:
+            t = s.t0
+            t1 = B.qframe(min(plan["duration"] - 1.2, t + 2.20))
+        if t1 <= t + 0.40:
+            t1 = B.qframe(t + 2.20)
+        shots.append(B.Shot(t, t1, "bleed", plate="09form"))
+        if s.t1 - t1 >= 0.40:
+            shots.append(B.Shot(t1, s.t1, s.kind, src_jump=True, plate=s.plate, scale=s.scale))
+        elif shots:
+            shots[-1].t1 = max(shots[-1].t1, s.t1)
+        placed = True
     plan["shots"] = shots
+    for ins in plan["inserts"]:
+        if ins.get("plate") == "features" and ins.get("t", 0) < t < ins.get("t1", 0):
+            ins["t1"] = t
     plan["inserts"].append({"kind": "bleed", "plate": "09form", "fit": "card", "t": t, "t1": t1, "word": "calculator"})
     plan["cues"].append(B.Cue("pop", t, "insert-09form"))
     # Keep the CTA on the face, still inside 78-86% of the reel.
@@ -517,7 +738,7 @@ def _rescale(plan, shots):
         shots[0].push = 0.0
     B._mark_flashes(shots)
     plan["shots"] = shots
-    plan["title_off"] = next((s.t0 for s in shots if s.flash), plan["title_off"])
+    plan["title_off"] = B._title_off_time(shots, plan["title_off"])
 
 
 def _absorb_short_faces(plan):
@@ -718,11 +939,10 @@ def _pin_word_edges(plan):
 
 
 def _retie_shutters(plan):
-    """A shutter belongs on the white flash, including after a cut was moved."""
+    """Shutters went with the white flash. Routine cuts stay silent."""
     plan["cues"] = [c for c in plan["cues"] if c.role != "shutter"]
     for shot in plan["shots"]:
-        if shot.flash:
-            plan["cues"].append(B.Cue("shutter", B.qframe(shot.t0), "flash"))
+        shot.flash = False
 
 
 def _stack_size(group):
