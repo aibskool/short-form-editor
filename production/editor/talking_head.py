@@ -264,6 +264,8 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     for shot in timeline.get("shots") or []:
         if shot.get("id") in pinned_y:
             shot["caption_y"] = float(pinned_y[shot["id"]])
+    if lock and lock.get("caption_nudges"):
+        timeline["caption_nudges"] = list(lock["caption_nudges"])
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)

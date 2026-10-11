@@ -479,6 +479,16 @@ def apply_sfx_pins(timeline, pins):
     return timeline
 
 
+def cue_heard_at(cue):
+    """When the sample starts. A missing ``sound_at`` means the cue plays at ``at``."""
+    heard = cue.get("sound_at")
+    if heard is None:
+        heard = cue.get("at")
+    if heard is None:
+        return 0.0
+    return float(heard)
+
+
 def apply_sfx_shifts(timeline, shifts):
     """Move named cues by a locked offset. Other files stay where the anchor put them."""
     moved = False
@@ -495,7 +505,7 @@ def apply_sfx_shifts(timeline, shifts):
                 continue
             if lands and lands not in str(cue.get("lands_on") or ""):
                 continue
-            cue["sound_at"] = round(float(cue.get("sound_at", cue.get("at", 0))) + delta, 3)
+            cue["sound_at"] = round(cue_heard_at(cue) + delta, 3)
             moved = True
     if moved:
         timeline["sfx_log"] = sfx_placement_rows(timeline.get("sfx"))
@@ -532,7 +542,7 @@ def sfx_placement_rows(cues):
             continue
         pack = str(cue.get("file") or "")
         rows.append({
-            "time": round(float(cue.get("sound_at", cue.get("at", 0))), 3),
+            "time": round(cue_heard_at(cue), 3),
             "file": Path(pack).name,
             "pack_file": pack,
             "lands_on": str(cue.get("lands_on") or ""),

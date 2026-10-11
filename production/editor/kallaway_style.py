@@ -143,6 +143,34 @@ def _word_style(word, styles):
     return "normal"
 
 
+def caption_nudge_animations(shots, nudges, height, fallback_pct):
+    """Move the caption anchor for a short window, then put that shot's pin back.
+
+    ``dy_px`` is added to the anchor top. Negative is up the frame. The window
+    has to sit inside one shot so the restore matches the pin that shot uses.
+    """
+    lines = []
+    height = float(height or 1920)
+    for nudge in nudges or []:
+        start = float(nudge.get("start") or 0)
+        end = float(nudge.get("end") or 0)
+        dy = float(nudge.get("dy_px") or 0)
+        if end <= start or abs(dy) < 0.5:
+            continue
+        host = None
+        for shot in shots or []:
+            if float(shot["start"]) - 1e-3 <= start < float(shot["end"]) - 1e-3:
+                host = shot
+                break
+        if host is None:
+            continue
+        base = float(host.get("caption_y", fallback_pct))
+        moved = base + dy / height * 100.0
+        lines.append(f'tl.set("#caption-anchor",{{top:"{moved:.2f}%"}},{start:.4f});')
+        lines.append(f'tl.set("#caption-anchor",{{top:"{base:.2f}%"}},{end:.4f});')
+    return lines
+
+
 def build_kallaway(spec, spec_path, project):
     spec_path, project = Path(spec_path).resolve(), Path(project).resolve()
     project.mkdir(parents=True, exist_ok=True)
@@ -306,6 +334,9 @@ def build_kallaway(spec, spec_path, project):
                 shot_stage, colors, f"over-{index}-{overlay_index}", overlay_media, track_index=3)
             parts.append(section)
             animations.extend(motion)
+
+    animations.extend(caption_nudge_animations(
+        shots, spec.get("caption_nudges"), height, layout_spec["caption_split_y"] * 100))
 
     reveal = spec.get("speaker_reveal")
     if reveal:

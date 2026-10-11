@@ -1686,6 +1686,19 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085 + 0.080, delta=0.002)
         self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12 + 3 / 30, delta=0.002)
 
+    def test_sfx_shift_uses_at_when_sound_at_is_missing(self):
+        from kallaway_plan import apply_sfx_shifts
+        timeline = {"sfx": [
+            {"file": "26 Typing & Keyboard/Typing 3.mp3", "at": 9.319,
+             "lands_on": "typing_ui: CLAUDE CODE", "label": "Typewriter Line"},
+            {"file": "26 Typing & Keyboard/Typing 3.mp3", "at": 9.437, "sound_at": None,
+             "lands_on": "typing_ui: CLAUDE CODE", "mute": True},
+        ]}
+        apply_sfx_shifts(timeline, [{"match": "Typing 3", "lands_on": "typing_ui", "seconds": -0.1}])
+        self.assertAlmostEqual(timeline["sfx"][0]["sound_at"], 9.219)
+        self.assertIsNone(timeline["sfx"][1].get("sound_at"))
+        self.assertAlmostEqual(timeline["sfx_log"][0]["time"], 9.219)
+
     def test_full_face_baseline_is_per_take(self):
         from kallaway_matte import frame_popout
         theme, _, _, _ = load_theme("dark")
@@ -1924,6 +1937,42 @@ class KallawayTests(unittest.TestCase):
         cleaned = _drop_olive_leak(binary, rgb)
         self.assertFalse(bool(cleaned[180, 30]))
         self.assertTrue(bool(cleaned[120, 100]))
+        # A speck under the old 250 px floor, and olive that reaches the core,
+        # still lose the shoulder. Olive inside the torso stays.
+        binary[30:36, 20:26] = True
+        rgb[30:36, 20:26] = (74, 84, 33)
+        rgb[100:130, 90:120] = (74, 84, 33)
+        cleaned = _drop_olive_leak(binary, rgb)
+        self.assertFalse(bool(cleaned[33, 23]))
+        self.assertFalse(bool(cleaned[180, 30]))
+        self.assertTrue(bool(cleaned[115, 105]))
+        self.assertTrue(bool(cleaned[80, 90]))
+
+    def test_a_shoulder_leaf_is_held_out_of_the_plate(self):
+        from kallaway_matte import _plate_holdout
+        height, width = 200, 160
+        mask = np.zeros((height, width), np.uint8)
+        mask[40:180, 50:110] = 255
+        rgb = np.full((height, width, 3), (80, 80, 80), np.uint8)
+        rgb[48:54, 40:46] = (74, 84, 33)
+        rgb[8:14, 8:14] = (74, 84, 33)
+        hold = _plate_holdout(mask, rgb, 0)
+        self.assertTrue(bool(hold[50, 42]))
+        self.assertFalse(bool(hold[10, 10]))
+
+    def test_caption_nudge_moves_one_window(self):
+        from kallaway_style import caption_nudge_animations
+        shots = [
+            {"id": "shot-08", "start": 17.329, "end": 20.263, "caption_y": 64.25},
+            {"id": "shot-09", "start": 20.263, "end": 21.094, "caption_y": 64.85},
+        ]
+        lines = caption_nudge_animations(
+            shots, [{"start": 18.64, "end": 18.87, "dy_px": -22}], 1920, 65.0)
+        self.assertEqual(len(lines), 2)
+        self.assertIn('top:"63.10%"', lines[0])
+        self.assertIn(",18.6400", lines[0])
+        self.assertIn('top:"64.25%"', lines[1])
+        self.assertIn(",18.8700", lines[1])
 
     def test_a_background_patch_on_the_shoulder_is_dropped(self):
         from kallaway_matte import _drop_background_rim

@@ -3,7 +3,7 @@
   "07": {
    "base": "2026-10-10_07 v18",
    "caption_full_baseline_px": 1224,
-   "note": "v18 video ranges. websites silence 11.445-11.545 removed; leverage breath ends 37.830; ends/it breath ends 39.280. The /s/ at 11.55 stays. Quick Swing B is 80 ms later.",
+   "note": "v19 ranges, with the 2-frame flash at source 37.999-38.049 removed (between leverage. and One). Shot-01 caption is 12 px lower. The 17 px split gap at 20.50 is nudged 4 px up. Quick Swing B stays 80 ms later.",
    "ranges": [
     [
      0.843,
@@ -126,10 +126,6 @@
      37.83
     ],
     [
-     37.999,
-     38.049
-    ],
-    [
      38.158,
      38.426
     ],
@@ -191,7 +187,7 @@
    ],
    "caption_y": {
     "shot-00": 66.02,
-    "shot-01": 61.23,
+    "shot-01": 61.86,
     "shot-02": 65.81,
     "shot-03": 65.81,
     "shot-04": 61.23,
@@ -200,12 +196,15 @@
     "shot-07": 66.84,
     "shot-08": 66.02,
     "shot-09": 65.4
-   }
+   },
+   "caption_nudges": [
+    {"start": 20.45, "end": 20.52, "dy_px": -4}
+   ]
   },
   "09": {
    "base": "2026-10-10_09 v16",
    "caption_full_baseline_px": 1143,
-   "note": "v18 ranges, with the two builds cuts replaced by one removal of raw 12.100-12.372 (12 ms equal-power crossfade, out-point 12.100 so the z stays). Full-face baseline 1143 puts the g descender at or above y 1165. Scroll stays in the stage plan.",
+   "note": "v19 ranges and the 12 ms builds crossfade. Full-face baseline stays 1143. Caption at 18.64-18.87 is 22 px higher. Typing 3 starts 0.1 s earlier. Scroll stays in the stage plan.",
    "join_crossfades": [
     {"end": 12.1, "seconds": 0.012}
    ],
@@ -302,6 +301,12 @@
      33.226,
      34.773
     ]
+   ],
+   "sfx_shifts": [
+    {"match": "Typing 3", "lands_on": "typing_ui", "seconds": -0.1}
+   ],
+   "caption_nudges": [
+    {"start": 18.64, "end": 18.87, "dy_px": -22}
    ],
    "sfx_pins": [
     {

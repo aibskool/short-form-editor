@@ -54,7 +54,7 @@ PLATE_VIGNETTE = 0.12
 PLATE_MOTION = 0.60
 # Source pixels the person mask grows before a pixel may enter the plate.
 PLATE_DILATE_PX = 36
-PLATE_RECIPE = "blur-cover-clean-v3"
+PLATE_RECIPE = "blur-cover-clean-v4"
 # Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
 BOUNDARY_RAMP_CARD_PX = 28.0
 # A hand that crosses the frame fades only across this many card pixels.
@@ -117,7 +117,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -892,31 +892,24 @@ def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX
 
 
 def _drop_olive_leak(binary, rgb, min_area=250):
-    """Drop an olive blob the matte swallowed beside the shoulder.
+    """Drop olive the matte swallowed beside the shoulder.
 
     The torso core is eroded far enough that a leaf on the shoulder does not
-    count as the shirt. A small olive speckle stays; the leak is hundreds of
-    pixels and does not reach that core.
+    count as the shirt. Flow can stitch that leaf to the torso, so a component
+    test keeps the whole blob. Every olive pixel outside the core goes,
+    including a speck under ``min_area``. Olive inside the core stays.
     """
+    del min_area
     binary = np.asarray(binary, dtype=bool)
     olive = _olive_leak(rgb) & binary
     if not np.any(olive):
         return binary
-    labels, count = ndimage.label(olive)
-    counts = np.bincount(labels.ravel())
     core = ndimage.binary_erosion(binary, iterations=28) if np.any(binary) else binary
-    drop = np.zeros(count + 1, dtype=bool)
-    for label in range(1, count + 1):
-        area = int(counts[label])
-        if area < int(min_area):
-            continue
-        overlap = int(np.count_nonzero((labels == label) & core))
-        if overlap * 8 < area:
-            drop[label] = True
-    if not drop.any():
+    outside = olive & ~core
+    if not np.any(outside):
         return binary
     cleaned = np.array(binary, copy=True)
-    cleaned[drop[labels]] = False
+    cleaned[outside] = False
     return cleaned
 
 
@@ -2554,12 +2547,35 @@ def _cover_crop(image, card_w, card_h):
 
 
 def _plate_holdout(mask, rgb, dilate_px):
-    """Pixels that belong to the speaker, grown so a blur cannot pull him back in."""
+    """Pixels that belong to the speaker, grown so a blur cannot pull him back in.
+
+    A small olive or green patch within a couple of percent of the frame height
+    of the silhouette is a shoulder leaf. It is held out so the plate does not
+    bake it in. A large foliage region, including the background, still moves.
+    """
     import cv2
 
     person = np.asarray(mask) >= 48
     if rgb is not None and np.asarray(rgb).shape[:2] == person.shape:
-        person = person | _skin_mask(rgb)
+        color = np.asarray(rgb)
+        person = person | _skin_mask(color)
+        if np.any(person):
+            leaves = (_olive_leak(color) | _foliage_green(color)) & ~person
+            if np.any(leaves):
+                labels, count = ndimage.label(leaves)
+                counts = np.bincount(labels.ravel())
+                near_px = max(8, int(round(max(person.shape) * 0.025)))
+                near = ndimage.distance_transform_edt(~person) <= near_px
+                limit = 0.004 * float(person.size)
+                drop = np.zeros(count + 1, dtype=bool)
+                for label in range(1, count + 1):
+                    area = int(counts[label])
+                    if area <= 0 or area > limit:
+                        continue
+                    if np.any((labels == label) & near):
+                        drop[label] = True
+                if drop.any():
+                    person = person | drop[labels]
     radius = int(max(0, dilate_px))
     if radius <= 0 or not np.any(person):
         return person
