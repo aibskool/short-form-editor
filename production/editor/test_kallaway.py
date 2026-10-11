@@ -1722,6 +1722,28 @@ class KallawayTests(unittest.TestCase):
         cap = theme["layout"]["caption_full_px"] * (39.0 / 54.0)
         self.assertAlmostEqual(top + cap, 1190, delta=2)
 
+    def test_full_face_type_stays_on_its_baseline(self):
+        from kallaway_matte import frame_popout
+        theme, _, _, _ = load_theme("dark")
+        timeline = {
+            "output": {"width": 1080, "height": 1920},
+            "source": {},
+            "captions": {"full_baseline_px": 1143, "full_px": 67},
+            "shots": [
+                {"layout": "split", "start": 0.0, "end": 2.0, "scale": 1.0},
+                {"layout": "full", "start": 2.0, "end": 4.0},
+            ],
+        }
+        head = {
+            "width": 1080, "height": 1920, "head_top": 400.0, "head_height": 560.0,
+            "head_low": 410.0, "head_high": 390.0, "pop_fraction": 0.32,
+            "samples": 3, "hands": [],
+        }
+        frame_popout(timeline, head, theme)
+        self.assertAlmostEqual(timeline["shots"][1]["caption_y"], 57.01, delta=0.01)
+        top = timeline["shots"][1]["caption_y"] / 100 * 1920
+        self.assertAlmostEqual(top + 67 * (39.0 / 54.0), 1143, delta=1)
+
     def test_output_frame_check_rejects_a_short_shot(self):
         from check_kallaway_style import insert_spans_from_diffs, short_spans
         self.assertEqual(short_spans([1.0, 5.0], 8.0), [])

@@ -213,6 +213,8 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         want = float(lock["caption_full_baseline_px"])
         if abs(got - want) > 0.5:
             raise SystemExit(f"caption baseline moved to {got}; lock holds {want}")
+    if lock and lock.get("caption_full_px") is not None:
+        timeline.setdefault("captions", {})["full_px"] = float(lock["caption_full_px"])
     timeline["capture_path"] = str(Path(source).resolve())
     timeline["source_ranges"] = [
         [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])

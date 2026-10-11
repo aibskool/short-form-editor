@@ -204,7 +204,8 @@
   "09": {
    "base": "2026-10-10_09 v16",
    "caption_full_baseline_px": 1143,
-   "note": "v19 ranges and the 12 ms builds crossfade. Full-face baseline stays 1143. Caption at 18.64-18.87 is 22 px higher. Typing 3 starts 0.1 s earlier. Scroll stays in the stage plan.",
+   "caption_full_px": 67,
+   "note": "v19 ranges and the 12 ms builds crossfade. Full-face type is 67 px on baseline 1143. Caption at 18.64-18.87 is 22 px higher. Typing 3 starts 0.1 s earlier. Scroll stays in the stage plan.",
    "join_crossfades": [
     {"end": 12.1, "seconds": 0.012}
    ],
@@ -345,17 +346,17 @@
    ],
    "caption_y": {
     "shot-00": 67.22,
-    "shot-01": 57.27,
+    "shot-01": 57.01,
     "shot-02": 66.23,
     "shot-03": 65.83,
     "shot-04": 65.83,
     "shot-05": 65.24,
-    "shot-06": 57.27,
-    "shot-07": 57.27,
+    "shot-06": 57.01,
+    "shot-07": 57.01,
     "shot-08": 64.25,
     "shot-09": 64.85,
     "shot-10": 64.85,
-    "shot-11": 57.27
+    "shot-11": 57.01
    }
   }
  }
