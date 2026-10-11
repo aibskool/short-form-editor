@@ -1946,6 +1946,62 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(_crossfade_at(12.100, 0.016, authored), 0.012)
         self.assertAlmostEqual(_crossfade_at(4.0, 0.016, authored), 0.016)
 
+    def test_cut_frame_check_uses_the_spec_limits(self):
+        from kallaway_matte import (
+            CHECK_FRINGE_DARK, CHECK_FRINGE_GREEN, CHECK_JITTER_PX, CHECK_ROUGHNESS_PX,
+            cut_frame_peaks, cut_frame_row_failed, matte_jitter_px, matte_roughness_px,
+            opening_windows,
+        )
+        self.assertEqual(CHECK_FRINGE_GREEN, 0.03)
+        self.assertEqual(CHECK_FRINGE_DARK, 0.05)
+        self.assertEqual(CHECK_ROUGHNESS_PX, 1.0)
+        self.assertEqual(CHECK_JITTER_PX, 1.0)
+        self.assertNotEqual(CHECK_FRINGE_GREEN, 0.11)
+        self.assertNotEqual(CHECK_FRINGE_GREEN, 0.155)
+        self.assertFalse(cut_frame_row_failed(0.03, 0.03, 0.05, 1.0, 1.0))
+        self.assertTrue(cut_frame_row_failed(0.11, 0.0, 0.0, 0.0, 0.0))
+        self.assertTrue(cut_frame_row_failed(0.0, 0.155, 0.0, 0.0, 0.0))
+        self.assertTrue(cut_frame_row_failed(0.0, 0.0, 0.051, 0.0, 0.0))
+        self.assertTrue(cut_frame_row_failed(0.0, 0.0, 0.0, 1.01, 0.0))
+        self.assertTrue(cut_frame_row_failed(0.0, 0.0, 0.0, 0.0, 1.01))
+        # A two-frame keep must not score the next shot as its opening.
+        windows = opening_windows([(0.0, 1.0), (1.0, 1.05), (1.2, 2.0)], 30, opens=3)
+        self.assertEqual(windows[1], [30, 31])
+
+        def body(step=0):
+            mask = np.zeros((200, 160), np.float32)
+            mask[40:190, 40:120] = 1
+            if step:
+                mask[50:190, 40:40 + step] = 0
+            return mask
+
+        smooth = body(0)
+        self.assertEqual(matte_roughness_px(smooth), 0.0)
+        one = body(1)
+        self.assertEqual(matte_roughness_px(one), 1.0)
+        two = body(2)
+        self.assertEqual(matte_roughness_px(two), 2.0)
+        self.assertEqual(matte_jitter_px(smooth, smooth), 0.0)
+        shifted = np.zeros_like(smooth)
+        shifted[:, 5:] = smooth[:, :-5]
+        self.assertEqual(matte_jitter_px(smooth, shifted), 0.0)
+        wobble = smooth.copy()
+        wobble[48, 38:40] = 1
+        self.assertGreater(matte_jitter_px(smooth, wobble), 1.0)
+        peaks = cut_frame_peaks([
+            {"frame": 10, "green_in": 0.01, "green_out": 0.02, "dark": 0.04,
+             "roughness_px": 1.0, "jitter_px": 0.0, "failed": False},
+            {"frame": 11, "green_in": 0.04, "green_out": 0.01, "dark": 0.09,
+             "roughness_px": 3.0, "jitter_px": 2.0, "failed": True},
+        ])
+        self.assertEqual(peaks["green_peak"], 0.04)
+        self.assertEqual(peaks["dark_peak"], 0.09)
+        self.assertEqual(peaks["roughness_peak_px"], 3.0)
+        self.assertEqual(peaks["jitter_peak_px"], 2.0)
+        self.assertEqual(peaks["limits"]["green"], 0.03)
+        self.assertEqual(peaks["limits"]["dark"], 0.05)
+        self.assertFalse(peaks["passed"])
+
     def test_cut_frames_follow_the_frames_a_trim_keeps(self):
         from kallaway_matte import tightened_cut_frames, trim_frame_count
         # 1.23 frames of time is two source frames. Rounding the duration keeps one.

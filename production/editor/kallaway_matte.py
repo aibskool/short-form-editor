@@ -12,6 +12,7 @@ the same soft contact shadow. The result is a straight-alpha QuickTime on the
 same frames as the picture.
 """
 import hashlib
+import json
 import math
 import os
 import subprocess
@@ -127,6 +128,14 @@ OPEN_FRINGE_CROWN = 0.15
 # A clean crown is near 0.06. The dark halo at a bad cut sits above 0.10.
 OPEN_FRINGE_DARK = 0.10
 OPEN_FRINGE_DARK_BELOW = 12.0
+# Spec limits for the encoded cut-frame check. Green replaces the old 0.11
+# inside / 0.155 outside pair. Dark is the cap halo. Roughness is the crown
+# stair and jitter is the leftover edge wobble, both in pixels. The render
+# repair stays on the looser OPEN_FRINGE_* gates above.
+CHECK_FRINGE_GREEN = 0.03
+CHECK_FRINGE_DARK = 0.05
+CHECK_ROUGHNESS_PX = 1.0
+CHECK_JITTER_PX = 1.0
 
 
 def _run(args):
@@ -652,6 +661,118 @@ def fringe_dark_fraction(rgb, person, ring_px=OPEN_FRINGE_RING_PX, below=OPEN_FR
         return 0.0
     dark = luma < (plate - float(below))
     return float(np.count_nonzero(dark & ring) / count)
+
+
+def _edge_columns(person):
+    """Left and right crown-cap columns. A border edge is left empty.
+
+    The cap is the same narrow crown the dark-fringe check uses. Columns are
+    indexed by image row, with NaN where that row is not part of the cap.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    if person.size and float(np.max(person)) > 1.5:
+        person = person / 255.0
+    inside = person >= 0.5
+    height, width = inside.shape
+    left = np.full(height, np.nan, dtype=np.float64)
+    right = np.full(height, np.nan, dtype=np.float64)
+    if not np.any(inside):
+        return left, right
+    band = _cap_rows(inside)
+    for y in np.flatnonzero(band.any(axis=1)):
+        xs = np.flatnonzero(inside[y])
+        if xs.size == 0:
+            continue
+        if int(xs[0]) > 1:
+            left[y] = float(xs[0])
+        if int(xs[-1]) < width - 2:
+            right[y] = float(xs[-1])
+    return left, right
+
+
+def _stair_peak(columns):
+    """Largest crown stair, in pixels.
+
+    The stair is the absolute second difference of an edge column. A smooth
+    slope scores 0. A step of one pixel scores 1.
+    """
+    finite = np.isfinite(columns)
+    peak = 0.0
+    y = 0
+    count = len(columns)
+    while y < count:
+        if not finite[y]:
+            y += 1
+            continue
+        start = y
+        while y < count and finite[y]:
+            y += 1
+        run = columns[start:y]
+        if run.size >= 3:
+            second = np.abs(run[:-2] - 2.0 * run[1:-1] + run[2:])
+            peak = max(peak, float(second.max()))
+    return peak
+
+
+def matte_roughness_px(person):
+    """Peak stair of the crown cap, in pixels."""
+    left, right = _edge_columns(person)
+    return max(_stair_peak(left), _stair_peak(right))
+
+
+def _tip_run(columns):
+    """Edge columns from the crown tip down, dropping the rows above it."""
+    finite = np.flatnonzero(np.isfinite(columns))
+    if finite.size == 0:
+        return np.array([], dtype=np.float64)
+    start = int(finite[0])
+    end = start
+    while end < len(columns) and np.isfinite(columns[end]):
+        end += 1
+    return columns[start:end]
+
+
+def _jitter_side(previous, current):
+    """Peak leftover motion on one edge after the head's own shift is removed."""
+    count = min(len(previous), len(current))
+    if count < 4:
+        return 0.0
+    delta = current[:count] - previous[:count]
+    finite = np.isfinite(delta)
+    if int(finite.sum()) < 4:
+        return 0.0
+    resid = delta[finite] - float(np.median(delta[finite]))
+    return float(np.max(np.abs(resid)))
+
+
+def matte_jitter_px(previous, current):
+    """Peak crown wobble between two frames, in pixels.
+
+    Each edge is indexed from its own crown tip, so a nod is not jitter. The
+    median column shift is the head moving sideways. A row that moves farther
+    than that shift is the wobble.
+    """
+    prev_left, prev_right = _edge_columns(previous)
+    next_left, next_right = _edge_columns(current)
+    return max(
+        _jitter_side(_tip_run(prev_left), _tip_run(next_left)),
+        _jitter_side(_tip_run(prev_right), _tip_run(next_right)))
+
+
+def cut_frame_row_failed(green_in, green_out, dark, roughness, jitter):
+    """One encoded cut frame against the spec limits.
+
+    Green is 0.03 on both the soft band and the outside ring. Dark is 0.05.
+    Roughness and jitter pass at 1 px. The old 0.11 and 0.155 green gates
+    are not the check.
+    """
+    green_limit = float(CHECK_FRINGE_GREEN)
+    return (
+        float(green_in) > green_limit
+        or float(green_out) > green_limit
+        or float(dark) > float(CHECK_FRINGE_DARK)
+        or float(roughness) > float(CHECK_ROUGHNESS_PX)
+        or float(jitter) > float(CHECK_JITTER_PX))
 
 
 def fringe_dark_fails(rgb, person, limit=OPEN_FRINGE_DARK):
@@ -1362,24 +1483,103 @@ def composite_crown_olive(rgb, projected_mask, ring_px=4, band_px=22):
     return float(np.count_nonzero(olive & ring) / ring.sum())
 
 
+def opening_windows(ranges, fps, opens=3):
+    """First frames of each keep, clipped so a short segment cannot borrow the next shot."""
+    cuts = [0] + tightened_cut_frames(ranges, fps)
+    total = expected_frame_count(ranges, fps)
+    windows = []
+    for start, end in zip(cuts, cuts[1:] + [total]):
+        if end <= start:
+            continue
+        frames = list(range(int(start), min(int(end), int(start) + int(opens))))
+        if frames:
+            windows.append(frames)
+    return windows
+
+
+def popout_box(popout, canvas_w=1080, canvas_h=1920):
+    """Canvas box of the pop-out matte: left, top, width, height."""
+    card = {
+        "left": (float(canvas_w) - float(popout["card_width"])) / 2.0,
+        "top": float(canvas_h) - float(popout["card_height"]),
+        "width": float(popout["card_width"]),
+        "height": float(popout["card_height"]),
+    }
+    geo = placed_pop_geometry(
+        card, popout["video_width"], popout["video_height"],
+        popout["head_top"], popout["pop_px"], popout["scale"])
+    return (geo["left"], geo["top"], geo["width"], geo["height"])
+
+
+def cut_frame_peaks(rows):
+    """The worst green, dark, roughness, and jitter on a cut-frame check."""
+    def worst(key):
+        if not rows:
+            return 0.0, None
+        choice = max(rows, key=lambda row: float(row.get(key) or 0))
+        return float(choice.get(key) or 0), choice.get("frame")
+
+    green_in, green_in_frame = worst("green_in")
+    green_out, green_out_frame = worst("green_out")
+    dark, dark_frame = worst("dark")
+    roughness, roughness_frame = worst("roughness_px")
+    jitter, jitter_frame = worst("jitter_px")
+    if green_in >= green_out:
+        green, green_frame = green_in, green_in_frame
+    else:
+        green, green_frame = green_out, green_out_frame
+    passed = not any(row.get("failed") for row in rows)
+    return {
+        "limits": {
+            "green": CHECK_FRINGE_GREEN,
+            "dark": CHECK_FRINGE_DARK,
+            "roughness_px": CHECK_ROUGHNESS_PX,
+            "jitter_px": CHECK_JITTER_PX,
+        },
+        "green_peak": round(green, 3),
+        "green_peak_frame": green_frame,
+        "green_in_peak": round(green_in, 3),
+        "green_in_peak_frame": green_in_frame,
+        "green_out_peak": round(green_out, 3),
+        "green_out_peak_frame": green_out_frame,
+        "dark_peak": round(dark, 3),
+        "dark_peak_frame": dark_frame,
+        "roughness_peak_px": round(roughness, 2),
+        "roughness_peak_frame": roughness_frame,
+        "jitter_peak_px": round(jitter, 2),
+        "jitter_peak_frame": jitter_frame,
+        "frames": len(rows),
+        "failed_frames": sum(1 for row in rows if row.get("failed")),
+        "passed": passed,
+    }
+
+
+def write_cut_frame_peaks(receipt_path, peaks):
+    """Store cut-frame peaks on an existing receipt. Audio fields stay put."""
+    path = Path(receipt_path)
+    receipt = json.loads(path.read_text()) if path.is_file() else {}
+    receipt["cut_frame_check"] = peaks
+    path.write_text(json.dumps(receipt, indent=2) + "\n")
+    return receipt
+
+
 def check_master_fringes(master, picture, mask, ranges, box, fps=30, opens=3, work_dir=None):
     """Score the first frames after every cut on the encoded master.
 
-    The green fractions use QA's ring: 0-8 px outside the matte, and the soft
-    band, on the crown. Those fractions are read from the straight picture at
-    the same frame index, which is the plate that was composited into the
-    master. The master frame itself is decoded in the same pass, and its
-    hairline olive is recorded. A frame fails when the crown fringe is above
-    the cut-frame limits.
+    Green and dark fractions are read from the straight picture at the same
+    frame index, which is the plate that was composited into the master.
+    Roughness and jitter are read from that frame's matte. A frame fails at
+    the spec limits: green 0.03, dark 0.05, and a roughness or jitter peak
+    above 1 px. The old 0.11 and 0.155 green gates are not used.
     """
     from PIL import Image
 
-    cuts = [0] + tightened_cut_frames(ranges, fps)
-    wanted = []
-    for cut in cuts:
-        for offset in range(int(opens)):
-            wanted.append(int(cut) + offset)
-    wanted = sorted(set(index for index in wanted if index >= 0))
+    windows = opening_windows(ranges, fps, opens)
+    wanted = sorted({index for window in windows for index in window})
+    jitter_of = {}
+    for window in windows:
+        for earlier, later in zip(window, window[1:]):
+            jitter_of[later] = earlier
     work = Path(work_dir or (Path(master).stem + "-fringe"))
     if not work.is_absolute():
         work = Path("/tmp") / work
@@ -1387,6 +1587,7 @@ def check_master_fringes(master, picture, mask, ranges, box, fps=30, opens=3, wo
     pictures = _extract_indexed_frames(picture, wanted, work, "pic")
     masks = _extract_indexed_frames(mask, wanted, work, "mask")
     masters = _extract_indexed_frames(master, wanted, work, "master")
+    persons = {}
     rows = []
     for index in wanted:
         rgb = np.array(Image.open(pictures[index]))
@@ -1394,16 +1595,24 @@ def check_master_fringes(master, picture, mask, ranges, box, fps=30, opens=3, wo
         if matte.ndim == 3:
             matte = matte[:, :, 0]
         person = matte.astype(np.float32) / 255.0
+        persons[index] = person
         soft, ring = fringe_green_fractions(rgb, person)
+        dark = fringe_dark_fraction(rgb, person)
+        roughness = matte_roughness_px(person)
+        earlier = jitter_of.get(index)
+        jitter = matte_jitter_px(persons[earlier], person) if earlier is not None else 0.0
         master_rgb = np.array(Image.open(masters[index]))
         projected = project_matte(matte, box, height=master_rgb.shape[0], width=master_rgb.shape[1])
         olive = composite_crown_olive(master_rgb, projected)
-        failed = soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or olive > 0.22
+        failed = cut_frame_row_failed(soft, ring, dark, roughness, jitter)
         rows.append({
             "frame": index,
             "t": round(index / float(fps or 30), 3),
             "green_in": round(soft, 3),
             "green_out": round(ring, 3),
+            "dark": round(dark, 3),
+            "roughness_px": round(roughness, 2),
+            "jitter_px": round(jitter, 2),
             "olive": round(olive, 3),
             "failed": bool(failed),
         })

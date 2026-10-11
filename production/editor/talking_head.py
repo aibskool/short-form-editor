@@ -318,6 +318,19 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     report["output_short_shots"] = shorts
     report["sfx_log"] = str(_write_sfx_log(timeline, project, final))
     receipt_src = project / "final-receipt.json"
+    pop = (timeline.get("source") or {}).get("popout") or {}
+    if receipt_src.is_file() and picture.is_file() and mask.is_file() and produced and pop:
+        from kallaway_matte import check_master_fringes, cut_frame_peaks, popout_box, write_cut_frame_peaks
+        box = popout_box(
+            pop,
+            canvas_w=int(timeline.get("output", {}).get("width", 1080)),
+            canvas_h=int(timeline.get("output", {}).get("height", 1920)))
+        rows = check_master_fringes(
+            final, picture, mask, produced, box, fps=fps,
+            work_dir=project / "cut-frame-check")
+        peaks = cut_frame_peaks(rows)
+        write_cut_frame_peaks(receipt_src, peaks)
+        report["cut_frame_check"] = peaks
     if receipt_src.is_file():
         receipt_side = Path(final).with_name(Path(final).stem + "-receipt.json")
         shutil.copy2(receipt_src, receipt_side)
