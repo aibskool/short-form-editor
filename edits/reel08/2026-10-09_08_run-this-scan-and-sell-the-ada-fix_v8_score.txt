@@ -1,30 +1,37 @@
-Reel 08 v8 DRAFT. This file is a candidate from 2aa45c0, not the ship. Editing QA found the card fill is a blurred copy of Brandon, with blurred hand copies and a skin blob, plus seam bands, hands cut by a hard vertical edge, and cut-frame matte shells. The next render waits on the editor commit: a clean background plate (a temporal median with him removed), his whole body on the matte layer, and a check on the first 2 frames after every cut. Measurements below are for this candidate only.
-
-Reel 08 v8 candidate, measured on this file.
+Reel 08 v8. Rendered from the clean-plate editor at a4a2a4f, merged at 42c7b7e, with stage-plan-v8.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 53.90s, H.264, AAC 48 kHz, 101,516,140 bytes.
-SHA-256: 9199dea15c0e0384951b853c60621dc97ddb517c3e5a65d32a9e9c202daafda9
-Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.78 dBTP. No music.
+1080x1920, 30 fps, 53.60s, 1608 frames, H.264, AAC 48 kHz, 100,673,836 bytes.
+SHA-256: e68f00949b0bdc6e04425ee1892ccf19fbccf177a27b543d622491da77086656
+Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.74 dBTP. No music.
 Style check passed. output_short_shots on the output frames is empty.
 Receipt: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-receipt.json
 
+Plate
+The card fill is the clean plate (blur-cover-clean-v2): a blurred temporal median of the background with the speaker removed, plus a little motion from the live background. On split frames the card side bands stay soft. Laplacian variance is 2.27 median on the left and 1.74 on the right, and the max of either side is 2.98. Skin-colored pixels in those side bands: 0. Plate frames are foliage only. YuNet finds one face on the first two frames of every picture cut that was checked.
+
 Framing
-The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The plate is a live blurred cover of the source, so the foliage moves with the shot. The torso fade is 64 px where the shirt is cut by the frame. A hand inside the frame stays opaque, and a hand that crosses the edge fades across the last 20 px. The torso runs to the card bottom. On the opening frames of the split shots, the card side bands stay soft (Laplacian variance about 1.2, the same on frame 0, frame 2, and frame 8). The head on those frames is continuous. The punches land at 5.500 and 53.200.
+The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The whole body is on the matte layer. Where the torso meets the plate, the edge ramps across about the last 20 px. The head keeps the matte's own short feather. The torso runs to the card bottom. The card's top edge shows in the plate beside him. Through the center of the shirt, the step at y1408 is about the same size as the shirt texture.
+
+Cut openings
+The first two frames of each source cut were compared with a settled frame from the same piece. Extra matte against that settled silhouette is not foliage-green. The green count on those openings is 0. Each of those frames has one face, and the head is continuous. The punches land at 5.500 and 52.900.
 
 Captions
-Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.07% (top about y1211). That shot's stage ends about 50 px above the line.
-Full-face captions are Inter Black. Every full and punch shot on this take had room for 67 px with the line top at least 25 px below the beard. A band too narrow for that line uses 60 px, centered between the beard and the pin. Shot 11 is placed at 48.35% (top about y928).
+Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.07% (top about y1211).
+Full-face and punch captions are Inter Black at 67 px. Every full and punch shot on this take had room for that size.
 
 Panel and phone
-Each split stage starts at y270 and ends about 50 px above that shot's caption. Every handset is 632 px wide, 65% of the 972 px stage, centered at x540. The 11.2s phone shows the Astra scan with the 56-error result filling the glass.
+Each split stage starts at y270 and ends about 50 px above that shot's caption. Every handset is 632 px wide, left 170 px inside the 972 px stage, so the phone is centered at x540. Heights run from 883 to 970 px with the top at 8 px, so the glass reaches the stage. The 11.2s phone shows the Northpoint scan, and the glass is full.
 
 Mocks
-The 3.1s hero board shows 56 and three filled cells. The 8.2s counter shows 56 with three rows. The 15.7s thumbnails show three cards with faces and notes. The quote, the offer pair, and the document fan each have interior structure.
+The 3.1s hero board reads ADA SCAN, ACCESSIBILITY ERRORS, ALT TEXT, LOW CONTRAST, and THE OFFER. The 8.2s counter shows 56. The thumbnail grids, the charge card, the Gainesville article, the offer pair, the document fan, and the 30+ counter all have interior text. None of those holds is a flat empty board.
+
+Hands
+On the split, the arms stay inside the sprite and fade only where they meet the plate. On the full-face gestures around 25.4s and 42.8s the hands are continuous. There is no hard vertical cut through a wrist, and there is no second copy of him in the fill.
 
 Audio
-The keep range for "client" is one piece, from 89.986s to 90.670s in the source. The style check reports no keep-range gap inside an aligned word.
+The keep range for "client" is one piece, from 89.986s to 90.658s in the source. The style check reports no keep-range gap inside an aligned word.
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
-17 rows. Each Ui 30 roll is one event with its Bell 5, so the reel has 14 events in 53.90s, 15.6 per minute. The rolls are 7.609 (bell 8.424), 20.523 (bell 21.307), and 49.498 (bell 50.260). Cash Register Ka Ching lands at 22.136.
+17 rows. Each Ui 30 roll is one event with its Bell 5, so the reel has 14 events in 53.60s, 15.7 per minute. The rolls are 7.609 (bell 8.424), 20.494 (bell 21.278), and 49.269 (bell 50.031). Cash Register Ka Ching lands at 22.107.

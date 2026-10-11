@@ -1,30 +1,30 @@
 {
-  "verified_at": "2026-10-11T02:25:46.637731+00:00",
+  "verified_at": "2026-10-11T03:22:47.268641+00:00",
   "output_filename": "2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4",
-  "bytes": 101516140,
-  "sha256": "9199dea15c0e0384951b853c60621dc97ddb517c3e5a65d32a9e9c202daafda9",
+  "bytes": 100673836,
+  "sha256": "e68f00949b0bdc6e04425ee1892ccf19fbccf177a27b543d622491da77086656",
   "complete_decode": "passed",
   "video_reencoded_during_finalization": false,
   "target_lufs": -14.0,
   "target_true_peak_dbtp": -1.0,
   "raw_audio_measurement": {
     "input_i": "-14.41",
-    "input_tp": "-0.92",
-    "input_lra": "2.50",
-    "input_thresh": "-24.55",
-    "output_i": "-14.31",
+    "input_tp": "-0.83",
+    "input_lra": "2.40",
+    "input_thresh": "-24.48",
+    "output_i": "-14.30",
     "output_tp": "-1.80",
-    "output_lra": "2.40",
-    "output_thresh": "-24.41",
+    "output_lra": "2.50",
+    "output_thresh": "-24.37",
     "normalization_type": "dynamic",
-    "target_offset": "0.31"
+    "target_offset": "0.30"
   },
   "pre_aac_limiter_ceiling_dbtp": -1.8,
   "codec_headroom_db": 0.8,
   "final_integrated_lufs": -14.14,
-  "final_true_peak_dbtp": -1.78,
+  "final_true_peak_dbtp": -1.74,
   "final_loudness_range_lu": 2.4,
-  "duration_seconds": 53.9,
+  "duration_seconds": 53.6,
   "streams": [
     {
       "codec_type": "video",
@@ -34,8 +34,8 @@
       "r_frame_rate": "30/1",
       "sample_rate": null,
       "channels": null,
-      "duration": "53.900000",
-      "nb_frames": "1617"
+      "duration": "53.600000",
+      "nb_frames": "1608"
     },
     {
       "codec_type": "audio",
@@ -45,11 +45,11 @@
       "r_frame_rate": "0/0",
       "sample_rate": "48000",
       "channels": 2,
-      "duration": "53.900000",
-      "nb_frames": "2528"
+      "duration": "53.589000",
+      "nb_frames": "2513"
     }
   ],
-  "visual_review": "pending",
+  "visual_review": "Reviewed the first two frames of each cut, the plate, the hand edges, and the mocks on this file.",
   "subjective_sound_match": "not claimed",
   "true_peak_review_needed": false
 }
