@@ -1,11 +1,11 @@
 Reel 08 v9 QA receipt
 Master: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v9.mp4
-sha256: cb54363df38f34ed41ac3aa41422a5253371acd560d8ad9bd5f76384945bcaa1
-98,899,544 bytes · 53.633 s · 1609 frames · -14.12 LUFS · -1.69 dBTP
+sha256: 5d2b697f66cd816a402938fa28ba53e2a14636e41176c4075dacf998a412b25e
+98,906,013 bytes · 53.633 s · 1609 frames · -14.12 LUFS · -1.69 dBTP
 Scale 0.3555, face target 215 px, crown target 70 px. Same as v8.
 v8 had 25 shots ending in a 0.71 s punch. v9 has 24. The only cut changes are the five silence trims and the closing face, which is now one 1.520 s shot.
 
-1. Captions. Full-face beard gap minimum 28 px (floor 25). Pin gap median 28 px, range 22–42; shot 15 and the closing shot sit at 22–30 on every word. The beard-to-pin band is about 80 px, so the type is 24–33 px and it follows the head, including the 1.12 punch. Split clearance at the four windows: 33 px, 30 px, 84 px, 32 px (floor 18). At 39.12–39.40 the crown is 68–71 px above the card and the eyes stay below y 1408.
+1. Captions. Full-face beard gap minimum 28 px (floor 25). Pin gap median 28 px, range 22–42; shot 15 and the closing shot sit at 22–30 on every word. The beard-to-pin band is about 80 px, so the type is 24–33 px and it follows the head, including the 1.12 punch. Split clearance at the four windows: 27 px, 34 px, 48 px, 32 px (floor 18). At 39.20–39.40 the crown is 70–72 px above the card and the eyes stay below y 1408.
 
 2. Cut-frame mattes. 93 opening frames, 0 failed, at the tightened limits of 0.03 green and 0.05 dark (max green 0.03, max dark 0.05). Listed frames on the v9 clock (15.47, 15.50, 16.80, 16.83, 17.97, 20.40, 20.43, 20.47, 22.93) all pass: dark 0.039–0.044, green at most 0.028. Crown-dome second-difference RMS is 0.72–0.83 px (v8 at 15.67 was 1.92). On a still frame at 17.97 the dome jitter peak is 2.0 px and the RMS is 0.80, measured on the columns within 50 px of the crown.
 
@@ -20,3 +20,28 @@ v8 had 25 shots ending in a 0.71 s punch. v9 has 24. The only cut changes are th
 7. Seams. The alpha ramp from 1 to 254, y 1660 to 1900, is 17 px on the left and 17 px on the right.
 
 8. Drift, Pop 2, closing face. The hero board moves −24 px from 2.55 to 3.85. The phone bezel moves about −12 px from 9.70 to 11.00. Pop 2 hits the WEBSITE keyword box at 44.416. The last shot is full-face from 52.096 to 53.616, 1.520 s. The quote card before it is 1.440 s.
+
+QA matte checker (`production/editor/qa/matte_check.py`) on this master, with the v9 cut diff and the join list. Exit 0.
+
+The largest sharp-green blob in the card is 77 px at f1359 (t=45.3), on the left shoulder seam. A second cluster around t=48.4 is 65 px. Both are under the 120 px gate. Cropped, each is a small green patch at the seam, not a foliage clump in the card.
+
+=== SUMMARY 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v9.mp4
+frames 1609 | split 1280 | layout runs S:0.000-4.133 F:4.133-6.300 S:6.300-23.800 F:23.800-27.300 S:27.300-35.500 F:35.500-37.267 S:37.267-42.233 F:42.233-44.233 S:44.233-52.100 F:52.100-53.633
+cuts 91 (52 from --cuts) | cut-window split frames checked 166
+  cut-window peak rough      0.758 at f1266 (limit 1.0)
+  cut-window peak green_in   0.000 at f1545 (limit 0.03)
+  cut-window peak green_out  0.005 at f0 (limit 0.05)
+  cut-window peak specks     0.000 at f1545 (limit 3)
+  cut-window peak dark_above 0.013 at f263 (limit 0.05)
+  index proxy worst margin 1.0 px at f617 (fail if next>=5.0 and next>=2.0x prev; 53 picture cuts)
+  reel rough median   0.44 (limit 1.0)
+  reel jitter median  0.33 (limit 1.0)
+  reel jitter p90     0.43 (limit 2.0)
+  reel rough p90 0.62 max 0.84; jitter max 0.60
+  plate max deviation 0.8 at f711 (limit 6.0)
+  foliage largest blob 77 px at f1359 (limit <120)
+  split caption gap crown-baseline median 40 p10 31 min 22 at f1459 (25..50, never <18)
+  split caption gap crown-ink bottom (incl. descenders) median 38 min 12 at f1164; 2D min dist 19px at f610 (info / touch gate <=1)
+  full-face frames with caption measured: 6
+FAIL frames: 0  WARN frames: 0
+RESULT: PASS
