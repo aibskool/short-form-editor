@@ -1,30 +1,30 @@
 {
-  "verified_at": "2026-10-11T03:22:47.268641+00:00",
+  "verified_at": "2026-10-11T07:15:05.012125+00:00",
   "output_filename": "2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4",
-  "bytes": 100673836,
-  "sha256": "e68f00949b0bdc6e04425ee1892ccf19fbccf177a27b543d622491da77086656",
+  "bytes": 98295469,
+  "sha256": "f331fcaf8c18d7f42d57a8ed371155d2fd4f628356e3ba2208a5c2546277f8b9",
   "complete_decode": "passed",
   "video_reencoded_during_finalization": false,
   "target_lufs": -14.0,
   "target_true_peak_dbtp": -1.0,
   "raw_audio_measurement": {
     "input_i": "-14.41",
-    "input_tp": "-0.83",
-    "input_lra": "2.40",
-    "input_thresh": "-24.48",
+    "input_tp": "0.27",
+    "input_lra": "2.60",
+    "input_thresh": "-24.49",
     "output_i": "-14.30",
     "output_tp": "-1.80",
-    "output_lra": "2.50",
-    "output_thresh": "-24.37",
+    "output_lra": "2.70",
+    "output_thresh": "-24.39",
     "normalization_type": "dynamic",
     "target_offset": "0.30"
   },
   "pre_aac_limiter_ceiling_dbtp": -1.8,
   "codec_headroom_db": 0.8,
-  "final_integrated_lufs": -14.14,
+  "final_integrated_lufs": -14.15,
   "final_true_peak_dbtp": -1.74,
-  "final_loudness_range_lu": 2.4,
-  "duration_seconds": 53.6,
+  "final_loudness_range_lu": 2.7,
+  "duration_seconds": 54.066667,
   "streams": [
     {
       "codec_type": "video",
@@ -34,8 +34,8 @@
       "r_frame_rate": "30/1",
       "sample_rate": null,
       "channels": null,
-      "duration": "53.600000",
-      "nb_frames": "1608"
+      "duration": "54.066667",
+      "nb_frames": "1622"
     },
     {
       "codec_type": "audio",
@@ -45,11 +45,11 @@
       "r_frame_rate": "0/0",
       "sample_rate": "48000",
       "channels": 2,
-      "duration": "53.589000",
-      "nb_frames": "2513"
+      "duration": "54.058000",
+      "nb_frames": "2535"
     }
   ],
-  "visual_review": "Reviewed the first two frames of each cut, the plate, the hand edges, and the mocks on this file.",
+  "visual_review": "Checked the first three frames of every cut on this file. The 1-8 px ring outside the matte has no green fringe and only a light outline. Shoulder crops that meet the source edge use the longer ramp.",
   "subjective_sound_match": "not claimed",
   "true_peak_review_needed": false
 }

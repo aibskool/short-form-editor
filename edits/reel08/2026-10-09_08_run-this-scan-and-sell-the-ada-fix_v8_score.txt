@@ -1,37 +1,21 @@
-Reel 08 v8. Rendered from the clean-plate editor at a4a2a4f, merged at 42c7b7e, with stage-plan-v8.
+Reel 08 v8. Clean-plate editor, with word tails kept and a lighter, longer matte edge. Stage plan v8.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
-1080x1920, 30 fps, 53.60s, 1608 frames, H.264, AAC 48 kHz, 100,673,836 bytes.
-SHA-256: e68f00949b0bdc6e04425ee1892ccf19fbccf177a27b543d622491da77086656
-Loudness: I=-14.14 LUFS, LRA=2.4 LU, true peak=-1.74 dBTP. No music.
+1080x1920, 30 fps, 54.07s, 1622 frames, H.264, AAC 48 kHz, 98,295,469 bytes.
+SHA-256: f331fcaf8c18d7f42d57a8ed371155d2fd4f628356e3ba2208a5c2546277f8b9
+Loudness: I=-14.15 LUFS, LRA=2.7 LU, true peak=-1.74 dBTP. No music.
 Style check passed. output_short_shots on the output frames is empty.
 Receipt: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-receipt.json
 
-Plate
-The card fill is the clean plate (blur-cover-clean-v2): a blurred temporal median of the background with the speaker removed, plus a little motion from the live background. On split frames the card side bands stay soft. Laplacian variance is 2.27 median on the left and 1.74 on the right, and the max of either side is 2.98. Skin-colored pixels in those side bands: 0. Plate frames are foliage only. YuNet finds one face on the first two frames of every picture cut that was checked.
+Audio
+A pause is taken from the start of the next word. The outgoing word is not shortened to hit the gap. Sentence ends keep 130 ms. browser. keeps its whole 135 ms pause, because the release sits inside that pause. builds. keeps about 180 ms, because the /z/ is still up 50 ms past the mark and that tail stays, on top of the 130 ms lead. flag. is a 20 ms source pause, so nothing was added. Whisper on this file heard websites, looks, errors, buttons, it's, pass, builds, businesses, fees, sites, That's, offers, ideas, plus, guide, and client, and it heard $6,500. The keep range for client is one piece, source 89.968–90.658.
+
+Plate and edge
+The card fill is the clean plate. Side-band Laplacian variance on the first split cut is 2.34 left and 1.94 right. Skin-colored pixels in those bands: 0. The outline shadow is light. In the 1–8 px ring outside the matte, on the crown and the shoulders, the first three frames of every cut were compared with the plate (shoulders) and with the stage just outside the hair (crown). Green pixels that are greener than that background: at most 2. Pixels more than 18 levels darker: at most 28, and the median darkening is about 3 levels. Crown green and crown dark counts are 0. A shoulder row that used to end 9 px inside the frame, with a 4 px ramp, now starts the ramp at the frame and runs 71 px. The torso rows that meet the source edge fade across that ramp. The head keeps the matte's own short feather.
 
 Framing
-The split crop is solved once for the take: face 215.0 px, crown median 70.0 px above y1408, scale 0.3555. The whole body is on the matte layer. Where the torso meets the plate, the edge ramps across about the last 20 px. The head keeps the matte's own short feather. The torso runs to the card bottom. The card's top edge shows in the plate beside him. Through the center of the shirt, the step at y1408 is about the same size as the shirt texture.
-
-Cut openings
-The first two frames of each source cut were compared with a settled frame from the same piece. Extra matte against that settled silhouette is not foliage-green. The green count on those openings is 0. Each of those frames has one face, and the head is continuous. The punches land at 5.500 and 52.900.
-
-Captions
-Split captions are one Inter Black line at 54 px, above the head. The highest split caption is 63.07% (top about y1211).
-Full-face and punch captions are Inter Black at 67 px. Every full and punch shot on this take had room for that size.
-
-Panel and phone
-Each split stage starts at y270 and ends about 50 px above that shot's caption. Every handset is 632 px wide, left 170 px inside the 972 px stage, so the phone is centered at x540. Heights run from 883 to 970 px with the top at 8 px, so the glass reaches the stage. The 11.2s phone shows the Northpoint scan, and the glass is full.
-
-Mocks
-The 3.1s hero board reads ADA SCAN, ACCESSIBILITY ERRORS, ALT TEXT, LOW CONTRAST, and THE OFFER. The 8.2s counter shows 56. The thumbnail grids, the charge card, the Gainesville article, the offer pair, the document fan, and the 30+ counter all have interior text. None of those holds is a flat empty board.
-
-Hands
-On the split, the arms stay inside the sprite and fade only where they meet the plate. On the full-face gestures around 25.4s and 42.8s the hands are continuous. There is no hard vertical cut through a wrist, and there is no second copy of him in the fill.
-
-Audio
-The keep range for "client" is one piece, from 89.986s to 90.658s in the source. The style check reports no keep-range gap inside an aligned word.
+Face 215 px, crown 70 px above y1408, scale 0.3555. Split captions are one Inter Black line, highest caption at 63.86%. Full-face and punch captions are 67 px. Phones are 632 px wide, left 170 inside the 972 px stage, centered at x540, top 8. Punches land at 5.466 and 53.333.
 
 SFX log
 edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8-sfx-log.json
-17 rows. Each Ui 30 roll is one event with its Bell 5, so the reel has 14 events in 53.60s, 15.7 per minute. The rolls are 7.609 (bell 8.424), 20.494 (bell 21.278), and 49.269 (bell 50.031). Cash Register Ka Ching lands at 22.107.
+18 rows. Each Ui 30 roll plus its Bell 5 is one event, so the reel has 15 events in 54.07s, 16.6 per minute. Rolls at 7.649 (bell 8.464), 20.639 (bell 21.423), and 49.701 (bell 50.485). Cash Register Ka Ching at 22.249.
