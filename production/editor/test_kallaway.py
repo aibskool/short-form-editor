@@ -1476,12 +1476,19 @@ class KallawayTests(unittest.TestCase):
 
     def test_column_contour_smooth_takes_out_a_stair(self):
         from kallaway_matte import _smooth_column_contour
-        stair = np.zeros((80, 40), dtype=bool)
+        stair = np.zeros((90, 40), dtype=bool)
         for x in range(40):
-            stair[20 + (x % 2) * 10:, x] = True
+            if 14 <= x <= 25:
+                y = 10
+            else:
+                y = 50 + (x % 2) * 12
+            stair[y:, x] = True
         smoothed = _smooth_column_contour(stair)
-        tops = [int(np.argmax(smoothed[:, x])) for x in range(40)]
-        self.assertLessEqual(max(abs(b - a) for a, b in zip(tops, tops[1:])), 2)
+        crown = [int(np.argmax(smoothed[:, x])) for x in range(14, 26)]
+        self.assertEqual(crown, [10] * 12)
+        for span in (range(0, 8), range(32, 40)):
+            sides = [int(np.argmax(smoothed[:, x])) for x in span]
+            self.assertLessEqual(max(abs(b - a) for a, b in zip(sides, sides[1:])), 4)
         slope = np.zeros((80, 40), dtype=bool)
         for x in range(40):
             slope[10 + x // 2:, x] = True

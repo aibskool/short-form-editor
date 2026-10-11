@@ -117,7 +117,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge-rimgray-contour6"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge-rimgray-contour-sides"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -913,14 +913,15 @@ def _drop_olive_leak(binary, rgb, min_area=250):
     return cleaned
 
 
-def _smooth_column_contour(binary, sigma=6.0, max_move=12):
-    """Round a stair-stepped silhouette. The body does not move.
+def _smooth_column_contour(binary, sigma=14.0, max_move=16, crown_keep=28):
+    """Round a stair below the crown. The crown tip does not move.
 
     Optical flow can leave the 0.5 contour on a staircase when this frame and
     the warped previous frame disagree by more than the contour blur. That
     staircase is the roughness the cut-frame check measures. A short gaussian
-    along the top of each column takes the stair out, and the move is capped
-    so a real shoulder or a raised hand stays where it is.
+    along the top of each column takes the stair out. Columns within
+    ``crown_keep`` pixels of the highest point stay put, so the smooth cannot
+    pull the crown into the dark plate above the hair.
     """
     binary = np.asarray(binary, dtype=bool)
     if not np.any(binary):
@@ -931,6 +932,7 @@ def _smooth_column_contour(binary, sigma=6.0, max_move=12):
         return binary
     top = np.argmax(binary, axis=0).astype(np.float64)
     index = np.flatnonzero(present)
+    crown = float(top[index].min())
     filled = np.interp(np.arange(width, dtype=np.float64), index, top[index])
     smoothed = ndimage.gaussian_filter1d(filled, float(sigma))
     delta = np.clip(smoothed - filled, -float(max_move), float(max_move))
@@ -939,6 +941,8 @@ def _smooth_column_contour(binary, sigma=6.0, max_move=12):
     cleaned = np.array(binary, copy=True)
     for x in index:
         start = int(current[x])
+        if start < crown + float(crown_keep):
+            continue
         stop = int(target[x])
         if stop == start:
             continue
