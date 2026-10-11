@@ -1,4 +1,6 @@
-Reel 08 v8, measured on this file.
+Reel 08 v8 DRAFT. This file is a candidate from 2aa45c0, not the ship. Editing QA found the card fill is a blurred copy of Brandon, with blurred hand copies and a skin blob, plus seam bands, hands cut by a hard vertical edge, and cut-frame matte shells. The next render waits on the editor commit: a clean background plate (a temporal median with him removed), his whole body on the matte layer, and a check on the first 2 frames after every cut. Measurements below are for this candidate only.
+
+Reel 08 v8 candidate, measured on this file.
 
 File: edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4
 1080x1920, 30 fps, 53.90s, H.264, AAC 48 kHz, 101,516,140 bytes.
