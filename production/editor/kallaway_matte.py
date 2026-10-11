@@ -1713,6 +1713,61 @@ def highest_crown_source_y(head, start=None, end=None):
     return float(nearest["top"])
 
 
+def _reframe_shift(at, reframes):
+    """Canvas pixels the pop moves down at this time. Down lowers the crown."""
+    shift = 0.0
+    for span in reframes or []:
+        if float(span["start"]) - 0.02 <= float(at) <= float(span["end"]) + 0.02:
+            shift = max(shift, float(span["dy"]))
+    return shift
+
+
+def caption_crown_source_y(head, start, end, pop_px, scale, reframes):
+    """Source row for the split line, after reframes have moved the crown.
+
+    The raw highest sample can be a pop that the reframe then pulls back
+    toward 70 px. A line aimed at that sample sits 60 px or more above the
+    hair for the rest of the shot. The line stays 18 px above the highest
+    crown that is actually on screen, or 8 px under that peak when the
+    median crown is much lower, so a segment's median gap stays inside
+    25-50 px. A stable shot keeps the highest sample.
+    """
+    fallback = highest_crown_source_y(head, start, end)
+    samples = smooth_crown_samples(head.get("crown_samples") or [])
+    if start is None or end is None or len(samples) < 3:
+        return fallback
+    begin, finish = float(start), float(end)
+    inside = [
+        item for item in samples
+        if begin - 0.08 <= float(item["at"]) <= finish + 0.08
+    ]
+    if len(inside) < 3:
+        return fallback
+    head_top = float(head["head_top"])
+    span = float(scale) or 1.0
+
+    def above(row, at):
+        lifted = float(pop_px) + (head_top - float(row)) * span
+        return lifted - _reframe_shift(at, reframes)
+
+    shown = [above(item["top"], item["at"]) for item in inside]
+    # The on-screen peak, not a source spike the reframe has already pulled down.
+    peak = max(shown)
+    typical = float(np.median(shown))
+    current = float(pop_px) + (head_top - float(fallback)) * span
+    # 36 px over the median crown when that still clears the peak. A peak that
+    # sits more than 18 px above the median is a sample the checker reads
+    # lower, and parking the line on it leaves the segment median over 50.
+    # Eight pixels under that peak keeps the measured gap above 20.
+    if peak > typical + 18.0:
+        chosen = min(current, peak - 8.0)
+    else:
+        chosen = min(current, max(peak, typical + 18.0))
+    if chosen >= current - 0.5:
+        return fallback
+    return head_top - (chosen - float(pop_px)) / span
+
+
 def pop_limits(layout, height):
     """Stage and caption lines, in canvas pixels.
 
@@ -1808,9 +1863,11 @@ def frame_popout(timeline, head, theme):
         hand_above = round(-placed_local_y(min(hand_tops), head["head_top"], pop, scale), 1)
     font_px = float(layout.get("caption_split_px", 54)) * (width / 1080.0)
     card_top_px = float(layout["card_top"]) * height
+    reframes = crown_reframe_spans(head, scale, pop)
     caption_pcts = []
     for shot in shots:
-        source_y = highest_crown_source_y(head, shot.get("start"), shot.get("end"))
+        source_y = caption_crown_source_y(
+            head, shot.get("start"), shot.get("end"), pop, scale, reframes)
         local = placed_local_y(source_y, head["head_top"], pop, scale)
         if local >= -20:
             shot["caption_y"] = round(float(layout["caption_split_y"]) * 100, 2)
@@ -1851,7 +1908,7 @@ def frame_popout(timeline, head, theme):
         "head_px": round(solved["face_px"], 1),
         "samples": head["samples"],
         "hands": hands,
-        "reframes": crown_reframe_spans(head, scale, pop),
+        "reframes": reframes,
     }
     return timeline
 

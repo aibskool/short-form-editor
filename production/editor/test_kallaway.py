@@ -1312,9 +1312,12 @@ class KallawayTests(unittest.TestCase):
         # The one-frame spike at 1.4s does not become the line for the first shot.
         self.assertGreater(highest_crown_source_y(head, 0.0, 2.0), 300)
         pop = timeline["source"]["popout"]
-        from kallaway_matte import placed_local_y
+        from kallaway_matte import caption_crown_source_y, placed_local_y
         for shot, begin, finish in ((low_shot, 0.0, 2.0), (high_shot, 2.0, 4.0)):
-            source_y = highest_crown_source_y(head, begin, finish)
+            source_y = caption_crown_source_y(
+                head, begin, finish, pop["pop_px"], pop["scale"], pop.get("reframes"))
+            raw = highest_crown_source_y(head, begin, finish)
+            self.assertGreaterEqual(source_y, raw - 0.5)
             local = placed_local_y(source_y, head["head_top"], pop["pop_px"], pop["scale"])
             crown_canvas = layout["card_top"] * 1920 + local
             top = shot["caption_y"] / 100 * 1920
@@ -1331,6 +1334,60 @@ class KallawayTests(unittest.TestCase):
         self.assertAlmostEqual(
             low_shot["caption_y"] / 100 * 1920 - low_stage, STAGE_GAP_ABOVE_CAPTION_PX, delta=1)
         self.assertGreater(low_stage, stage)
+
+    def test_a_reframe_does_not_leave_the_caption_on_the_popped_crown(self):
+        from kallaway_matte import (
+            SPLIT_CAPTION_CLEARANCE_PX, caption_crown_source_y, frame_popout,
+            highest_crown_source_y, placed_local_y, split_caption_line_px,
+        )
+        theme, _, _, _ = load_theme("dark")
+        layout = theme["layout"]
+        head = {
+            "width": 1080, "height": 1920,
+            "head_top": 400.0, "head_height": 480.0,
+            "head_low": 430.0, "head_high": 250.0,
+            "pop_fraction": 0.3, "samples": 8, "hands": [],
+            "crown_samples": [
+                {"at": 0.3, "top": 400.0},
+                {"at": 0.6, "top": 398.0},
+                {"at": 0.9, "top": 402.0},
+                {"at": 1.2, "top": 250.0},
+                {"at": 1.5, "top": 248.0},
+                {"at": 1.8, "top": 252.0},
+                {"at": 2.2, "top": 405.0},
+                {"at": 2.6, "top": 400.0},
+            ],
+        }
+        timeline = {
+            "output": {"width": 1080, "height": 1920},
+            "source": {},
+            "shots": [{"layout": "split", "start": 0.0, "end": 3.0, "scale": 1.0}],
+        }
+        frame_popout(timeline, head, theme)
+        pop = timeline["source"]["popout"]
+        self.assertTrue(pop["reframes"], pop.get("high_above_px"))
+        raw = highest_crown_source_y(head, 0.0, 3.0)
+        used = caption_crown_source_y(
+            head, 0.0, 3.0, pop["pop_px"], pop["scale"], pop["reframes"])
+        self.assertGreater(used, raw)
+        local = placed_local_y(used, head["head_top"], pop["pop_px"], pop["scale"])
+        line = split_caption_line_px(layout["caption_split_px"])
+        top = timeline["shots"][0]["caption_y"] / 100 * 1920
+        crown_canvas = layout["card_top"] * 1920 + local
+        self.assertAlmostEqual(top + line, crown_canvas - SPLIT_CAPTION_CLEARANCE_PX, delta=2)
+        # The highest crown still on screen keeps the 18 px line.
+        peak_gap = None
+        for item in head["crown_samples"]:
+            shown = placed_local_y(item["top"], head["head_top"], pop["pop_px"], pop["scale"])
+            for span in pop["reframes"]:
+                if span["start"] - 0.02 <= item["at"] <= span["end"] + 0.02:
+                    shown += span["dy"]
+            gap = (layout["card_top"] * 1920 + shown) - (top + line)
+            peak_gap = gap if peak_gap is None else min(peak_gap, gap)
+        # The peak sample may sit 8 px inside the 18 px line when the median
+        # crown is much lower. The rendered checker gap stays above 18.
+        self.assertGreaterEqual(peak_gap, 18 - 8 - 1)
+        self.assertLess(peak_gap, 50)
 
     def test_green_spill_leaves_the_edge_and_not_the_skin(self):
         from kallaway_matte import despill_green
