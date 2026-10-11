@@ -1949,6 +1949,25 @@ class KallawayTests(unittest.TestCase):
         self.assertTrue(bool(cleaned[115, 105]))
         self.assertTrue(bool(cleaned[80, 90]))
 
+    def test_yellow_green_on_the_shoulder_rim_goes_gray(self):
+        from kallaway_matte import _gray_yellow_rim
+        height, width = 80, 80
+        binary = np.zeros((height, width), dtype=bool)
+        binary[10:70, 20:60] = True
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[binary] = (220, 170, 140)
+        # Yellow-green on the outer rim. Same green as red, blue much lower.
+        rgb[12:20, 22:30] = (112, 114, 82)
+        # The same color deep inside the torso stays.
+        rgb[40:48, 36:44] = (112, 114, 82)
+        out = _gray_yellow_rim(rgb, binary)
+        rim = out[15, 25]
+        self.assertGreater(float(rim[2]), 95)
+        deep = out[44, 40]
+        self.assertLess(float(deep[2]), 85)
+        skin = out[30, 40]
+        self.assertEqual(int(skin[0]), 220)
+
     def test_a_shoulder_leaf_is_held_out_of_the_plate(self):
         from kallaway_matte import _plate_holdout
         height, width = 200, 160

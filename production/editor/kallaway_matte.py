@@ -117,7 +117,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage5-darkfringe-feather2.5-despill6-speck200-spike-shoulder-coldopen-olive-oliveedge-rimgray"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.09
@@ -977,6 +977,32 @@ def despill_green(rgb, person, binary=None):
     return out
 
 
+def _gray_yellow_rim(rgb, binary, rim_px=8):
+    """Pull yellow-green on the outer shoulder toward gray.
+
+    A leaf the foliage gate still counts can be only a point greener than red,
+    so the green despill leaves the hue in range. Skin is redder than green and
+    stays. Only the outer ``rim_px`` of the matte moves, and the alpha stays.
+    """
+    binary = np.asarray(binary, dtype=bool)
+    if not np.any(binary):
+        return rgb
+    inside = ndimage.distance_transform_edt(binary)
+    rim = binary & (inside > 0) & (inside <= float(rim_px))
+    if not np.any(rim):
+        return rgb
+    out = np.array(rgb, dtype=np.float32, copy=True)
+    red, green, blue = out[:, :, 0], out[:, :, 1], out[:, :, 2]
+    yellow = (
+        rim & (green + 8 >= red) & (green > blue + 12) & (red < 190)
+        & (blue < 150) & (green > 30))
+    if not np.any(yellow):
+        return out
+    lifted = np.maximum(blue, np.minimum(red, green) * 0.92)
+    out[:, :, 2] = np.where(yellow, lifted, blue)
+    return np.clip(out, 0, 255)
+
+
 def _flow_stabilize(alpha, previous, gray):
     """Blend the uncertain band with the previous alpha, warped by the picture's motion.
 
@@ -1078,6 +1104,7 @@ def refine_frame(rgb, coarse, previous=None, hold_edge=False):
     core = ndimage.binary_erosion(binary, iterations=1)
     person = np.where(core, 1.0, person).astype(np.float32)
     fg = despill_green(_foreground_color(rgb, person), person, binary)
+    fg = _gray_yellow_rim(fg, binary)
     shadow = cast_shadow(person) * (1 - person)
     out_a = np.clip(person + shadow, 0, 1)
     straight = np.zeros_like(fg)
