@@ -62,9 +62,9 @@ HAND_RAMP_CARD_PX = 36.0
 TORSO_RUN_FRACTION = 0.28
 # A matte that stops this close to the frame is still the source edge. Robust
 # Video Matting often pulls the alpha a few pixels in from a hard crop.
-EDGE_CONTACT_PX = 8
+EDGE_CONTACT_PX = 16
 # Short fade on every source edge. The old wide torso ramp is gone.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v7"
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v8"
 # First frames of a segment are seeded from this many frames later, then checked.
 # Three covers the first frame after the cut and the two that follow it.
 SEGMENT_OPEN_FRAMES = 3
