@@ -1072,10 +1072,10 @@ def _tail_released(samples, rate, end, times, frames):
 
 
 def _pause_budget(word):
-    """Mid-phrase air stays at 40 ms. A sentence can hold the stop burst a little longer."""
+    """Mid-phrase air stays at 40 ms. A sentence end may keep 120–150 ms."""
     text = str(word.get("word") or word.get("text") or "").rstrip()
     if text.endswith((".", "!", "?")):
-        return 0.12
+        return 0.14
     return 0.04
 
 
@@ -1104,7 +1104,8 @@ def settle_join_tails(samples, rate, ranges, words):
         if next_word is not None:
             lead = max(0.0, float(next_word["start"]) - nxt)
         latest = min(nxt - 0.02, word_end + _pause_budget(word) - lead)
-        floor_end = max(begin + 0.05, word_end - 0.004)
+        # The word tail stays. A gap is shortened from the next word, not from this end.
+        floor_end = max(begin + 0.05, word_end)
         if latest < floor_end:
             latest = floor_end
         if _tail_released(samples, rate, end, times, frames) and floor_end - 1e-9 <= end <= latest + 0.005:
@@ -1188,9 +1189,10 @@ def measure_joins(samples, rate, ranges, words):
 def keep_ranges(words, source_duration, gap=0.04, handle=0.0, sentence_gap=None):
     """Cut a mid-phrase pause down to ``gap`` (at most 40 ms).
 
-    A sentence ending in . ! or ? keeps ``sentence_gap`` (about 100 ms). The
-    word bounds already include the decay, so this only deletes the air
-    between words. ``handle`` is extra time outside those bounds.
+    A sentence ending in . ! or ? keeps ``sentence_gap`` (120–150 ms). The
+    word bounds already include the decay. The cut never shortens that tail
+    to hit the gap. The silence it removes comes from the start of the next
+    word. ``handle`` is extra time outside those bounds.
     """
     if sentence_gap is None:
         sentence_gap = gap
@@ -1206,10 +1208,8 @@ def keep_ranges(words, source_duration, gap=0.04, handle=0.0, sentence_gap=None)
         pause = float(word["start"]) - float(prev["end"])
         limit = sentence_gap if _ends_sentence(prev) else gap
         if pause > limit:
-            tail = min(limit * 0.45, max(0.0, pause - 0.004))
-            head = min(limit - tail, max(0.0, pause - tail))
-            ranges.append((start, min(source_duration, float(prev["end"]) + tail)))
-            start = max(0.0, float(word["start"]) - head)
+            ranges.append((start, min(source_duration, float(prev["end"]))))
+            start = max(float(prev["end"]), float(word["start"]) - limit)
     ranges.append((start, min(source_duration, float(ordered[-1]["end"]) + min(handle, gap / 2))))
     merged = []
     for begin, end in ranges:
@@ -1492,12 +1492,12 @@ def extend_closing_hold(ranges, source_duration, hold=0.10):
     return ranges
 
 
-def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
+def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12, words=None):
     """Leave at most ``max_quiet`` of air after the last speech or fricative.
 
     The hiss itself stays. Only the silence after it is shortened, and only
     inside a range that already kept that air. A decay that is still up is hot
-    and is not trimmed.
+    and is not trimmed. The cut never moves earlier than a word's own end.
     """
     samples = np.asarray(samples, dtype=np.float64)
     if not ranges or len(samples) < 8:
@@ -1542,7 +1542,12 @@ def trim_quiet_tails(samples, rate, ranges, max_quiet=0.12):
             # "websites" measured about 220 ms. Speech and a loud full band stay.
             if voiced >= speech_thresh or full >= full_thresh:
                 last = float(moment)
-        cap = min(end, last + float(max_quiet))
+        floor = begin
+        for word in words or []:
+            word_end = float(word["end"])
+            if begin - 0.02 <= word_end <= end + 0.01 and float(word["start"]) < end:
+                floor = max(floor, word_end)
+        cap = min(end, max(last + float(max_quiet), floor))
         if end - cap > 0.02 and cap - begin > 0.05:
             end = cap
         rebuilt.append((begin, end))
@@ -1788,7 +1793,7 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     # (the stop in "ends") without gluing that air back in.
     ranges = seal_word_interiors(ranges, refined)
     ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
-    ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10)
+    ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10, words=refined)
     ranges = trim_final_nonspeech(samples, RATE, ranges)
     ranges = settle_join_tails(samples, RATE, ranges, refined)
     snap_quiet_word_ends(samples, RATE, ranges, refined)

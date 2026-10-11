@@ -566,8 +566,6 @@ def build_kallaway(spec, spec_path, project):
     split_open = placed and shots and shots[0].get("layout") == "split"
     aroll_open = "opacity:0;visibility:hidden;" if split_open else ""
     plate_open = "" if split_open else "opacity:0;visibility:hidden;"
-    tint = popout.get("plate_tint") or [36, 44, 28]
-    tint_r, tint_g, tint_b = (int(channel) for channel in tint)
     css = f'''{font_faces(theme, media)}
     *{{box-sizing:border-box}} body{{margin:0;background:{colors['background']}}}
     #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;{background}}}
@@ -577,7 +575,7 @@ def build_kallaway(spec, spec_path, project):
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position};{aroll_open}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
     #pop-camera{{position:absolute}}
-    #speaker-pop.wrapped{{filter:drop-shadow(0 0 10px rgba({tint_r},{tint_g},{tint_b},0.55)) drop-shadow(0 10px 18px rgba(0,0,0,0.28))}}
+    #speaker-pop.wrapped{{filter:drop-shadow(0 2px 5px rgba(0,0,0,0.06))}}
     .pop-aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}}
     .stage{{position:absolute;z-index:2;overflow:hidden}}
     #caption-anchor{{position:absolute;top:{layout_spec['caption_split_y']*100:.2f}%;left:0;width:100%;z-index:8;pointer-events:none;font-size:{caption_px:.1f}px}}

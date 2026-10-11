@@ -87,6 +87,12 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(len(cut), 2)
         kept = (cut[0][1] - 0.3) + (0.9 - cut[1][0])
         self.assertAlmostEqual(kept, 0.06, places=2)
+        sentence = keep_ranges([
+            {"word": "fees.", "start": 0.10, "end": 0.40},
+            {"word": "And", "start": 1.20, "end": 1.40},
+        ], 2.0, gap=0.04, sentence_gap=0.13, handle=0)
+        self.assertAlmostEqual(sentence[0][1], 0.40, places=3)
+        self.assertAlmostEqual(sentence[1][0], 1.07, places=2)
 
     def test_energy_trim_drops_a_separated_breath(self):
         rate = 16000
@@ -351,7 +357,7 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(layout["wide_scale"], 1.0)
         self.assertAlmostEqual(layout["tight_scale"], 1.0)
         self.assertAlmostEqual(theme["audio"]["pause_gap_seconds"], 0.04)
-        self.assertAlmostEqual(theme["audio"]["sentence_gap_seconds"], 0.1)
+        self.assertAlmostEqual(theme["audio"]["sentence_gap_seconds"], 0.13)
         self.assertAlmostEqual(theme["audio"]["cut_crossfade_seconds"], 0.016)
         self.assertAlmostEqual(theme["layout"]["full_scale"], 1.0)
         self.assertIn("paper", SFX_KINDS)
@@ -1417,7 +1423,10 @@ class KallawayTests(unittest.TestCase):
         # The painted foliage rim is not part of the matte, and the soft edge
         # is not left green.
         self.assertLess(float(person[rim].mean()), 0.45)
-        self.assertLess(straight[:, :, 1][edge].mean(), 130)
+        # The contact shadow is light, so it no longer pulls this band under 130.
+        # Foliage still fails: its green leads the red.
+        self.assertLess(float(straight[:, :, 1][edge].mean()), float(straight[:, :, 0][edge].mean()) + 8)
+        self.assertLess(float(straight[:, :, 1][edge].mean()), 160)
         below = out_a[center + radius + 3:center + radius + 16, center - 8:center + 8].mean()
         above = out_a[center - radius - 16:center - radius - 3, center - 8:center + 8].mean()
         self.assertGreater(below, above + 0.04)
@@ -1460,6 +1469,16 @@ class KallawayTests(unittest.TestCase):
         wall[70:190, 30:110] = 255
         faded = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60)
         self.assertTrue(np.array_equal(faded[16, 114:134], wall[16, 114:134]))
+        # A crop a few pixels inside the frame is still the source edge.
+        near = np.zeros((80, 100), np.uint8)
+        near[40:, 4:] = 255
+        faded_near = feather_boundary_alpha(near, ramp_px=16, shoulder_y=40, hand_ramp_px=12)
+        self.assertLess(int(faded_near[50, 4]), 80)
+        self.assertGreater(int(faded_near[50, 10]), int(faded_near[50, 4]))
+        inside = np.zeros((80, 100), np.uint8)
+        inside[40:, 20:70] = 255
+        faded_inside = feather_boundary_alpha(inside, ramp_px=16, shoulder_y=40, hand_ramp_px=12)
+        self.assertEqual(int(faded_inside[50, 20]), 255)
         self.assertEqual(int(faded[120, 30]), 255)
         self.assertEqual(int(faded[120, 70]), 255)
         head_box_holds(wall, faded, top=8, height=40, left=90, right=160)

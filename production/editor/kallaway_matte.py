@@ -53,16 +53,21 @@ PLATE_MOTION = 0.60
 # Source pixels the person mask grows before a pixel may enter the plate.
 PLATE_DILATE_PX = 36
 PLATE_RECIPE = "blur-cover-clean-v2"
-# Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
-BOUNDARY_RAMP_CARD_PX = 20.0
-# A hand that crosses the frame fades only across this many card pixels.
-HAND_RAMP_CARD_PX = 20.0
+# Card pixels. The frame-edge fade is this long, long enough that a straight
+# source-edge cut on the torso or a hand does not read as a seam.
+BOUNDARY_RAMP_CARD_PX = 36.0
+# A hand that crosses the frame fades across this many card pixels.
+HAND_RAMP_CARD_PX = 36.0
 # A run this wide, touching the frame, is the torso. A narrower contact is a hand.
 TORSO_RUN_FRACTION = 0.28
+# A matte that stops this close to the frame is still the source edge. Robust
+# Video Matting often pulls the alpha a few pixels in from a hard crop.
+EDGE_CONTACT_PX = 8
 # Short fade on every source edge. The old wide torso ramp is gone.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v6"
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v7"
 # First frames of a segment are seeded from this many frames later, then checked.
-SEGMENT_OPEN_FRAMES = 2
+# Three covers the first frame after the cut and the two that follow it.
+SEGMENT_OPEN_FRAMES = 3
 # Green inside the matte, in a connected patch this small, is a foliage leak.
 FOLIAGE_COMPONENT_PX = 25000
 # Rim green, or a matte that grew against the stable frame, fails an opening frame.
@@ -114,8 +119,8 @@ DESPILL_RADIUS_PX = 6
 RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
-SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage2-feather2.5-despill6-speck200"
+SHADOW_OPACITY = 0.18
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage2-feather2.5-despill6-speck200-shadow18"
 
 
 def _run(args):
@@ -1466,8 +1471,10 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
 
     The fade is ``hand_ramp_px`` on every row, including a raised hand. A wide
     run above the shoulder is the head and stays at 1, so the face is not
-    eaten. A run that does not touch the frame stays at 1. Shirt and skin both
-    stay opaque past that short ramp. There is no fade along the bottom.
+    eaten. A run that stops short of the frame stays at 1. A run within
+    ``EDGE_CONTACT_PX`` of the frame is the source-edge crop and fades, so a
+    straight seam on the torso or a hand does not stay sharp. Shirt and skin
+    both stay opaque past that ramp. There is no fade along the bottom.
     ``ramp_px`` remains for callers that still pass a longer distance; the
     fade used is the short one.
     """
@@ -1481,8 +1488,8 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
     xs = np.arange(width, dtype=np.float32)
     for y in range(height):
         for start, stop in _row_runs(alpha[y] >= 16):
-            touches_left = start == 0
-            touches_right = stop == width
+            touches_left = start <= EDGE_CONTACT_PX
+            touches_right = stop >= width - EDGE_CONTACT_PX
             if not touches_left and not touches_right:
                 continue
             wide = (stop - start) >= torso_min
@@ -1510,7 +1517,7 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
 def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
     """Ease alpha where the body is cut by the source frame.
 
-    The fade is ``hand_ramp_px`` (about 20 card pixels once placed). A hand
+    The fade is ``hand_ramp_px`` (about 36 card pixels once placed). A hand
     inside the frame stays opaque. A wide run above ``shoulder_y`` is the head
     and is not faded. There is no fade along the bottom.
     """
