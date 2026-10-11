@@ -718,6 +718,7 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 thumbs.append(
                     f'<div id="{ident}-s{index}" class="range-card">'
                     f'<div class="range-ico">{icon_svg(glyphs[index])}</div><b>{_esc(item)}</b>'
+                    f'<i class="range-fill"></i>'
                     f'{detail_html}</div>')
                 animations.append(_pop(f"#{ident}-s{index}", at))
                 breaths = max(2, int(max(0.4, float(end) - at) / 0.7))
