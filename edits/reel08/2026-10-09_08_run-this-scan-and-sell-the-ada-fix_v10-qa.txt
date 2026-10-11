@@ -1,0 +1,40 @@
+Reel 08 v10 QA receipt
+Master: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v10.mp4
+sha256: abc0f2d87551ebb88ead5d0f3d6281488a8ef86ca3c942055d8843d49233853c
+98,812,411 bytes · 53.633 s · 1609 frames · -14.20 LUFS · -1.62 dBTP
+Scale 0.3555, face target 215 px, crown target 70 px. Same as v9.
+24 shots, last edge 53.616. Cut list matches v9. Full-face captions are 67 px. The matte cache was reused (no refine).
+
+Captions. Full-face ink height median is 50 px. Pin clearance minimum is 35 px (floor 20, ideal 30). Beard clearance minimum is 94 px. Split crown-baseline gap median is 40 px, minimum 22 px. The checker measured 327 full-face caption frames, 317 of 319 inner F frames.
+
+SFX. Brandon's three files, gain only. Pop 1 and Ui Sound 12 peak at -0.18 dBFS. Pops are logged apart from the capped cues. Roles: 40 pop, 47 tick, 5 negative, 3 landing, 1 whoosh. The capped set is 9 cues, about 10 per minute. The whoosh is the callout swish, not a pop-on.
+
+Landings. 56 accessibility errors: Ui Sound 12 ticks 7.483, 7.517, 7.550, 7.570, then Wrong Answer on 7.570. ERRORS LEFT: 24 Ui Sound 12 ticks from 20.540 through 21.340, then Wrong Answer on 21.340. AI BUSINESS IDEAS: 19 Ui Sound 12 ticks from 49.538 through 50.271, then Bell 5 on 50.271. Ka-Ching lands the receipt at 22.050. The opening "Sued" header, the accessibility-errors hero, and "One bakery settled" also land on Wrong Answer. The WEBSITE keyword box pops at 44.476, the first visible frame. The Offer header pops at 39.679. No Pop 2, no Ui 30.
+
+Log: 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v10-sfx-log.json (schema kallaway-sfx-log/v2, pops and cues separated).
+
+QA matte checker (production/editor/qa/matte_check.py) on this master, with the v9 cut diff and the join list. Exit 0.
+
+=== SUMMARY 2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v10.mp4
+frames 1609 | split 1280 | layout runs S:0.000-4.133 F:4.133-6.300 S:6.300-23.800 F:23.800-27.300 S:27.300-35.500 F:35.500-37.267 S:37.267-42.233 F:42.233-44.233 S:44.233-52.100 F:52.100-53.633
+cuts 91 (52 from --cuts) | cut-window split frames checked 166
+  cut-window peak rough      0.771 at f1266 (limit 1.0)
+  cut-window peak green_in   0.000 at f1545 (limit 0.03)
+  cut-window peak green_out  0.005 at f0 (limit 0.05)
+  cut-window peak specks     0.000 at f1545 (limit 3)
+  cut-window peak dark_above 0.013 at f263 (limit 0.05)
+  index proxy worst margin 1.0 px at f617 (fail if next>=5.0 and next>=2.0x prev; 53 picture cuts)
+  reel rough median   0.44 (limit 1.0)
+  reel jitter median  0.33 (limit 1.0)
+  reel jitter p90     0.43 (limit 2.0)
+  reel rough p90 0.63 max 0.84; jitter max 0.57
+  plate max deviation 0.8 at f711 (limit 6.0)
+  foliage largest blob 71 px at f562 (limit <120)
+  split caption gap crown-baseline median 40 p10 31 min 22 at f1459 (25..50, never <18)
+  split caption gap crown-ink bottom (incl. descenders) median 38 min 12 at f1164; 2D min dist 19px at f610 (info / touch gate <=1)
+  full-face beard clearance min 94 at f151 (>=25)
+  full-face pin clearance (baseline) min 35 at f137 (>=20, ideal 30)
+  full-face frames with caption measured: 327 (inner F frames 317 of 319)
+  full-face caption ink height median 50 px (text block incl. ascenders/descenders; 67 px type ~ 49 px cap height)
+FAIL frames: 0  WARN frames: 0
+RESULT: PASS
