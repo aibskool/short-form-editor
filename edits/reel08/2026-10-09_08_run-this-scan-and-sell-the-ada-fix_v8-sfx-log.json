@@ -1,0 +1,131 @@
+{
+  "schema": "kallaway-sfx-log/v1",
+  "cues": [
+    {
+      "time": 0.0,
+      "file": "Boom 14.mp3",
+      "pack_file": "07 Booms/Boom 14.mp3",
+      "lands_on": "phone_frame",
+      "label": "Cold Slam"
+    },
+    {
+      "time": 1.722,
+      "file": "Fast Whip.wav",
+      "pack_file": "03 Whooshes/Fast Whip.wav",
+      "lands_on": "hero_board: ACCESSIBILITY ERRORS",
+      "label": "Panel slide"
+    },
+    {
+      "time": 1.855,
+      "file": "Pop 3.mp3",
+      "pack_file": "27 Pops, Zaps & Switches/Pop 3.mp3",
+      "lands_on": "hero_board: ACCESSIBILITY ERRORS",
+      "label": "Word Pop"
+    },
+    {
+      "time": 6.336,
+      "file": "Quick Swing B.wav",
+      "pack_file": "03 Whooshes/Quick Swing B.wav",
+      "lands_on": "chapter header: The Scan",
+      "label": "Chapter header"
+    },
+    {
+      "time": 7.649,
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Number Counter"
+    },
+    {
+      "time": 8.464,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: ACCESSIBILITY ERRORS",
+      "label": "Number Counter"
+    },
+    {
+      "time": 17.956,
+      "file": "Movement Swipe Whoosh 2.mp3",
+      "pack_file": "03 Whooshes/Movement Swipe Whoosh 2.mp3",
+      "lands_on": "chapter header: The Fix",
+      "label": "Chapter header"
+    },
+    {
+      "time": 20.639,
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Number Counter"
+    },
+    {
+      "time": 21.423,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: ERRORS LEFT",
+      "label": "Number Counter"
+    },
+    {
+      "time": 22.246,
+      "file": "Bell 6.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 6.wav",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "List Tick"
+    },
+    {
+      "time": 22.249,
+      "file": "Cash Register Ka Ching.mp3",
+      "pack_file": "35 Money & Cash/Cash Register Ka Ching.mp3",
+      "lands_on": "quote_card: CHARGE THE CLIENT",
+      "label": "Money Shot"
+    },
+    {
+      "time": 27.567,
+      "file": "Simple Whoosh 1.wav",
+      "pack_file": "03 Whooshes/Simple Whoosh 1.wav",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance"
+    },
+    {
+      "time": 30.73,
+      "file": "Fast Whip.wav",
+      "pack_file": "03 Whooshes/Fast Whip.wav",
+      "lands_on": "quote_card: One bakery settled",
+      "label": "Graphic entrance"
+    },
+    {
+      "time": 32.11,
+      "file": "Quick Swing B.wav",
+      "pack_file": "03 Whooshes/Quick Swing B.wav",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance"
+    },
+    {
+      "time": 37.6,
+      "file": "Movement Swipe Whoosh 2.mp3",
+      "pack_file": "03 Whooshes/Movement Swipe Whoosh 2.mp3",
+      "lands_on": "phone_frame",
+      "label": "Graphic entrance"
+    },
+    {
+      "time": 39.7,
+      "file": "Simple Whoosh 1.wav",
+      "pack_file": "03 Whooshes/Simple Whoosh 1.wav",
+      "lands_on": "chapter header: The Offer",
+      "label": "Chapter header"
+    },
+    {
+      "time": 49.701,
+      "file": "Ui 30.wav",
+      "pack_file": "24 UI Sounds/Ui 30.wav",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Number Counter"
+    },
+    {
+      "time": 50.485,
+      "file": "Bell 5.wav",
+      "pack_file": "28 Dings, Bells & Chimes/Bell 5.wav",
+      "lands_on": "counter: AI BUSINESS IDEAS",
+      "label": "Number Counter"
+    }
+  ]
+}

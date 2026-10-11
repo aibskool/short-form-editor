@@ -1,0 +1,55 @@
+{
+  "verified_at": "2026-10-11T08:27:46.972383+00:00",
+  "output_filename": "2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4",
+  "bytes": 98540521,
+  "sha256": "c6a103f890b61985a0b161188bb12d17bba9abf92308eeceb6dedaa40d420a26",
+  "complete_decode": "passed",
+  "video_reencoded_during_finalization": false,
+  "target_lufs": -14.0,
+  "target_true_peak_dbtp": -1.0,
+  "raw_audio_measurement": {
+    "input_i": "-14.41",
+    "input_tp": "0.27",
+    "input_lra": "2.60",
+    "input_thresh": "-24.49",
+    "output_i": "-14.30",
+    "output_tp": "-1.80",
+    "output_lra": "2.70",
+    "output_thresh": "-24.39",
+    "normalization_type": "dynamic",
+    "target_offset": "0.30"
+  },
+  "pre_aac_limiter_ceiling_dbtp": -1.8,
+  "codec_headroom_db": 0.8,
+  "final_integrated_lufs": -14.15,
+  "final_true_peak_dbtp": -1.74,
+  "final_loudness_range_lu": 2.7,
+  "duration_seconds": 54.066667,
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "h264",
+      "width": 1080,
+      "height": 1920,
+      "r_frame_rate": "30/1",
+      "sample_rate": null,
+      "channels": null,
+      "duration": "54.066667",
+      "nb_frames": "1622"
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "aac",
+      "width": null,
+      "height": null,
+      "r_frame_rate": "0/0",
+      "sample_rate": "48000",
+      "channels": 2,
+      "duration": "54.058000",
+      "nb_frames": "2535"
+    }
+  ],
+  "visual_review": "Encoded cut-frame check: 93 frames, the first three after each of 31 cuts, 0 failed. Max green_in 0.09, green_out 0.14, olive 0.084. Limits are 0.11, 0.155, and 0.22.",
+  "subjective_sound_match": "not claimed",
+  "true_peak_review_needed": false
+}

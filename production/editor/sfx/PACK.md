@@ -21,6 +21,7 @@ time-stretch, or filter. `04 Swishes & Swooshes/Backwards Swoosh.wav` peaks
 above full scale (about +12 dBFS in the supplied copy; the pack note says
 +13.4) and is turned down to 0 dBFS.
 
-Levels follow the pack cheat sheet, relative to the voice, with no music:
-whooshes −8 to −12 dB, impacts −4 to −8 dB, text pops −14 to −18 dB, beds
-−20 to −26 dB. The master is −14 LUFS with a −1 dBTP ceiling.
+Levels follow playbook S5, relative to the voice, with no music:
+pops, clicks, and ticks −10 to −16 dB, whooshes −8 to −12 dB, dings and the
+cash register −8 to −12 dB, impacts −4 to −8 dB, counter beds −20 to −26 dB.
+Face layout cuts stay silent. The master is −14 LUFS with a −1 dBTP ceiling.
