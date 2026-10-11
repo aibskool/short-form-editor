@@ -918,12 +918,6 @@
      },
      {
       "t": 18.5,
-      "role": "pop",
-      "trigger": "cta-plan",
-      "gain": -4.5
-     },
-     {
-      "t": 18.5,
       "role": "shutter",
       "trigger": "flash",
       "gain": 3.6
@@ -937,7 +931,7 @@
     ],
     "caption_baseline": 1462,
     "title_off": 4.9,
-    "cta_t": 18.5
+    "cta_t": null
    }
   },
   "09": {
@@ -1509,9 +1503,9 @@
       "gain": -4.5
      },
      {
-      "t": 22.6,
+      "t": 23.9,
       "role": "pop",
-      "trigger": "cta-sites",
+      "trigger": "hero-PORTAL",
       "gain": -4.5
      },
      {
@@ -1523,7 +1517,7 @@
     ],
     "caption_baseline": 1462,
     "title_off": 6.133,
-    "cta_t": 22.6
+    "cta_t": null
    }
   }
  }

@@ -13,6 +13,14 @@ class BrandonPlanTest(unittest.TestCase):
     def setUpClass(cls):
         cls.plans = {reel: plan_reel(reel) for reel in ("07", "09")}
 
+    def test_these_reels_end_without_a_cta_card(self):
+        for plan in self.plans.values():
+            self.assertIsNone(plan["cta_t"])
+            self.assertFalse(any(str(c.trigger).startswith("cta-") for c in plan["cues"]))
+            kicker, hero = Overlay(plan).hero_at(plan["duration"] - 0.15)
+            self.assertIsNone(hero)
+            self.assertIsNone(kicker)
+
     def test_keywords_are_spoken_and_approved(self):
         for plan in self.plans.values():
             word = norm_word(plan["spec"]["keyword"])

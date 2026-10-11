@@ -573,7 +573,8 @@ def _emphasis_windows(specs, words, duration, cta_t):
         elif spec.get("count"):
             start = w["out"] - (len(spec["count"]) - 1) * (3 / FPS)
         hold = min(spec.get("hold", 0.95), 0.72)
-        end = min(max(w["out"], start) + hold, cta_t - 0.36, duration)
+        cap = duration if cta_t is None else cta_t - 0.36
+        end = min(max(w["out"], start) + hold, cap, duration)
         start = max(0.0, start)
         if end - start < 0.30:
             continue
@@ -638,7 +639,8 @@ def build_cues(words, shots, windows, negatives, cta_t, duration, keyword):
             continue
         kept_neg.append(t)
         cues.append(Cue("negative", t, f"negative-{spec['word']}"))
-    cues.append(Cue("pop", qframe(cta_t), f"cta-{keyword}"))
+    if cta_t is not None:
+        cues.append(Cue("pop", qframe(cta_t), f"cta-{keyword}"))
     # Dark impact under up to four hero pops, skipped when a thump is already there.
     impacts = 0
     thumps = {round(c.t, 3) for c in cues if c.role == "thump"}
@@ -658,7 +660,8 @@ def green_intervals(windows, cta_t, duration, title_off):
     spans = [(0.0, title_off)]  # banner green phrase
     for w in windows:
         spans.append((w["t0"], w["t1"]))
-    spans.append((cta_t, duration))
+    if cta_t is not None:
+        spans.append((cta_t, duration))
     spans.sort()
     merged = []
     for a, b in spans:
@@ -814,7 +817,8 @@ def preview(plan):
         push = f" push{s.push:.2f}" if s.push else ""
         print(f"    {s.t0:6.2f}-{s.t1:6.2f} {s.kind:5} x{s.scale:.2f}{push}{bw}{flag} {s.plate}")
     green = sum(b - a for a, b in plan["green"])
-    print(f"  title off {plan['title_off']:.2f}  cta {plan['cta_t']:.2f}  green {green/dur:.0%}  episodes {len(plan['green'])}")
+    cta = "none" if plan.get("cta_t") is None else f"{plan['cta_t']:.2f}"
+    print(f"  title off {plan['title_off']:.2f}  cta {cta}  green {green/dur:.0%}  episodes {len(plan['green'])}")
     for a, b in plan["green"]:
         print(f"    green {a:.2f}-{b:.2f}")
     print(f"  cues {len(plan['cues'])}  (~{len(plan['cues'])/dur*60:.0f}/min before merge)")
@@ -1469,13 +1473,7 @@ class Overlay:
         return self.captions[text]
 
     def hero_at(self, t):
-        if t >= self.plan["cta_t"]:
-            key = self.plan["spec"]["keyword"].upper()
-            hero = f'"{key}"'
-            if hero not in self.heroes:
-                self.heroes[hero] = _fit_cta(hero)
-                self.kickers["Comment"] = make_kicker("Comment")
-            return self.kickers["Comment"], self.heroes[hero]
+        # 07 and 09 have no comment card. A quoted keyword here was the CTA.
         for win in self.plan["windows"]:
             if win["t0"] <= t < win["t1"]:
                 label = self._count_label(win, t) if win.get("count") else win["hero"]

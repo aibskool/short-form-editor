@@ -79,10 +79,44 @@ def apply_v2(plan):
         if plan["shots"][0].kind == "face":
             plan["shots"][0].push = 0.0
     _sync_feature_pops(plan)
+    _drop_cta(plan)
+    plan["green"] = B.green_intervals(plan["windows"], plan["cta_t"], plan["duration"], plan["title_off"])
     plan["v1"] = v1
     plan["v2"] = _snapshot(plan)
     _write_locks(plan)
     return plan
+
+
+def _drop_cta(plan):
+    """These two reels have no comment card, Vault line, or end card.
+
+    The picture already ends on the last spoken word. 09 keeps the 50 ms
+    extension on 'difference' and the 10 ms fade the voice cutter applies
+    on the way into the closing silence. The portal hero was clipped only
+    to leave the card a clear face; with the card gone it comes back, so
+    the reel still has four green episodes.
+    """
+    plan["cues"] = [c for c in plan["cues"] if not str(c.trigger).startswith("cta-")]
+    if plan["reel"] == "09":
+        _restore_hero(plan, "PORTAL")
+    plan["cta_t"] = None
+
+
+def _restore_hero(plan, hero):
+    if any(w.get("hero") == hero for w in plan["windows"]):
+        return
+    spec = next(s for s in plan["spec"]["emphasis"] if s["hero"] == hero)
+    wins = B._emphasis_windows([spec], plan["words"], plan["duration"], None)
+    if not wins:
+        return
+    win = wins[0]
+    for other in plan["windows"]:
+        if win["t0"] < other["t1"] + 0.45 and other["t0"] < win["t1"] + 0.45:
+            return
+    plan["windows"].append(win)
+    plan["windows"].sort(key=lambda w: w["t0"])
+    plan["cues"].append(B.Cue("pop", B.qframe(max(0.0, win["t0"])), f"hero-{hero}"))
+    plan["cues"].sort(key=lambda c: (c.t, c.role))
 
 
 def _snapshot(plan):
@@ -100,7 +134,7 @@ def _snapshot(plan):
         ],
         "caption_baseline": B.CAPTION_BOTTOM,
         "title_off": round(float(plan["title_off"]), 3),
-        "cta_t": round(float(plan["cta_t"]), 3),
+        "cta_t": None if plan.get("cta_t") is None else round(float(plan["cta_t"]), 3),
     }
 
 
@@ -750,7 +784,7 @@ def write_diff(dest, plan):
         "caption_baseline": {"v1": B.CAPTION_BOTTOM, "v2": B.CAPTION_BOTTOM},
         "duration": {"v1": v1.get("duration"), "v2": round(float(plan["duration"]), 3)},
         "title_off": {"v1": v1.get("title_off"), "v2": round(float(plan["title_off"]), 3)},
-        "cta_t": {"v1": v1.get("cta_t"), "v2": round(float(plan["cta_t"]), 3)},
+        "cta_t": {"v1": v1.get("cta_t"), "v2": None if plan.get("cta_t") is None else round(float(plan["cta_t"]), 3)},
         "cuts": paired,
         "cues_v2": [
             {"t": round(c.t, 3), "role": c.role, "trigger": c.trigger, "gain": round(c.gain, 2)}
