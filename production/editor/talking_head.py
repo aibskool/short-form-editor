@@ -259,6 +259,10 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     mask = project / "person-mask.mp4"
     if picture.is_file() and mask.is_file() and produced:
         assert_matte_tracks_picture(picture, mask, produced, fps)
+    pinned_y = (lock or {}).get("caption_y") or {}
+    for shot in timeline.get("shots") or []:
+        if shot.get("id") in pinned_y:
+            shot["caption_y"] = float(pinned_y[shot["id"]])
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)
