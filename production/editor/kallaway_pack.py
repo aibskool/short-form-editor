@@ -345,7 +345,10 @@ def count_roll(value, span=0.9, fps=30.0):
     fps = float(fps or 30.0)
     offsets, shown = _power2_steps(value, float(span), fps)
     gaps = [b - a for a, b in zip(offsets, offsets[1:])]
-    if offsets and (not gaps or min(gaps) >= 0.050 - 1e-3):
+    too_fast = bool(offsets) and (
+        offsets[0] < 0.050 - 1e-3 or any(gap < 0.050 - 1e-3 for gap in gaps)
+    )
+    if offsets and not too_fast:
         return offsets, shown
     if len(shown) > 10:
         shown = _quantize_roll(value, 9)
@@ -1179,6 +1182,9 @@ def _limit_density(flat):
             slot = "chapter"
         elif cue.get("label") == "Graphic entrance":
             slot = "graphic"
+        elif cue.get("role") == "tick":
+            # The roll already spent one slot. It does not share the bell's combo cap.
+            slot = "tick-roll"
         else:
             slot = str(cue.get("combo") or "")
         cap = caps.get(slot)
@@ -1190,6 +1196,7 @@ def _limit_density(flat):
     for index in audible:
         if index not in keep_ids:
             flat[index]["mute"] = True
+            flat[index]["mute_reason"] = "density"
     _restore_isolated_entrances(flat, budget=budget, duration=duration)
     beds = [
         index for index, cue in enumerate(flat)

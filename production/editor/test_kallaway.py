@@ -1459,6 +1459,36 @@ class KallawayTests(unittest.TestCase):
         self.assertIn("Cold Slam", heard)
         self.assertIn("Chapter header", heard)
 
+    def test_the_charged_count_tick_keeps_its_own_slot(self):
+        from kallaway_pack import _limit_density
+        cues = [
+            {"at": 0.0, "sound_at": 0.0, "combo": "2", "label": "Cold Slam", "kind": "bass", "under_db": 10},
+            {"at": 1.2, "sound_at": 1.2, "combo": "8", "label": "Panel slide", "kind": "whoosh", "under_db": 10},
+            {"at": 6.0, "sound_at": 6.0, "combo": "25", "label": "Number Counter", "kind": "ding", "role": "landing", "under_db": 10},
+            {"at": 6.0, "sound_at": 6.0, "combo": "25", "label": "Count tick", "kind": "ticking", "role": "tick", "under_db": 10},
+            {"at": 6.07, "sound_at": 6.07, "combo": "25", "label": "Count tick", "kind": "ticking", "role": "tick", "under_db": 10, "budget_free": True},
+        ]
+        _limit_density(cues)
+        charged = next(cue for cue in cues if cue.get("role") == "tick" and not cue.get("budget_free"))
+        bell = next(cue for cue in cues if cue.get("kind") == "ding")
+        self.assertFalse(charged.get("mute"))
+        self.assertFalse(bell.get("mute"))
+
+    def test_column_contour_smooth_takes_out_a_stair(self):
+        from kallaway_matte import _smooth_column_contour
+        stair = np.zeros((80, 40), dtype=bool)
+        for x in range(40):
+            stair[20 + (x % 2) * 10:, x] = True
+        smoothed = _smooth_column_contour(stair)
+        tops = [int(np.argmax(smoothed[:, x])) for x in range(40)]
+        self.assertLessEqual(max(abs(b - a) for a, b in zip(tops, tops[1:])), 2)
+        slope = np.zeros((80, 40), dtype=bool)
+        for x in range(40):
+            slope[10 + x // 2:, x] = True
+        rounded = _smooth_column_contour(slope)
+        for x in range(40):
+            self.assertLessEqual(abs(int(np.argmax(rounded[:, x])) - (10 + x // 2)), 3)
+
     def test_a_second_phone_keeps_its_whoosh_near_20_per_minute(self):
         from kallaway_pack import _limit_density
         cues = []
@@ -1620,6 +1650,12 @@ class KallawayTests(unittest.TestCase):
         cleared_land = next(event for event in cleared if event.get("role") == "landing" or event.get("kind") == "ding")
         self.assertIn("Bell", cleared_land["file"])
         self.assertNotIn("Wrong Answer", cleared_land["file"])
+        slow7, land7 = count_tick_times(1.0, 7)
+        self.assertEqual(len(slow7), 7)
+        self.assertGreaterEqual(slow7[0] - 1.0, 0.05)
+        self.assertGreaterEqual(min(b - a for a, b in zip(slow7, slow7[1:])), 0.05)
+        self.assertGreaterEqual(slow7[-1] - 1.0, 0.4)
+        self.assertEqual(slow7[-1], land7)
         times, land = count_tick_times(6.0, 15)
         offsets, shown = count_roll(15)
         self.assertEqual(times[-1], land)
