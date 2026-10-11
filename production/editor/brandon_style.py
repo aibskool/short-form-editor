@@ -45,16 +45,19 @@ APPROVED = {
 }
 
 # Bible start gains (section 11.2). Files are otherwise untouched.
+# v2 levels sit on the v1 starts: Wrong Answer -8 dB, Pop 6 -6 dB,
+# shutters and ticks +5 dB so they read on a phone speaker.
 GAINS = {
     "pop": -4.5,
-    "thump": -6.0,
-    "negative": -1.8,
-    "tick": -0.2,
-    "shutter": -1.4,
+    "thump": -12.0,
+    "negative": -9.8,
+    "tick": 4.8,
+    "shutter": 3.6,
     "landing": -8.3,
     "ding": -7.0,
     "impact": -5.0,
 }
+HERO_GLYPH_TOP = 1044  # green word top, inside y 1010-1080
 SFX = {
     "pop": "27 Pops, Zaps & Switches/Pop 1.mp3",
     "thump": "27 Pops, Zaps & Switches/Pop 6.mp3",
@@ -701,8 +704,8 @@ def reel_specs(reel):
             ],
             "bw": "gone",
             "inserts": [
-                {"word": "Option", "occ": 0, "dur": 4.00, "kind": "phone", "plate": "07web"},
-                {"word": "watch", "dur": 3.50, "kind": "bleed", "plate": "07dark"},
+                {"word": "Option", "occ": 0, "dur": 4.00, "kind": "phone", "plate": "07web", "fit": "phone"},
+                {"word": "watch", "dur": 3.50, "kind": "bleed", "plate": "07dark", "fit": "card"},
             ],
         }
     if reel == "09":
@@ -714,10 +717,10 @@ def reel_specs(reel):
             "title_green": "Functionality",
             "emphasis": [
                 {"word": "unlock", "kicker": "upgrade to", "hero": "UNLOCK", "hold": 0.95},
-                {"word": "grand", "occ": 0, "kicker": "start charging", "hero": "10", "hold": 0.95,
-                 "count": [2, 4, 6, 8, 10], "landing": True},
-                {"word": "fifteen", "kicker": "builds", "hero": "15", "hold": 1.20,
-                 "count": [5, 10, 15], "spoken": [("five", 0), ("ten", 0), ("fifteen", 0)]},
+                {"word": "grand", "occ": 0, "kicker": "start charging", "hero": "$10K", "hold": 0.95,
+                 "count": ["$2K", "$4K", "$6K", "$8K", "$10K"], "landing": True},
+                {"word": "fifteen", "kicker": "builds", "hero": "$15K", "hold": 1.20,
+                 "count": ["$500", "$10K", "$15K"], "spoken": [("five", 0), ("ten", 0), ("fifteen", 0)]},
                 {"word": "functionality", "occ": 0, "kicker": "custom", "hero": "FUNCTIONALITY", "hold": 1.10},
                 {"word": "portal", "kicker": "a client", "hero": "PORTAL", "hold": 1.05},
             ],
@@ -727,9 +730,9 @@ def reel_specs(reel):
             ],
             "bw": None,
             "inserts": [
-                {"word": "Claude", "dur": 3.80, "kind": "phone", "plate": "09ui"},
+                {"word": "Claude", "dur": 3.80, "kind": "phone", "plate": "09ui", "fit": "phone"},
                 {"word": "booking", "dur": 3.60, "kind": "mg", "plate": "features"},
-                {"word": "design", "dur": 3.50, "kind": "bleed", "plate": "09code"},
+                {"word": "design", "dur": 3.50, "kind": "bleed", "plate": "09code", "fit": "crop"},
             ],
         }
     raise SystemExit(f"unknown reel {reel}")
@@ -771,7 +774,7 @@ def plan_reel(reel):
     cues = build_cues(words, shots, windows, spec["negatives"], cta_t, duration, spec["keyword"])
     title_off = next((s.t0 for s in shots if s.flash), 6.0)
     green = green_intervals(windows, cta_t, duration, title_off)
-    return {
+    plan = {
         "reel": reel,
         "spec": spec,
         "words": words,
@@ -785,6 +788,8 @@ def plan_reel(reel):
         "green": green,
         "inserts": inserts,
     }
+    from brandon_v2 import apply_v2
+    return apply_v2(plan)
 
 
 def preview(plan):
@@ -1064,6 +1069,28 @@ def make_kicker(text):
     return im
 
 
+def _money(value, win):
+    if isinstance(value, str):
+        return value
+    if win["hero"].startswith("$"):
+        return f"${value:,}"
+    return str(value)
+
+
+def _fit_cta(text):
+    """Quoted keyword at 52% of the frame width (the 50-55% band)."""
+    glyph = _fit_hero(text, max_w=int(W * 0.55), target_h=240)
+    target = int(round(W * 0.52))
+    if glyph.size[0] < 8:
+        return _glow(glyph)
+    scale = target / glyph.size[0]
+    glyph = glyph.resize((target, max(1, int(round(glyph.size[1] * scale)))), Image.Resampling.LANCZOS)
+    arr = np.array(glyph)
+    mask = arr[:, :, 3] > 120
+    arr[mask, 0], arr[mask, 1], arr[mask, 2], arr[mask, 3] = 0x42, 0xFF, 0x40, 255
+    return _glow(Image.fromarray(arr, "RGBA"))
+
+
 def _caption_safe(image):
     """Keep the caption band free of plate whites so the detector locks onto the word."""
     im = image.convert("RGB")
@@ -1071,15 +1098,26 @@ def _caption_safe(image):
     return im
 
 
-def phone_plate(image):
+def phone_plate(image, bottom=None):
     shot = image.convert("RGB")
     plate = Image.new("RGB", (W, H), (0, 0, 0))
     draw = ImageDraw.Draw(plate)
-    pw, ph = int(W * 0.82), int(H * 0.72)
-    # White line-art phone, flat, no tilt.
-    x, y = (W - pw) // 2, (H - ph) // 2 + 30
+    if bottom is None:
+        pw, ph = int(W * 0.82), int(H * 0.72)
+        x, y = (W - pw) // 2, (H - ph) // 2 + 30
+    else:
+        # Whole screenshot, contained, with the handset ending at or above `bottom`.
+        top = 168
+        ph = bottom - top
+        pw = int(ph * shot.size[0] / max(1, shot.size[1]))
+        pw = min(pw, int(W * 0.88))
+        ph = int(pw * shot.size[1] / max(1, shot.size[0]))
+        if top + ph > bottom:
+            ph = bottom - top
+            pw = int(ph * shot.size[0] / max(1, shot.size[1]))
+        x, y = (W - pw) // 2, top
     draw.rounded_rectangle([x, y, x + pw, y + ph], radius=46, outline=(255, 255, 255), width=8)
-    inner = shot.resize((pw - 28, ph - 28), Image.Resampling.LANCZOS)
+    inner = shot.resize((max(1, pw - 28), max(1, ph - 28)), Image.Resampling.LANCZOS)
     plate.paste(inner, (x + 14, y + 14))
     return _caption_safe(plate)
 
@@ -1123,10 +1161,10 @@ def mg_plate(name):
         d.line([300, 860, 780, 1180], fill=(255, 255, 255), width=8)
         d.line([780, 860, 300, 1180], fill=(255, 255, 255), width=8)
     elif name == "features":
-        labels_y = (420, 700, 960)
+        # Three labeled cards, all ending above the caption. Icons pop in the overlay.
+        labels_y = (300, 540, 780)
         for y in labels_y:
-            d.rounded_rectangle([220, y, 860, y + 250], radius=28, outline=(255, 255, 255), width=6)
-            d.ellipse([270, y + 70, 370, y + 170], outline=(255, 255, 255), width=5)
+            d.rounded_rectangle([180, y, 900, y + 200], radius=28, outline=(255, 255, 255), width=6)
     else:
         d.rectangle([200, 560, 880, 1060], outline=(255, 255, 255), width=6)
     return _caption_safe(im)
@@ -1141,12 +1179,17 @@ def build_plates(plan, work):
         if ins["kind"] == "mg":
             img = mg_plate(plate)
         else:
-            src = SCREEN[plate]
-            if src.suffix.lower() == ".png":
+            src = SCREEN.get(plate)
+            if plate == "09form":
+                img = grab_frame(SCREEN["09code"], 7.0)
+            elif src is None:
+                img = Image.new("RGB", (W, H), (0, 0, 0))
+            elif src.suffix.lower() == ".png":
                 img = Image.open(src)
             else:
                 img = grab_frame(src, 1.0 if plate != "09code" else 7.0)
-            img = phone_plate(img) if ins["kind"] == "phone" else bleed_plate(img)
+            from brandon_v2 import prepare_plate
+            img = prepare_plate(plate, img, ins.get("fit"), phone_plate, bleed_plate)
         path = work / f"plate_{plate}.png"
         img.save(path)
         plates[plate] = path
@@ -1323,12 +1366,14 @@ def render_base(plan, work):
                 lst.write_text("".join(f"file '{p}'\n" for p in bits))
                 ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), *ENC, str(dest))
             dest = _ensure(dest, n, work)
+            # Hard cut at every take change. A nod inside the take is a 2-frame
+            # hold, never a dissolve of two faces.
             jumps = [t - shot.t0 for t in _jump_times(plan["spans"], shot.t0, shot.t1)]
-            jumps += _spike_times(dest)
-            jumps = sorted(set(round(t, 3) for t in jumps))
-            if jumps:
-                softened = work / f"soft_{i:02d}.mp4"
-                dest = _soften_jumps(dest, softened, jumps, work, frames_n=10)
+            spikes = [t for t in _spike_times(dest) if not any(abs(t - j) < 0.08 for j in jumps)]
+            if spikes:
+                from brandon_v2 import freeze_spikes
+                frozen = work / f"holdjump_{i:02d}.mp4"
+                dest = freeze_spikes(dest, frozen, spikes, work)
                 dest = _ensure(dest, n, work)
             prev = dest
         else:
@@ -1340,17 +1385,19 @@ def render_base(plan, work):
     lst.write_text("".join(f"file '{p}'\n" for p in parts))
     base = work / "base.mp4"
     ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), *ENC, str(base))
+    from brandon_v2 import freeze_spikes, mask_pins
     starts = [s.t0 for s in plan["shots"] if s.t0 > 0.05]
-    softened = work / "base_soft.mp4"
+    held = work / "base_hold.mp4"
     spikes = []
     for t in _spike_times(base, thresh=10.2):
         if any(abs(t - b) < 0.12 for b in starts):
             continue
         spikes.append(t)
     if spikes:
-        _soften_jumps(base, softened, spikes, work, frames_n=6)
-        return softened
-    return base
+        base = freeze_spikes(base, held, spikes, work, frames_n=2)
+    faces = [(s.t0, s.t1) for s in plan["shots"] if s.kind == "face"]
+    masked = work / "base_pin.mp4"
+    return mask_pins(base, masked, faces, work)
 
 
 def _paste(frame, sprite, cx, bottom=None, top=None):
@@ -1401,9 +1448,12 @@ class Overlay:
         words = self.plan["words"]
         current = None
         for w in words:
-            if w["out"] - 1 / FPS <= t:
+            # On a real pause, the next word waits until it is spoken.
+            prev_end = words[w["idx"] - 1]["out_end"] if w["idx"] else -1
+            early = 0 if prev_end >= 0 and w["out"] - prev_end >= 0.10 else 1 / FPS
+            if w["out"] - early <= t:
                 current = w
-            if w["out"] > t:
+            if w["out"] > t + 1 / FPS:
                 break
         if current is None:
             return None
@@ -1431,7 +1481,7 @@ class Overlay:
             key = self.plan["spec"]["keyword"].upper()
             hero = f'"{key}"'
             if hero not in self.heroes:
-                self.heroes[hero] = _glow(_fit_hero(hero, target_h=132))
+                self.heroes[hero] = _fit_cta(hero)
                 self.kickers["Comment"] = make_kicker("Comment")
             return self.kickers["Comment"], self.heroes[hero]
         for win in self.plan["windows"]:
@@ -1448,13 +1498,11 @@ class Overlay:
     def _count_label(self, win, t):
         vals = win["count"]
         if win.get("spoken"):
-            shown = str(vals[0])
+            shown = _money(vals[0], win)
             for (text, occ), v in zip(win["spoken"], vals):
                 wt = self.plan["words"][find_word(self.plan["words"], text, occ)]["out"]
                 if t + 1e-4 >= wt:
-                    shown = f"${v:,}" if isinstance(v, int) and v >= 100 and win.get("landing") and v >= 300 and "grand" not in win["word"] else str(v)
-                    if win["hero"].startswith("$"):
-                        shown = f"${v:,}"
+                    shown = _money(v, win)
             return shown
         land = win["land"]
         step = 3 / FPS
@@ -1462,10 +1510,7 @@ class Overlay:
         for i in range(len(vals)):
             if t + 1e-4 >= land - (len(vals) - 1 - i) * step:
                 idx = i
-        v = vals[idx]
-        if win["hero"].startswith("$"):
-            return f"${v:,}"
-        return str(v)
+        return _money(vals[idx], win)
 
     def frame(self, index):
         t = index / FPS
@@ -1481,10 +1526,11 @@ class Overlay:
         _paste(fr, self.handle, W // 2, top=36)
         kicker, hero = self.hero_at(t)
         if hero is not None:
-            top = 1048
+            top = HERO_GLYPH_TOP - 48
             _paste(fr, hero, W // 2, top=top)
             if kicker is not None:
                 _paste(fr, kicker, W // 2, bottom=top - 8)
+        self._feature_cards(fr, t)
         cap = self.caption_for(t)
         if cap is not None:
             hard = np.array(cap)
@@ -1497,6 +1543,38 @@ class Overlay:
                 y = int(CAPTION_BOTTOM - glyph_bottom)
                 fr.alpha_composite(cap, (x, y))
         return fr
+
+    def _feature_cards(self, fr, t):
+        shot = next((s for s in self.plan["shots"] if s.t0 <= t < s.t1), None)
+        if shot is None or shot.plate != "features":
+            return
+        pops = self.plan.get("feature_pops") or []
+        font = _font("Montserrat-800.ttf", 42)
+        rows = (300, 540, 780)
+        for row, pop in zip(rows, pops):
+            label = _text_image(pop["label"], font, (255, 255, 255, 255))
+            fr.alpha_composite(label, (340, row + 70))
+            if t + 1 / FPS >= pop["t"]:
+                fr.alpha_composite(self._icon(pop["icon"]), (230, row + 50))
+
+    def _icon(self, kind):
+        if not hasattr(self, "_icons"):
+            self._icons = {}
+        if kind in self._icons:
+            return self._icons[kind]
+        im = Image.new("RGBA", (88, 88), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        if kind == "book":
+            d.rounded_rectangle([8, 14, 80, 74], radius=8, outline=(255, 255, 255, 255), width=4)
+            d.line([44, 14, 44, 74], fill=(255, 255, 255, 255), width=3)
+        elif kind == "calc":
+            d.rounded_rectangle([10, 8, 78, 80], radius=8, outline=(255, 255, 255, 255), width=4)
+            d.rectangle([20, 18, 68, 36], outline=(0x42, 0xFF, 0x40, 255), width=3)
+        else:
+            d.ellipse([28, 8, 60, 40], outline=(255, 255, 255, 255), width=4)
+            d.arc([12, 44, 76, 88], 200, 340, fill=(255, 255, 255, 255), width=4)
+        self._icons[kind] = im
+        return im
 
 
 def render_overlay(plan, work):
@@ -1556,6 +1634,9 @@ def render(reel, dest, work=None):
     if len(voice) < n:
         voice = np.pad(voice, (0, n - len(voice)))
     voice = voice[:n]
+    if plan["reel"] == "09":
+        from brandon_v2 import highpass_voice
+        voice = highpass_voice(voice)
     bed, placed = mix_sfx(plan["cues"], n)
     events = sfx_events(bed)
     per_min = len(events) / plan["duration"] * 60
@@ -1630,7 +1711,7 @@ def render(reel, dest, work=None):
     import hashlib
     digest = hashlib.sha256(dest.read_bytes()).hexdigest()
     receipt = {
-        "style": "brandon-v1",
+        "style": "brandon-v2",
         "reel": plan["reel"],
         "file": str(dest),
         "sha256": digest,
@@ -1650,6 +1731,8 @@ def render(reel, dest, work=None):
         ],
     }
     dest.with_name(dest.stem + "-receipt.json").write_text(json.dumps(receipt, indent=1))
+    from brandon_v2 import write_diff
+    write_diff(dest, plan)
     print("wrote", dest, digest)
     return plan
 
