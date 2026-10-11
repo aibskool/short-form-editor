@@ -110,6 +110,10 @@ def _drop_cta(plan):
         _extend_window(plan, "$15K", 9.72)
         _extend_window(plan, "FUNCTIONALITY", 14.00)
         _extend_window(plan, "PORTAL", 27.20)
+        # The 1.9 s push was measuring 4.9 %/s, just under the 5 %/s line.
+        for shot in plan["shots"]:
+            if shot.kind == "face" and abs(shot.push - 0.11) < 0.001 and 1.85 <= shot.dur <= 2.05:
+                shot.push = 0.14
     plan["cta_t"] = None
 
 
