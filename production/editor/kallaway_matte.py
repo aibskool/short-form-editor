@@ -1511,13 +1511,15 @@ def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
     repaired = refine_frame(np.asarray(rgb), np.asarray(coarse, dtype=np.float32), None)
     if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
         binary = np.asarray(repaired[0]) >= 0.5
-        for _step in range(16):
+        for _step in range(40):
             if not _opening_frame_fails(
                     binary.astype(np.float32), rgb, reference_person, reference_rgb):
                 break
             nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
             if np.array_equal(nxt, binary):
-                break
+                nxt = _shrink_dark_crown(binary, rgb, steps=2, below=8)
+                if np.array_equal(nxt, binary):
+                    break
             binary = nxt
         repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None)
     if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
@@ -1554,14 +1556,16 @@ def _rematte_failed_opening(refined, frames, seed_index):
         refined[index] = refine_frame(rgb, coarse, None)
         if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             binary = np.asarray(refined[index][0]) >= 0.5
-            for _step in range(16):
+            for _step in range(40):
                 failed, _soft, _ring = fringe_fails(rgb, binary.astype(np.float32))
                 dark_failed, _dark = fringe_dark_fails(rgb, binary.astype(np.float32))
                 if not failed and not dark_failed:
                     break
                 nxt = _shrink_dark_crown(_shrink_green_crown(binary, rgb, steps=1), rgb, steps=1)
                 if np.array_equal(nxt, binary):
-                    break
+                    nxt = _shrink_dark_crown(binary, rgb, steps=2, below=8)
+                    if np.array_equal(nxt, binary):
+                        break
                 binary = nxt
             refined[index] = refine_frame(rgb, binary.astype(np.float32), None)
         if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
@@ -1679,10 +1683,13 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
             rgb, coarse_frame = pair
             person, straight, out_a, previous = refine_frame(rgb, coarse_frame, previous)
             reference = None if prev_emit is None else prev_emit
-            repaired = restabilize_crown(
-                person, rgb, coarse_frame,
-                None if reference is None else reference[0],
-                None if reference is None else reference[1])
+            try:
+                repaired = restabilize_crown(
+                    person, rgb, coarse_frame,
+                    None if reference is None else reference[0],
+                    None if reference is None else reference[1])
+            except RuntimeError as exc:
+                raise RuntimeError(f"frame {written}: {exc}") from exc
             if repaired is not None:
                 person, straight, out_a, previous = repaired
                 print(f"repaired crown fringe at frame {written}", flush=True)
