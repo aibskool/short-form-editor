@@ -48,11 +48,19 @@ PLATE_SIGMA = 32.0
 PLATE_DARKEN = 0.12
 # Edge darkening on the plate, so a shoulder fade reads as depth.
 PLATE_VIGNETTE = 0.12
-PLATE_RECIPE = "blur-cover-v1"
+PLATE_RECIPE = "blur-cover-live-v1"
 # Card pixels. Divided by the placed scale when the ramp is baked into the source matte.
 BOUNDARY_RAMP_CARD_PX = 64.0
-# Geometric frame-edge ramp only. A silhouette detector is not part of this token.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v3"
+# A hand that crosses the frame fades only across this many card pixels.
+HAND_RAMP_CARD_PX = 20.0
+# A run this wide, touching the frame, is the torso. A narrower contact is a hand.
+TORSO_RUN_FRACTION = 0.28
+# Geometric frame-edge ramp. Skin outside the short hand ramp stays opaque.
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v5"
+# First frames of a segment are seeded from this many frames later, then checked.
+SEGMENT_OPEN_FRAMES = 3
+# Pixels of matte that sit off the stable silhouette on an opening frame.
+SEGMENT_OPEN_BLOB_PX = 2500
 # The face box may lose this fraction of its raw matte. More than that fails the render.
 HEAD_MATTE_DROP_LIMIT = 0.10
 # Canvas pixels of empty space kept above the hair, clear of titles and panels.
@@ -96,7 +104,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-smooth-feather2.5-despill6-speck200"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage-feather2.5-despill6-speck200"
 
 
 def _run(args):
@@ -774,8 +782,126 @@ def _raw_writer(path, width, height, fps, pix_fmt, codec_args):
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
 
-def refine_and_pack(picture, coarse, mask_out, alpha_out):
-    """Guided upsample, feather, and contact shadow on the picture's frames."""
+def tightened_cut_frames(ranges, fps):
+    """First frame index of each segment after the opening one."""
+    cuts = []
+    acc = 0
+    rate = float(fps or 30)
+    for begin, end in list(ranges or [])[:-1]:
+        acc += max(1, int(round((float(end) - float(begin)) * rate)))
+        cuts.append(acc)
+    return cuts
+
+
+def _segment_open_holds(persons, seed_index, colors=None):
+    """Fail when an opening frame grows a blob the stable frame does not have.
+
+    The first frames of a cut used to inherit the previous shot through the
+    flow stabilizer. A foliage oval shows up as matte that does not touch this
+    segment's silhouette. A hand that moves in those frames stays attached to
+    the body and is not a failure. A green fringe on the extra pixels is.
+    """
+    if seed_index <= 0 or seed_index >= len(persons):
+        return
+    stable = np.asarray(persons[seed_index]) >= 0.5
+    stable_near = ndimage.binary_dilation(stable, iterations=24)
+    for index, person in enumerate(persons[:seed_index]):
+        early = np.asarray(person) >= 0.5
+        extra = early & ~stable_near
+        if not np.any(extra):
+            continue
+        labeled, count = ndimage.label(extra)
+        floating = 0
+        for label in range(1, count + 1):
+            component = labeled == label
+            attached = np.any(ndimage.binary_dilation(component, iterations=2) & stable_near)
+            if not attached:
+                floating += int(component.sum())
+        if floating > SEGMENT_OPEN_BLOB_PX:
+            raise RuntimeError(
+                f"matte on segment frame {index} has {floating}px off the stable silhouette "
+                f"(limit {SEGMENT_OPEN_BLOB_PX})")
+        if colors is None or index >= len(colors):
+            continue
+        pix = np.asarray(colors[index])[extra]
+        if pix.size == 0:
+            continue
+        red = pix[:, 0].astype(np.int16)
+        green = pix[:, 1].astype(np.int16)
+        blue = pix[:, 2].astype(np.int16)
+        foliage = int(np.count_nonzero((green > red + 12) & (green > blue + 12)))
+        if foliage > SEGMENT_OPEN_BLOB_PX:
+            raise RuntimeError(
+                f"matte on segment frame {index} has {foliage}px of foliage off the silhouette "
+                f"(limit {SEGMENT_OPEN_BLOB_PX})")
+
+
+def _write_refined(person, straight, out_a, gray_proc, alpha_proc):
+    height, width = person.shape
+    gray = np.clip(person * 255.0, 0, 255).astype(np.uint8)
+    argb = np.empty((height, width, 4), dtype=np.uint8)
+    argb[:, :, 0] = np.clip(out_a * 255.0, 0, 255).astype(np.uint8)
+    argb[:, :, 1:] = straight
+    gray_proc.stdin.write(np.ascontiguousarray(gray).tobytes())
+    alpha_proc.stdin.write(np.ascontiguousarray(argb).tobytes())
+
+
+def _clear_opening_foliage(refined, frames, seed_index):
+    """Drop green matte the stable frame does not have.
+
+    A cut's first frames can still hold a foliage fringe in the raw matte.
+    A hand that moved is skin-colored and stays. The green pixels outside
+    this segment's silhouette do not.
+    """
+    stable = np.asarray(refined[seed_index][0]) >= 0.5
+    near = ndimage.binary_dilation(stable, iterations=24)
+    for index in range(seed_index):
+        person, straight, out_a, state = refined[index]
+        rgb = np.asarray(frames[index][0])
+        red = rgb[:, :, 0].astype(np.int16)
+        green = rgb[:, :, 1].astype(np.int16)
+        blue = rgb[:, :, 2].astype(np.int16)
+        foliage = (np.asarray(person) > 0.08) & ~near & (green > red + 12) & (green > blue + 12)
+        if not np.any(foliage):
+            continue
+        person = np.array(person, dtype=np.float32, copy=True)
+        out_a = np.array(out_a, dtype=np.float32, copy=True)
+        person[foliage] = 0
+        out_a[foliage] = 0
+        refined[index] = (person, straight, out_a, state)
+
+
+def _refine_opening(frames):
+    """Seed the first frames from the first stable frame of this same segment.
+
+    ``frames`` is (rgb, coarse) pairs. Frame ``SEGMENT_OPEN_FRAMES`` is refined
+    with a cold start, then the frames before it walk backward from that state
+    so a cut does not blend in the previous shot.
+    """
+    count = len(frames)
+    seed_index = min(SEGMENT_OPEN_FRAMES, count - 1)
+    seed = refine_frame(frames[seed_index][0], frames[seed_index][1], None)
+    refined = [None] * count
+    refined[seed_index] = seed
+    state = seed[3]
+    for index in range(seed_index - 1, -1, -1):
+        rgb, coarse = frames[index]
+        refined[index] = refine_frame(rgb, coarse, state)
+        state = refined[index][3]
+    _clear_opening_foliage(refined, frames, seed_index)
+    _segment_open_holds(
+        [item[0] for item in refined[:seed_index + 1]], seed_index,
+        colors=[rgb for rgb, _coarse in frames[:seed_index + 1]])
+    return refined, seed[3]
+
+
+def refine_and_pack(picture, coarse, mask_out, alpha_out, cuts=None):
+    """Guided upsample, feather, and contact shadow on the picture's frames.
+
+    ``cuts`` are the first frame of each segment after the first. The flow
+    state does not cross them. The opening frames of a segment are seeded from
+    the next stable frame in that segment.
+    """
     picture, coarse = Path(picture), Path(coarse)
     mask_out, alpha_out = Path(mask_out), Path(alpha_out)
     if alpha_out.suffix.lower() != ".mov":
@@ -793,27 +919,58 @@ def refine_and_pack(picture, coarse, mask_out, alpha_out):
     alpha_proc = _raw_writer(
         partial_alpha, width, height, fps, "argb",
         ["-c:v", "qtrle", "-pix_fmt", "argb"])
+    cut_at = set(int(frame) for frame in (cuts or []) if int(frame) > 0)
     previous = None
     written = 0
+    next_index = 0
+    opening = []
+
+    def read_pair():
+        rgb_bytes = _read_exact(rgb_proc, rgb_size)
+        mask_bytes = _read_exact(mask_proc, mask_size)
+        if len(rgb_bytes) < rgb_size or len(mask_bytes) < mask_size:
+            return None
+        rgb = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, width, 3).copy()
+        coarse_frame = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(height, width).copy()
+        return rgb, coarse_frame.astype(np.float32) * (1 / 255)
+
+    def emit(person, straight, out_a):
+        nonlocal written
+        _write_refined(person, straight, out_a, gray_proc, alpha_proc)
+        written += 1
+        if written % 100 == 0:
+            print(f"refined {written} frames", flush=True)
+
+    def flush_opening():
+        nonlocal previous, opening
+        if not opening:
+            return
+        refined, previous = _refine_opening(opening)
+        for person, straight, out_a, _state in refined:
+            emit(person, straight, out_a)
+        opening = []
+
     try:
         while True:
-            rgb_bytes = _read_exact(rgb_proc, rgb_size)
-            mask_bytes = _read_exact(mask_proc, mask_size)
-            if len(rgb_bytes) < rgb_size or len(mask_bytes) < mask_size:
+            if next_index in cut_at:
+                flush_opening()
+                previous = None
+                opening = []
+            pair = read_pair()
+            if pair is None:
+                flush_opening()
                 break
-            rgb = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, width, 3)
-            coarse_frame = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(height, width)
-            person, straight, out_a, previous = refine_frame(
-                rgb, coarse_frame.astype(np.float32) * (1 / 255), previous)
-            gray = np.clip(person * 255.0, 0, 255).astype(np.uint8)
-            argb = np.empty((height, width, 4), dtype=np.uint8)
-            argb[:, :, 0] = np.clip(out_a * 255.0, 0, 255).astype(np.uint8)
-            argb[:, :, 1:] = straight
-            gray_proc.stdin.write(np.ascontiguousarray(gray).tobytes())
-            alpha_proc.stdin.write(np.ascontiguousarray(argb).tobytes())
-            written += 1
-            if written % 100 == 0:
-                print(f"refined {written} frames", flush=True)
+            at_cut = next_index in cut_at or not opening and previous is None and next_index == 0
+            next_index += 1
+            if at_cut or opening:
+                opening.append(pair)
+                # The stable frame is in hand, or the next read starts a new segment.
+                if len(opening) > SEGMENT_OPEN_FRAMES or next_index in cut_at:
+                    flush_opening()
+                continue
+            rgb, coarse_frame = pair
+            person, straight, out_a, previous = refine_frame(rgb, coarse_frame, previous)
+            emit(person, straight, out_a)
     finally:
         for proc in (rgb_proc, mask_proc):
             if proc.stdout:
@@ -1083,7 +1240,8 @@ def frame_popout(timeline, head, theme):
         caption_pcts.append(shot["caption_y"])
     full_baseline = (timeline.get("captions") or {}).get("full_baseline_px")
     if full_baseline:
-        full_font = float(layout.get("caption_full_px", 67)) * (width / 1080.0)
+        full_font = float((timeline.get("captions") or {}).get("full_px") or layout.get("caption_full_px", 67))
+        full_font *= width / 1080.0
         full_top = full_caption_top_px(float(full_baseline), full_font, height)
         full_pct = round(100.0 * full_top / height, 2)
         for shot in timeline.get("shots") or []:
@@ -1158,42 +1316,83 @@ def _smoothstep(values):
     return t * t * (3.0 - 2.0 * t)
 
 
-def boundary_gain(height, width, ramp_px, shoulder_y):
-    """Fixed eased ramp at the source frame's left, right, and bottom edges.
+def _row_runs(hot):
+    """Inclusive-exclusive spans where ``hot`` is true."""
+    padded = np.concatenate(([False], np.asarray(hot, dtype=bool), [False]))
+    edges = np.diff(padded.astype(np.int8))
+    return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)))
 
-    The ramp is geometry, not a silhouette. It is 1 above ``shoulder_y`` and,
-    from that row down, eases across ``ramp_px`` at the frame columns and up
-    from the bottom edge. The same mask applies to every frame.
+
+def _skin_mask(rgb):
+    """Bare skin: redder than the shirt and the foliage, and bright enough to be an arm."""
+    color = np.asarray(rgb)
+    red = color[:, :, 0].astype(np.int16)
+    green = color[:, :, 1].astype(np.int16)
+    blue = color[:, :, 2].astype(np.int16)
+    return (red > 90) & (red > green + 12) & (red > blue + 8)
+
+
+def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
+    """Ease only the matte that is actually cut by the left or right frame edge.
+
+    Rows above the shoulder stay at 1. A run that does not touch the frame stays
+    at 1, so a hand inside the frame does not dissolve. A wide run is the torso
+    and fades across ``ramp_px``. A narrow run is a hand or arm and fades across
+    ``hand_ramp_px``. Skin on that wide run stays opaque past the short hand
+    ramp, so an arm that shares the torso's row does not dissolve with the shirt.
+    The last ``hand_ramp_px`` at the frame may still fade. There is no fade along
+    the bottom.
     """
-    height, width = int(height), int(width)
+    alpha = np.asarray(alpha)
+    height, width = alpha.shape
     ramp = max(1.0, float(ramp_px))
-    xs = np.arange(width, dtype=np.float32)
-    ys = np.arange(height, dtype=np.float32)
-    horizontal = _smoothstep(xs / ramp) * _smoothstep((width - 1.0 - xs) / ramp)
-    vertical = _smoothstep((height - 1.0 - ys) / ramp)
+    hand = max(1.0, float(hand_ramp_px))
     gain = np.ones((height, width), dtype=np.float32)
     shoulder = int(np.clip(np.floor(float(shoulder_y)), 0, height))
-    if shoulder < height:
-        gain[shoulder:, :] *= horizontal
-        gain[shoulder:, :] *= vertical[shoulder:, None]
+    torso_min = max(8, int(round(width * TORSO_RUN_FRACTION)))
+    xs = np.arange(width, dtype=np.float32)
+    for y in range(shoulder, height):
+        for start, stop in _row_runs(alpha[y] >= 16):
+            touches_left = start == 0
+            touches_right = stop == width
+            if not touches_left and not touches_right:
+                continue
+            span_ramp = ramp if (stop - start) >= torso_min else hand
+            if touches_left:
+                span = min(stop, int(np.ceil(span_ramp)))
+                if span > 0:
+                    gain[y, :span] *= _smoothstep(xs[:span] / span_ramp)
+            if touches_right:
+                x0 = max(start, width - int(np.ceil(span_ramp)))
+                if x0 < stop:
+                    gain[y, x0:stop] *= _smoothstep((width - 1.0 - xs[x0:stop]) / span_ramp)
+    if rgb is not None:
+        skin = _skin_mask(rgb)
+        if skin.shape != (height, width):
+            raise ValueError("contact color must match the alpha plane")
+        hand_cols = min(width, int(np.ceil(hand)))
+        skin[:shoulder, :] = False
+        skin[:, :hand_cols] = False
+        skin[:, width - hand_cols:] = False
+        gain[skin] = 1.0
     return gain
 
 
-def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None):
-    """Ease alpha on the source-frame boundary below the shoulder line.
+def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
+    """Ease alpha where the torso is cut by the source frame, below the shoulder.
 
-    Left and right are the columns where the scaled source frame meets the
-    card. The bottom edge is the hand cut. Rows above ``shoulder_y`` keep the
-    matte's own feather. An inset contour, including the face, is not a ramp.
-    ``ramp_px`` is in the same pixels as ``alpha``. Pass ``gain`` to reuse one
-    mask for every frame.
+    ``ramp_px`` is the torso fade, in the same pixels as ``alpha``. A hand that
+    crosses the frame uses ``hand_ramp_px``. Skin farther in than that stays
+    opaque when ``rgb`` is passed. Rows above ``shoulder_y``, and any matte that
+    does not touch the frame, keep the matte's own feather.
     """
     alpha = np.asarray(alpha)
     if alpha.ndim != 2:
         raise ValueError("boundary feather expects one alpha plane")
-    height, width = alpha.shape
     if gain is None:
-        gain = boundary_gain(height, width, ramp_px, shoulder_y)
+        if hand_ramp_px is None:
+            hand_ramp_px = max(1.0, float(ramp_px) * (HAND_RAMP_CARD_PX / BOUNDARY_RAMP_CARD_PX))
+        gain = contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=rgb)
     elif gain.shape != alpha.shape:
         raise ValueError("boundary gain must match the alpha plane")
     faded = np.clip(alpha.astype(np.float32) * gain, 0, 255)
@@ -1304,6 +1503,147 @@ def _build_blur_plate(source, matte, card_w, card_h):
     return blur_cover_plate(frames, masks, card_w, card_h)
 
 
+def fill_speaker(frame, mask, clean):
+    """Replace the speaker with the clean plate so a live blur has no ghost."""
+    frame = np.asarray(frame)
+    clean = np.asarray(clean)
+    person = np.asarray(mask) >= 48
+    out = np.array(frame, dtype=np.uint8, copy=True)
+    if person.shape[:2] != out.shape[:2]:
+        raise ValueError("speaker fill mask must match the frame")
+    out[person] = clean[person]
+    return out
+
+
+def _cover_crop(image, card_w, card_h):
+    """Scale so the frame covers the card, then crop the center. No stretch."""
+    import cv2
+
+    image = np.asarray(image)
+    height, width = image.shape[:2]
+    card_w, card_h = int(card_w), int(card_h)
+    cover = max(card_w / float(width), card_h / float(height))
+    new_w = max(card_w, int(round(width * cover)))
+    new_h = max(card_h, int(round(height * cover)))
+    interp = cv2.INTER_AREA if cover < 1.0 else cv2.INTER_LINEAR
+    covered = cv2.resize(image, (new_w, new_h), interpolation=interp)
+    x0 = max(0, (new_w - card_w) // 2)
+    y0 = max(0, (new_h - card_h) // 2)
+    crop = covered[y0:y0 + card_h, x0:x0 + card_w]
+    if crop.shape[0] != card_h or crop.shape[1] != card_w:
+        crop = cv2.resize(covered, (card_w, card_h), interpolation=cv2.INTER_AREA)
+    return crop
+
+
+def _clean_fill(picture, mask):
+    """Median of the background, with the speaker hole painted from the leaves."""
+    import cv2
+
+    facts = _video_facts(picture)
+    width, height = int(facts["width"]), int(facts["height"])
+    duration = min(float(facts["duration"]), float(_video_facts(mask)["duration"]))
+    times = np.linspace(0.4, max(0.5, duration - 0.4), 6)
+    frames, masks = [], []
+    for when in times:
+        frames.append(_frame_rgb(picture, when, width, height))
+        masks.append(_frame_mask(mask, when, width, height))
+    stack = np.stack([frame.astype(np.float32) for frame in frames], axis=0)
+    bg = np.stack([item < 48 for item in masks], axis=0)
+    known_count = bg.sum(axis=0)
+    stack = np.where(bg[..., None], stack, np.nan)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        clean = np.nanmedian(stack, axis=0)
+    known = known_count > 0
+    clean = np.nan_to_num(clean, nan=0.0)
+    hole = np.where(known, np.uint8(0), np.uint8(255))
+    if hole.any():
+        tiny_w = max(24, width // 8)
+        tiny_h = max(24, height // 8)
+        tiny = cv2.resize(np.clip(clean, 0, 255).astype(np.uint8), (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        hole_tiny = cv2.resize(hole, (tiny_w, tiny_h), interpolation=cv2.INTER_NEAREST)
+        painted = cv2.inpaint(tiny, hole_tiny, 6, cv2.INPAINT_TELEA)
+        filled = cv2.resize(painted, (width, height), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+        clean = np.where(known[..., None], clean, filled)
+    return np.clip(clean, 0, 255).astype(np.uint8)
+
+
+def ensure_live_plate(picture, mask, card_w, card_h, dest, sigma=PLATE_SIGMA, darken=PLATE_DARKEN,
+                      vignette=PLATE_VIGNETTE):
+    """A blurred cover of every frame, with the speaker filled from the clean plate.
+
+    The foliage moves. The hole where he stood does not leave a ghost, because
+    those pixels come from the median background before the blur.
+    """
+    import cv2
+
+    dest = Path(dest)
+    recipe = dest.with_suffix(".recipe")
+    token = (
+        f"{PLATE_RECIPE}|sigma={float(sigma):.1f}|darken={float(darken):.2f}"
+        f"|vignette={float(vignette):.2f}|{int(card_w)}x{int(card_h)}")
+    if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
+        return dest
+    print("building the live blurred plate", flush=True)
+    facts = _video_facts(picture)
+    width, height = int(facts["width"]), int(facts["height"])
+    fps = float(facts["fps"])
+    clean = _clean_fill(picture, mask)
+    cover = max(int(card_w) / float(width), int(card_h) / float(height))
+    src_sigma = max(1.0, float(sigma) / max(cover, 1e-3))
+    # The blur is heavy. Half resolution is the same plate and much faster.
+    small_w = max(32, width // 2)
+    small_h = max(32, height // 2)
+    small_sigma = max(0.8, src_sigma * small_w / float(width))
+    clean_small = cv2.resize(clean, (small_w, small_h), interpolation=cv2.INTER_AREA)
+    rgb_proc, rgb_size = _raw_reader(picture, width, height, "rgb24")
+    mask_proc, mask_size = _raw_reader(mask, width, height, "gray")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_name(dest.stem + ".partial.mp4")
+    writer = _raw_writer(
+        partial, int(card_w), int(card_h), fps, "rgb24",
+        ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"])
+    frames = 0
+    try:
+        while True:
+            rgb_bytes = _read_exact(rgb_proc, rgb_size)
+            mask_bytes = _read_exact(mask_proc, mask_size)
+            if len(rgb_bytes) < rgb_size or len(mask_bytes) < mask_size:
+                break
+            rgb = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, width, 3)
+            matte = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(height, width)
+            small_rgb = cv2.resize(rgb, (small_w, small_h), interpolation=cv2.INTER_AREA)
+            small_mask = cv2.resize(matte, (small_w, small_h), interpolation=cv2.INTER_AREA)
+            filled = fill_speaker(small_rgb, small_mask, clean_small)
+            blurred = cv2.GaussianBlur(filled, (0, 0), small_sigma)
+            full = cv2.resize(blurred, (width, height), interpolation=cv2.INTER_LINEAR)
+            crop = _cover_crop(full, card_w, card_h)
+            darkened = np.clip(crop.astype(np.float32) * (1.0 - float(darken)), 0, 255)
+            if vignette:
+                darkened = _radial_vignette(darkened, vignette)
+            writer.stdin.write(np.ascontiguousarray(darkened.astype(np.uint8)).tobytes())
+            frames += 1
+            if frames % 100 == 0:
+                print(f"plate {frames} frames", flush=True)
+        writer.stdin.close()
+        writer.stdin = None
+        code = writer.wait(timeout=900)
+        if code or frames < 2:
+            raise RuntimeError(f"live plate failed ({code}, {frames} frames)")
+    finally:
+        for proc in (rgb_proc, mask_proc):
+            if proc.stdout:
+                proc.stdout.close()
+            proc.wait()
+        if writer.stdin:
+            writer.stdin.close()
+        if writer.poll() is None:
+            writer.wait(timeout=30)
+    partial.replace(dest)
+    recipe.write_text(token + "\n")
+    return dest
+
+
 def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, dest):
     """One static blurred plate per source. A re-render reuses it."""
     import cv2
@@ -1327,27 +1667,29 @@ def ensure_background_plate(source, matte, head, card_w, card_h, scale, pop_px, 
 
 
 def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_height,
-                           ramp_card=BOUNDARY_RAMP_CARD_PX):
-    """Bake one eased ramp into alpha at the source frame's left, right, and bottom.
+                           ramp_card=BOUNDARY_RAMP_CARD_PX, hand_card=HAND_RAMP_CARD_PX):
+    """Bake a per-frame ramp into alpha where the torso meets the frame edge.
 
-    The ramp starts at ``shoulder_y`` and is identical on every frame. The
-    source matte stays cached. This file is the one the card composites, so a
-    change of ramp does not re-run Robust Video Matting. ``ramp_card`` is
-    pixels on the placed card; the source ramp is that divided by scale.
+    The ramp starts at ``shoulder_y``. A hand inside the frame stays opaque, and
+    a hand that crosses the edge fades only across ``hand_card`` pixels. The
+    bottom of the torso is not faded. The source matte stays cached. ``ramp_card``
+    is pixels on the placed card; the source ramp is that divided by scale.
     """
     dest = Path(dest)
     recipe = dest.with_suffix(".recipe")
     token = (
-        f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|scale={float(scale):.4f}"
-        f"|shoulder={float(shoulder_y):.2f}")
+        f"{BOUNDARY_RAMP_RECIPE}|card={float(ramp_card):.1f}|hand={float(hand_card):.1f}"
+        f"|scale={float(scale):.4f}|shoulder={float(shoulder_y):.2f}")
     if dest.is_file() and dest.stat().st_size > 0 and recipe.is_file() and recipe.read_text().strip() == token:
         return dest
     facts = _video_facts(alpha_path)
     width, height = int(facts["width"]), int(facts["height"])
     fps = float(facts["fps"])
     ramp_src = float(ramp_card) / max(float(scale), 1e-3)
-    gain = boundary_gain(height, width, ramp_src, shoulder_y)
-    print(f"feathering frame-cut edges over {float(ramp_card):.0f}px at card scale", flush=True)
+    hand_src = float(hand_card) / max(float(scale), 1e-3)
+    print(
+        f"feathering torso edges over {float(ramp_card):.0f}px, hands over {float(hand_card):.0f}px",
+        flush=True)
     frame_bytes = width * height * 4
     reader = subprocess.Popen(
         ["ffmpeg", "-v", "error", "-i", str(alpha_path),
@@ -1367,7 +1709,10 @@ def apply_boundary_feather(alpha_path, dest, scale, shoulder_y, head_top, head_h
                 break
             plane = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 4).copy()
             raw_alpha = plane[:, :, 3].copy()
-            plane[:, :, 3] = feather_boundary_alpha(raw_alpha, ramp_src, shoulder_y, gain)
+            # The plane is BGRA. Skin is judged in RGB.
+            color = plane[:, :, 2::-1]
+            plane[:, :, 3] = feather_boundary_alpha(
+                raw_alpha, ramp_src, shoulder_y, hand_ramp_px=hand_src, rgb=color)
             head_box_holds(raw_alpha, plane[:, :, 3], head_top, head_height)
             writer.stdin.write(plane.tobytes())
             frames += 1
@@ -1420,24 +1765,25 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     if (not alpha.is_file() or not mask.is_file() or not recipe_ok
             or abs(alpha_duration - coarse_facts["duration"]) > 0.08):
         print("refining the pop-out edge", flush=True)
-        alpha = refine_and_pack(picture, coarse, mask, alpha)
+        alpha = refine_and_pack(
+            picture, coarse, mask, alpha,
+            cuts=tightened_cut_frames(ranges, picture_facts["fps"]))
         recipe.write_text(EDGE_RECIPE + "\n")
     head = measure_head(mask)
     timeline["source"]["matte"] = str(alpha.resolve())
     timeline["source"]["matte_mask"] = str(mask.resolve())
     frame_popout(timeline, head, theme)
     popped = timeline["source"]["popout"]
-    plate = picture.with_name("speaker-plate.jpg")
-    ensure_background_plate(
-        raw_source, full, head,
-        popped["card_width"], popped["card_height"],
-        popped["scale"], popped["pop_px"], plate)
+    plate = picture.with_name("speaker-plate.mp4")
+    ensure_live_plate(
+        picture, mask, popped["card_width"], popped["card_height"], plate)
     popped["plate"] = str(plate.resolve())
-    import cv2
-    bgr = cv2.imread(str(plate), cv2.IMREAD_COLOR)
-    if bgr is not None:
-        mean = bgr.mean(axis=(0, 1))
-        popped["plate_tint"] = [int(round(float(mean[2]))), int(round(float(mean[1]))), int(round(float(mean[0])))]
+    try:
+        tint = _frame_rgb(plate, 0.4, int(popped["card_width"]), int(popped["card_height"]))
+        mean = tint.mean(axis=(0, 1))
+        popped["plate_tint"] = [int(round(float(mean[0]))), int(round(float(mean[1]))), int(round(float(mean[2])))]
+    except (RuntimeError, OSError, subprocess.CalledProcessError):
+        popped["plate_tint"] = [36, 44, 28]
     feathered = picture.with_name("person-pop-edge.mov")
     # The measured head ends at the chin. The frame ramp starts there, under the face.
     shoulder_y = float(popped["head_top"]) + float(popped["head_height"])

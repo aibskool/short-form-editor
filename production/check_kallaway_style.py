@@ -388,8 +388,19 @@ def check(timeline_path, words_path=None, project=None):
     tighten_ranges = data.get("source_ranges") or []
     source_words = data.get("source_words") or []
     if tighten_ranges and source_words:
-        from kallaway_audio import interior_cuts
+        from kallaway_audio import RATE, _load_mono, interior_cuts, released_interior
+        capture = data.get("capture_path")
+        samples = None
+        if capture and Path(capture).is_file():
+            try:
+                samples = _load_mono(capture)
+            except (OSError, RuntimeError):
+                samples = None
         for hit in interior_cuts(tighten_ranges, source_words):
+            until = hit.get("until")
+            if samples is not None and until is not None and released_interior(
+                    samples, RATE, hit["at"], until):
+                continue
             errors.append(
                 f"cut: keep range {hit['edge']} at {hit['at']}s falls inside \"{hit['word']}\"")
     for join in data.get("joins") or []:

@@ -13,8 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from kallaway_audio import (
-    SFX_KINDS, UNDER_DB, _k_weight, _load_mix_voice, _momentary_lufs, keep_ranges,
-    measure_sfx_stem, mix_cues, refine_word_bounds, sfx_variants, write_sfx_library,
+    SFX_KINDS, UNDER_DB, _k_weight, _load_mix_voice, _momentary_lufs, excise_internal_silence,
+    keep_ranges, measure_sfx_stem, mix_cues, refine_word_bounds, seal_word_interiors,
+    sfx_variants, write_sfx_library,
 )
 from kallaway_motifs import MOTIFS, motif_markup, resolve_annotations, screenshot_box, stage_events
 from kallaway_plan import LIBRARY, caption_phrases, plan_timeline, plain_text, video_seed, _rotate
@@ -253,6 +254,37 @@ class KallawayTests(unittest.TestCase):
         mapped = _map_tight_words(refined, cut)
         self.assertLessEqual(mapped[1]["start"] - mapped[0]["end"], 0.045)
 
+    def test_a_voiced_coda_after_a_150ms_gap_is_kept(self):
+        rate = 16000
+        t = np.arange(int(rate * 1.5)) / rate
+        vowel = _voiced(t, 180, 0.35, (t >= 0.20) & (t < 0.34))
+        coda = _voiced(t, 220, 0.22, (t >= 0.50) & (t < 0.66))
+        nxt = _voiced(t, 180, 0.35, (t >= 0.95) & (t < 1.15))
+        audio = vowel + coda + nxt
+        words = [
+            {"word": "ends", "start": 0.18, "end": 0.72},
+            {"word": "it", "start": 0.92, "end": 1.18},
+        ]
+        refined = refine_word_bounds(audio, rate, words)
+        self.assertGreater(refined[0]["end"], 0.64)
+        self.assertLess(refined[0]["end"], 0.80)
+        ranges = keep_ranges(refined, 1.5, gap=0.04, sentence_gap=0.1)
+        ranges = seal_word_interiors(ranges, refined)
+        cut = excise_internal_silence(audio, rate, ranges, max_keep=0.04)
+        self.assertTrue(any(a <= 0.58 <= b for a, b in cut))
+        kept_silence = 0.0
+        for begin, end in cut:
+            kept_silence += max(0.0, min(end, 0.48) - max(begin, 0.36))
+        self.assertLessEqual(kept_silence, 0.08)
+
+    def test_a_released_silence_inside_a_word_is_not_a_clipped_cut(self):
+        from kallaway_audio import released_interior
+        rate = 16000
+        t = np.arange(rate) / rate
+        tone = _voiced(t, 180, 0.4, (t >= 0.10) & (t < 0.30))
+        self.assertTrue(released_interior(tone, rate, 0.45, 0.60))
+        self.assertFalse(released_interior(tone, rate, 0.18, 0.32))
+
     def test_a_cut_inside_an_aligned_word_is_sealed(self):
         from kallaway_audio import interior_cuts, missing_script_words, seal_word_interiors
         words = [{"word": "ends", "start": 1.00, "end": 1.46}, {"word": "it", "start": 1.55, "end": 1.70}]
@@ -447,6 +479,7 @@ class KallawayTests(unittest.TestCase):
                 and abs(float(item["at"]) - float(shot["start"])) < 0.08
             ]
             self.assertFalse(leaked, leaked)
+        # The tick bed is part of the count-up. It shares the bell's one event.
         audible = [
             item for item in timeline["sfx"]
             if not item.get("mute") and not item.get("budget_free")
@@ -1392,8 +1425,9 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(int(out[50, 50]), 255)
         self.assertGreater(int(out[50, 4]), int(out[50, 0]))
         self.assertGreater(int(out[50, 12]), int(out[50, 4]))
-        self.assertEqual(int(out[79, 50]), 0)
-        self.assertAlmostEqual(int(out[71, 50]), 127, delta=2)
+        # The card bottom is the frame bottom. The torso runs to that edge.
+        self.assertEqual(int(out[79, 50]), 255)
+        self.assertEqual(int(out[71, 50]), 255)
         self.assertEqual(int(out[40, 50]), 255)
         # The head box keeps the raw matte. A fade that eats it fails.
         head_box_holds(alpha, out, top=8, height=16, left=40, right=60)
@@ -1418,11 +1452,39 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(int(faded[120, 30]), 255)
         self.assertEqual(int(faded[120, 70]), 255)
         head_box_holds(wall, faded, top=8, height=40, left=90, right=160)
-        # The gain does not move from frame to frame.
-        from kallaway_matte import boundary_gain
-        gain = boundary_gain(220, 180, 16, 60)
-        again = feather_boundary_alpha(wall, ramp_px=16, shoulder_y=60, gain=gain)
-        self.assertTrue(np.array_equal(again, faded))
+        # A hand inside the frame stays solid. A hand that touches the edge fades
+        # only across the short ramp. The same hand on the next frame matches.
+        hand = np.zeros((80, 100), np.uint8)
+        hand[50:70, 30:55] = 255
+        hand[52:64, 0:10] = 255
+        faded_hand = feather_boundary_alpha(hand, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
+        self.assertEqual(int(faded_hand[60, 40]), 255)
+        self.assertEqual(int(faded_hand[58, 0]), 0)
+        self.assertEqual(int(faded_hand[58, 8]), 255)
+        again = feather_boundary_alpha(hand, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
+        self.assertTrue(np.array_equal(again, faded_hand))
+
+    def test_an_arm_on_the_torso_row_stays_opaque_past_the_hand_ramp(self):
+        from kallaway_matte import feather_boundary_alpha
+        alpha = np.zeros((80, 200), np.uint8)
+        alpha[40:, :] = 255
+        rgb = np.zeros((80, 200, 3), np.uint8)
+        rgb[40:, :] = (40, 50, 80)
+        rgb[50:70, 0:40] = (210, 150, 130)
+        out = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5, rgb=rgb)
+        # The last hand-ramp columns of a crossing arm may fade.
+        self.assertLess(int(out[60, 0]), 128)
+        # Skin past that ramp stays solid, even though the torso ramp is wider.
+        self.assertEqual(int(out[60, 8]), 255)
+        self.assertEqual(int(out[60, 14]), 255)
+        # The shirt on the same wide run still eases into the frame edge.
+        self.assertLess(int(out[45, 0]), 32)
+        self.assertLess(int(out[45, 4]), 160)
+        self.assertGreater(int(out[45, 12]), int(out[45, 4]))
+        self.assertEqual(int(out[60, 100]), 255)
+        # Without color, the old wide-run ramp still covers the arm columns.
+        plain = feather_boundary_alpha(alpha, ramp_px=16, shoulder_y=40, hand_ramp_px=5)
+        self.assertLess(int(plain[60, 8]), 255)
 
     def test_blur_plate_covers_the_card_without_a_seam_or_a_ghost(self):
         from kallaway_matte import blur_cover_plate
@@ -1745,7 +1807,7 @@ class KallawayTests(unittest.TestCase):
         attacks = {"Fast Whip.wav": 0.12, "Quick Swing B.wav": 0.085}
         reanchor_led_sfx(timeline, [5.505, 18.229], attack_of=lambda cue: attacks[cue["file"]])
         whip, swing, pop = timeline["sfx"]
-        self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12, delta=0.002)
+        self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12 + 3 / 30, delta=0.002)
         self.assertLess(whip["sound_at"], 5.467 - 3 / 30)
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
         self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
@@ -1765,6 +1827,23 @@ class KallawayTests(unittest.TestCase):
         self.assertGreaterEqual(top, beard + 25 - 1)
         self.assertGreaterEqual(pin - (top + 67 * 1.02), 30 - 1)
         self.assertAlmostEqual(top, full_caption_top(beard, pin, 67), delta=1)
+        self.assertEqual(shots[0]["caption_px"], 67)
+
+    def test_a_narrow_beard_to_pin_band_uses_60px_centered(self):
+        from kallaway_style import assign_full_captions
+        theme, _, _, _ = load_theme("dark")
+        layout = dict(theme["layout"])
+        layout["full_pin_below_chin_px"] = 120
+        shots = [{"id": "full", "layout": "full"}]
+        assign_full_captions(shots, {"full": 900.0}, layout)
+        top = shots[0]["caption_y"] / 100 * 1920
+        beard = 900.0 + 48
+        pin = 900.0 + 120
+        box = 60 * 1.02
+        self.assertEqual(shots[0]["caption_px"], 60)
+        self.assertAlmostEqual(top, beard + ((pin - beard) - box) / 2.0, delta=1)
+        self.assertGreaterEqual(top, beard - 1)
+        self.assertGreaterEqual(pin - (top + box), -1)
 
     def test_full_face_baseline_is_per_take(self):
         from kallaway_matte import frame_popout
@@ -1840,6 +1919,46 @@ class KallawayTests(unittest.TestCase):
         self.assertEqual(held[-1], (4.2, 8.1))
         capped = extend_closing_hold([(0.0, 9.95)], 10.0, hold=0.10)
         self.assertEqual(capped[-1], (0.0, 10.0))
+
+    def test_opening_foliage_outside_the_body_is_cleared(self):
+        from kallaway_matte import _clear_opening_foliage, _segment_open_holds
+        body = np.zeros((400, 160), dtype=np.float32)
+        body[20:380, 80:140] = 1
+        early = body.copy()
+        early[20:380, 48:56] = 1
+        rgb = np.zeros((400, 160, 3), dtype=np.uint8)
+        rgb[:, :] = (210, 160, 140)
+        rgb[20:380, 48:56] = (40, 170, 36)
+        straight = np.zeros_like(rgb)
+        refined = [
+            (early, straight, early.copy(), None),
+            (body, straight, body.copy(), None),
+            (body, straight, body.copy(), None),
+            (body.copy(), straight, body.copy(), None),
+        ]
+        frames = [(rgb, None)] * 4
+        _clear_opening_foliage(refined, frames, 3)
+        self.assertEqual(float(refined[0][0][20:380, 48:56].max()), 0.0)
+        self.assertEqual(float(refined[0][0][40, 100]), 1.0)
+        _segment_open_holds([item[0] for item in refined], 3, colors=[rgb] * 4)
+
+    def test_an_opening_hand_is_not_a_foliage_blob(self):
+        from kallaway_matte import _segment_open_holds
+        body = np.zeros((400, 160), dtype=np.float32)
+        body[20:380, 80:140] = 1
+        hand = body.copy()
+        hand[100:180, 48:56] = 1
+        _segment_open_holds([hand, body, body, body], 3)
+        floating = body.copy()
+        floating[20:120, 0:30] = 1
+        with self.assertRaises(RuntimeError):
+            _segment_open_holds([floating, body, body, body], 3)
+        fringe = body.copy()
+        fringe[20:380, 48:56] = 1
+        green = np.zeros((400, 160, 3), dtype=np.uint8)
+        green[:, :] = (40, 180, 40)
+        with self.assertRaises(RuntimeError):
+            _segment_open_holds([fringe, body, body, body], 3, colors=[green, green, green, green])
 
     def test_specks_under_200px_leave_the_matte(self):
         from kallaway_matte import _drop_specks
