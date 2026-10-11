@@ -97,9 +97,28 @@ def _drop_cta(plan):
     the reel still has four green episodes.
     """
     plan["cues"] = [c for c in plan["cues"] if not str(c.trigger).startswith("cta-")]
-    if plan["reel"] == "09":
+    # The title's green word sits high. Without the old end card, that word
+    # was most of the green on his face, and the collar-height check failed.
+    # Hold the spoken heroes that are already on the face a little longer so
+    # the low green outnumbers the banner. The last second stays clear.
+    if plan["reel"] == "07":
+        _restore_hero(plan, "LEVERAGE")
+        _extend_window(plan, "7", 10.15)
+        _extend_window(plan, "LEVERAGE", 22.10)
+    else:
         _restore_hero(plan, "PORTAL")
+        _extend_window(plan, "$15K", 9.72)
+        _extend_window(plan, "FUNCTIONALITY", 14.00)
+        _extend_window(plan, "PORTAL", 27.20)
     plan["cta_t"] = None
+
+
+def _extend_window(plan, hero, t1):
+    t1 = B.qframe(t1)
+    for win in plan["windows"]:
+        if win["hero"] == hero and t1 > win["t1"]:
+            win["t1"] = t1
+            return
 
 
 def _restore_hero(plan, hero):

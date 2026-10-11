@@ -923,6 +923,12 @@
       "gain": 3.6
      },
      {
+      "t": 19.933,
+      "role": "pop",
+      "trigger": "hero-LEVERAGE",
+      "gain": -4.5
+     },
+     {
       "t": 20.933,
       "role": "negative",
       "trigger": "negative-ends",
