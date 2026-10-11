@@ -1244,7 +1244,7 @@ class KallawayTests(unittest.TestCase):
 
         crown, chin, pos_y, timeline = place(base)
         pop = timeline["source"]["popout"]
-        from kallaway_matte import CAPTION_GAP_ABOVE_CROWN_PX, SPLIT_CAP_FACTOR, placed_local_y
+        from kallaway_matte import SPLIT_CAPTION_CLEARANCE_PX, SPLIT_CAP_FACTOR, placed_local_y, split_caption_line_px
         high = placed_local_y(base["head_high"], base["head_top"], pop["pop_px"], pop["scale"])
         self.assertGreaterEqual(-high, 50)
         self.assertLessEqual(-high, 100.5)
@@ -1259,8 +1259,9 @@ class KallawayTests(unittest.TestCase):
         self.assertGreater(stage_bottom, 1072)
         crown_canvas = layout["card_top"] * 1920 + high
         caption_top = timeline["shots"][0]["caption_y"] / 100 * 1920
-        cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
-        self.assertAlmostEqual(caption_top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
+        line = split_caption_line_px(layout["caption_split_px"])
+        self.assertAlmostEqual(caption_top + line, crown_canvas - SPLIT_CAPTION_CLEARANCE_PX, delta=2)
+        self.assertGreaterEqual(crown_canvas - (caption_top + line), 18 - 1)
         self.assertGreaterEqual(caption_top, stage_bottom)
         self.assertNotIn("caption_y", timeline["shots"][1])
         self.assertNotIn("caption_y", timeline["shots"][2])
@@ -1273,8 +1274,8 @@ class KallawayTests(unittest.TestCase):
 
     def test_split_caption_tracks_the_highest_crown_in_the_shot(self):
         from kallaway_matte import (
-            CAPTION_GAP_ABOVE_CROWN_PX, SPLIT_CAP_FACTOR, frame_popout, highest_crown_source_y,
-            parse_position, source_y_on_card,
+            SPLIT_CAPTION_CLEARANCE_PX, frame_popout, highest_crown_source_y,
+            parse_position, source_y_on_card, split_caption_line_px,
         )
         from kallaway_style import graphic_stage_bottom
         theme, _, _, _ = load_theme("dark")
@@ -1317,8 +1318,9 @@ class KallawayTests(unittest.TestCase):
             local = placed_local_y(source_y, head["head_top"], pop["pop_px"], pop["scale"])
             crown_canvas = layout["card_top"] * 1920 + local
             top = shot["caption_y"] / 100 * 1920
-            cap = layout["caption_split_px"] * SPLIT_CAP_FACTOR
-            self.assertAlmostEqual(top + cap, crown_canvas - CAPTION_GAP_ABOVE_CROWN_PX, delta=2)
+            line = split_caption_line_px(layout["caption_split_px"])
+            self.assertAlmostEqual(top + line, crown_canvas - SPLIT_CAPTION_CLEARANCE_PX, delta=2)
+            self.assertGreaterEqual(crown_canvas - (top + line), 18 - 1)
         from kallaway_style import STAGE_GAP_ABOVE_CAPTION_PX
         stage = graphic_stage_bottom(
             layout, 1920, timeline["source"]["popout"], high_shot["caption_y"])
@@ -1922,9 +1924,81 @@ class KallawayTests(unittest.TestCase):
         beard = 900.0 + 48
         pin = 900.0 + 200
         self.assertGreaterEqual(top, beard + 25 - 1)
-        self.assertGreaterEqual(pin - (top + 67 * 1.02), 30 - 1)
+        pin_gap = pin - (top + 67 * 1.02)
+        self.assertGreaterEqual(pin_gap, 20 - 1)
+        self.assertLessEqual(pin_gap, 30 + 1)
         self.assertAlmostEqual(top, full_caption_top(beard, pin, 67), delta=1)
         self.assertEqual(shots[0]["caption_px"], 67)
+
+    def test_a_counter_bell_uses_the_visual_lock_when_the_value_is_zero(self):
+        events = stage_events("counter", 20.0, 22.0, {"from": 56, "value": 0, "lock_at": 20.9, "label": "LEFT"})
+        ding = next(event for event in events if event["kind"] == "ding")
+        bed = ding["bed"]
+        self.assertAlmostEqual(ding["at"], 20.9, delta=0.02)
+        self.assertAlmostEqual(bed["at"] + bed["loop"], ding["at"], delta=0.02)
+
+    def test_the_hero_pop_lands_with_the_board(self):
+        events = stage_events("hero_board", 1.855, 4.3, {"value": "56"})
+        pop = next(event for event in events if event["kind"] == "pop")
+        self.assertAlmostEqual(pop["sound_at"], 2.005, delta=0.02)
+
+    def test_a_list_bell_on_the_cash_register_is_muted(self):
+        from kallaway_pack import decorate_events
+        events = decorate_events(
+            "quote_card",
+            [{"at": 1.0, "kind": "pop"}, {"at": 1.18, "kind": "ticking"}],
+            {"variant": "receipt", "text": "$2,000"},
+            1.0, 2.4,
+        )
+        tick = next(event for event in events if event["kind"] == "ticking")
+        self.assertTrue(tick.get("mute"))
+
+    def test_a_short_closing_face_is_not_split_by_a_punch(self):
+        from kallaway_beats import punch_short_jumps
+        shots = [
+            {"id": "shot-00", "start": 50.0, "end": 52.6, "layout": "split", "stage": {"motif": "quote_card"}},
+            {"id": "shot-01", "start": 52.6, "end": 54.01, "layout": "full", "scale": 1.0},
+        ]
+        landed = punch_short_jumps(shots, [53.33])
+        self.assertEqual(len(landed), 2)
+        self.assertEqual(landed[-1]["layout"], "full")
+        self.assertAlmostEqual(landed[-1]["end"] - landed[-1]["start"], 1.41, delta=0.02)
+
+    def test_a_dark_crown_halo_fails_the_master_limit(self):
+        from kallaway_matte import MASTER_FRINGE_DARK, fringe_dark_fractions
+        rgb = np.zeros((180, 120, 3), np.uint8)
+        rgb[:] = (70, 80, 60)
+        person = np.zeros((180, 120), np.float32)
+        person[40:160, 30:90] = 1
+        person[40:55, 28:92] = 0.4
+        rgb[40:55, 28:92] = (8, 8, 8)
+        soft, ring = fringe_dark_fractions(rgb, person)
+        self.assertGreater(max(soft, ring), MASTER_FRINGE_DARK)
+
+    def test_a_long_sentence_hole_is_cut_from_the_silence(self):
+        from kallaway_audio import trim_long_sentence_holes
+        rate = 48000
+        count = int(2.2 * rate)
+        clock = np.arange(count) / rate
+        tone = np.zeros(count, dtype=np.float64)
+        first = (clock >= 0.10) & (clock < 0.40)
+        second = (clock >= 1.20) & (clock < 1.50)
+        tone[first | second] = 0.2 * np.sin(2 * np.pi * 1000 * clock[first | second])
+        words = [
+            {"word": "it.", "start": 0.10, "end": 0.70},
+            {"word": "The", "start": 1.20, "end": 1.50},
+        ]
+        ranges = trim_long_sentence_holes(
+            tone, rate, [(0.10, 1.50)], words, keep=0.13, limit=0.15, pairs=[("it", "The")])
+        kept = sum(end - begin for begin, end in ranges)
+        self.assertLess(kept, 1.05)
+        self.assertGreater(ranges[0][1], 0.40)
+        self.assertLess(ranges[-1][0], 1.20)
+        untouched = trim_long_sentence_holes(
+            tone, rate, [(0.10, 1.50)],
+            [{"word": "great.", "start": 0.10, "end": 0.70}, {"word": "Then", "start": 1.20, "end": 1.50}],
+            pairs=[("it", "The")])
+        self.assertEqual(untouched, [(0.10, 1.50)])
 
     def test_a_narrow_beard_to_pin_band_uses_60px_centered(self):
         from kallaway_style import assign_full_captions

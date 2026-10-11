@@ -398,6 +398,11 @@ def punch_short_jumps(shots, joins, scale=1.12, short=1.5, fps=30):
         if shot.get("layout") != "full":
             built.append(shot)
             continue
+        # The closing face stays one shot when the whole piece is under 1.5 s.
+        # Splitting it leaves two shorts. lengthen_closing_face then pulls it to 1.5.
+        if shot is shots[-1] and 1.2 <= (end - start) < short:
+            built.append(shot)
+            continue
         inside = [moment for moment in join_times if start + 0.2 < moment < end - 0.2]
         if not inside:
             built.append(shot)

@@ -1,5 +1,12 @@
 {
   "schema": "kallaway-stage-plan/v1",
+  "pause_trims": [
+    ["it", "The"],
+    ["fees", "And"],
+    ["builds", "Scan"],
+    ["fix", "That's"],
+    ["Vault", "30"]
+  ],
   "captions": {
     "keep_case": [
       "AI",

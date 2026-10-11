@@ -110,6 +110,40 @@ def resolve(file):
     return pack_dir() / str(file)
 
 
+def keyword_pop_file():
+    """Pop 2 for the keyword box.
+
+    The pack copy is `Pop 2.mp3`. When that file is not in the local pack, the
+    playbook's Combo 20 mix (Pop 1 plus a dull hit at about 40%) is written once
+    beside the editor and used under the Pop 2 name.
+    """
+    packed = resolve("27 Pops, Zaps & Switches/Pop 2.mp3")
+    if packed.is_file():
+        return "27 Pops, Zaps & Switches/Pop 2.mp3"
+    dest = HERE / "sfx" / "Pop 2.wav"
+    if dest.is_file() and dest.stat().st_size > 1000:
+        return str(dest)
+    pop = resolve(POP_1)
+    hit = resolve(HIT_DULL)
+    if not hit.is_file():
+        hit = resolve(DEEP_HIT)
+    if not pop.is_file() or not hit.is_file():
+        return POP_1
+    pop_samples, _info = load(pop)
+    hit_samples, _info = load(hit)
+    mixed = np.array(pop_samples, dtype=np.float64, copy=True)
+    take = min(len(mixed), len(hit_samples), int(0.28 * RATE))
+    mixed[:take] += 0.40 * np.asarray(hit_samples[:take], dtype=np.float64)
+    peak = float(np.max(np.abs(mixed))) if len(mixed) else 0.0
+    if peak > 0.98:
+        mixed *= 0.98 / peak
+    mixed = mixed[:int(0.45 * RATE)]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    from kallaway_audio import write_wav
+    write_wav(dest, mixed.astype(np.float32))
+    return str(dest)
+
+
 def kind_paths(kind):
     found = []
     for rel in KIND_FILES.get(kind, []):
@@ -225,13 +259,27 @@ def _land(at, end, delay):
 def _count_land(start, value, span=0.9):
     """When a power2.out count first rounds to its target.
 
-    The tween keeps running, but the digits have already landed. The bell or
-    the cash register belongs on that frame, not at the end of the ease.
+    The digits on screen use power2.in and land at the lock, not this ease.
+    Kept for callers that still want the old estimate.
     """
     value = max(1, int(value or 1))
     need = (value - 0.5) / float(value)
     frac = 1.0 - math.sqrt(max(0.0, 1.0 - need))
     return round(float(start) + float(span) * frac, 3)
+
+
+def _counter_lock(start, end, stage):
+    """The frame the digits show the final number.
+
+    The tween is power2.in, so the integer appears at the end of the roll.
+    ``lock_at`` is that frame when the stage names the spoken word. A value of
+    0 is a real target, not a missing one.
+    """
+    if stage.get("lock_at") is not None:
+        lock = float(stage["lock_at"])
+    else:
+        lock = min(float(end) - 0.08, float(start) + 0.9)
+    return min(max(lock, float(start) + 0.12), float(end) - 0.04)
 
 
 def _money(stage):
@@ -321,7 +369,7 @@ def decorate_events(motif, events, stage, start, end):
             event["combo"] = "25"
             event["label"] = "Counter tick"
         money = _money(stage) or "$" in str(stage.get("prefix") or "") or "$" in str(stage.get("label") or "")
-        land = _count_land(start, stage.get("value") or 30)
+        land = round(_counter_lock(start, end, stage), 3)
         # Ka Ching has about 90 ms of mechanism noise before the hit. The bell does not.
         attack = 0.09 if money else 0.0
         for event in events:
@@ -401,6 +449,7 @@ def decorate_events(motif, events, stage, start, end):
                 extra["mute"] = True
                 extra["mute_reason"] = "stacked"
         tick_n = 0
+        money_at = float(card.get("sound_at", card.get("at", 0)))
         for event in events:
             if event["kind"] == "ticking":
                 event.update({
@@ -408,6 +457,10 @@ def decorate_events(motif, events, stage, start, end):
                     "fixed_file": True, "trim_frames": 8, "fade_frames": 3,
                     "sound_at": event["at"], "band": "high",
                 })
+                # A list bell  a few milliseconds before the cash register is buried in it.
+                if _money(stage) and abs(float(event["at"]) - money_at) < 0.04:
+                    event["mute"] = True
+                    event["mute_reason"] = "stacked"
                 tick_n += 1
             elif event["kind"] == "error":
                 event.update({
@@ -499,7 +552,8 @@ def decorate_events(motif, events, stage, start, end):
             if event["kind"] == "pop":
                 event.setdefault("combo", "19")
                 event.setdefault("label", "Word Pop")
-                delay = 2.0 / 30.0 if motif == "pill" else 0.0
+                # The hero board's pop was landing 4-5 frames before the card.
+                delay = 2.0 / 30.0 if motif == "pill" else (0.15 if motif == "hero_board" else 0.0)
                 event.setdefault("sound_at", _land(event["at"], end, delay))
     defaults = {
         "pop": (None, "19", "Word Pop"),

@@ -1905,7 +1905,102 @@ def _outgoing_fade(samples, rate, end, fps=30):
     return 0.0
 
 
-def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None):
+def _pair_token(word):
+    return "".join(ch for ch in str(word.get("word") or word.get("text") or "").lower() if ch.isalnum())
+
+
+def trim_long_sentence_holes(samples, rate, ranges, words, keep=0.13, limit=0.15, pairs=None):
+    """Shorten named sentence holes from the silence after the consonant.
+
+    ``pairs`` is ``(previous, next)`` token prefixes. A hole that is not listed
+    stays, so a reel only loses the pauses it named.     The cut starts 20 ms after the word falls and stays quiet, and it stops
+    ``keep`` before the next word. A low-frequency vowel counts. A bump after
+    50 ms of quiet counts only when it is a stop release in the fricative band,
+    so room tone after "it" is not kept and the /t/ in "Vault" is.
+    """
+    wanted = []
+    for pair in pairs or []:
+        if not pair or len(pair) < 2:
+            continue
+        left = "".join(ch for ch in str(pair[0]).lower() if ch.isalnum())
+        right = "".join(ch for ch in str(pair[1]).lower() if ch.isalnum())
+        if left and right:
+            wanted.append((left, right))
+    samples = np.asarray(samples, dtype=np.float64)
+    ordered = sorted(words or [], key=lambda word: float(word["start"]))
+    spans = [(float(begin), float(end)) for begin, end in (ranges or [])]
+    if not wanted or len(ordered) < 2 or not spans or len(samples) < 8:
+        return spans
+    speech = _speech_band(samples, rate)
+    fricative = _fricative_band(samples, rate)
+    hop = 0.01
+
+    def window_db(series, start):
+        a = int(max(0.0, start) * rate)
+        b = int(min(len(series), (start + hop) * rate))
+        if b - a < 8:
+            return -80.0
+        chunk = series[a:b]
+        return _db(math.sqrt(float(np.dot(chunk, chunk)) / len(chunk)))
+
+    drops = []
+    for prev, nxt in zip(ordered, ordered[1:]):
+        left, right = _pair_token(prev), _pair_token(nxt)
+        if not any(left.startswith(a) and right.startswith(b) for a, b in wanted):
+            continue
+        stop = min(float(prev["end"]) + 0.02, float(nxt["start"]))
+        moments = []
+        moment = float(prev["start"])
+        while moment < stop - 0.008:
+            spoken = window_db(speech, moment)
+            air = window_db(fricative, moment)
+            full = window_db(samples, moment)
+            moments.append((moment, spoken > -42.0 or air > -38.0 or full > -30.0, air > -38.0))
+            moment += hop
+        last = None
+        quiet = 0.0
+        for at, voiced, _air in moments:
+            # A bump after 50 ms of quiet is room tone, not the rest of the word.
+            # Resetting the gap on that bump would let the next click back in.
+            if voiced and (last is None or quiet < 0.05):
+                last = at + hop
+                quiet = 0.0
+            elif last is not None:
+                quiet += hop
+        if last is None:
+            continue
+        for at, _voiced, air in moments:
+            if air and last < at + hop <= last + 0.20:
+                last = at + hop
+        keep_until = min(float(prev["end"]), last + 0.020)
+        drop_to = float(nxt["start"]) - float(keep)
+        if drop_to - keep_until < 0.02 or float(nxt["start"]) - keep_until < float(limit):
+            continue
+        drops.append((keep_until, drop_to))
+    if not drops:
+        return spans
+    rebuilt = []
+    for begin, end in spans:
+        pieces = [(begin, end)]
+        for drop_from, drop_to in drops:
+            nxt_pieces = []
+            for left, right in pieces:
+                if drop_to <= left or drop_from >= right:
+                    nxt_pieces.append((left, right))
+                    continue
+                if left < drop_from - 1e-4:
+                    nxt_pieces.append((left, min(right, drop_from)))
+                if right > drop_to + 1e-4:
+                    nxt_pieces.append((max(left, drop_to), right))
+            pieces = nxt_pieces
+        for left, right in pieces:
+            if right - left > 0.02:
+                rebuilt.append((left, right))
+    return rebuilt or spans
+
+
+def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None,
+                  pause_trims=None):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
     Each word keeps its decay plus a safety tail. Mid-phrase pauses are cut
@@ -1932,6 +2027,8 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     ranges = close_unreleased_word_gaps(samples, RATE, ranges, refined)
     # Last. A pause target must not have eaten the consonant to get there.
     ranges = protect_aligned_tails(ranges, refined, samples, RATE)
+    # Named sentence holes only. Take the cut from the silence after the consonant.
+    ranges = trim_long_sentence_holes(samples, RATE, ranges, refined, pairs=pause_trims)
     # A tenth of a second after the last word, when the source still has it.
     # The closing face can use this hold without crossing back over a picture cut.
     ranges = extend_closing_hold(ranges, duration, hold=0.10)

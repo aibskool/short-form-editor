@@ -54,53 +54,72 @@ def radius_css(value):
     return f"{number}px"
 
 
-def full_caption_top(beard_bottom, pin_top, font_px, below_beard=25.0, above_pin=30.0, line=1.02):
+def full_caption_top(beard_bottom, pin_top, font_px, below_beard=25.0, above_pin=25.0, line=1.02):
     """Canvas y of a full-face caption between the beard and the lapel pin.
 
-    Letter tops stay `below_beard` px under the beard. Descenders stay
-    `above_pin` px above the pin. The line moves up when the gap is tight.
+    Letter tops stay at least 25 px under the beard. The line sits in the
+    20-30 px band above the pin (25 px when the band allows). A tight band
+    keeps the beard clearance and does not cross the pin.
     """
     box = float(font_px) * line
-    top = float(beard_bottom) + float(below_beard)
-    if float(pin_top) - (top + box) < float(above_pin):
-        top = float(pin_top) - float(above_pin) - box
-    return top
+    preferred = float(pin_top) - float(above_pin) - box
+    floor = float(beard_bottom) + float(below_beard)
+    ceiling = float(pin_top) - 20.0 - box
+    gap = float(pin_top) - (preferred + box)
+    if preferred >= floor - 1e-6 and 20.0 - 1e-6 <= gap <= 30.0 + 1e-6:
+        return preferred
+    if floor <= ceiling + 1e-6:
+        return min(max(preferred, floor), ceiling)
+    # The line cannot clear the beard and the pin at once. Center it.
+    return float(beard_bottom) + max(0.0, (float(pin_top) - float(beard_bottom)) - box) / 2.0
+
+
+def _face_rows(raw, beard_pad, pin_pad):
+    """Chin measurement, or a dict with a measured beard and pin."""
+    if isinstance(raw, dict):
+        chin = float(raw.get("chin") or 0.0)
+        beard = float(raw["beard"]) if raw.get("beard") is not None else chin + beard_pad
+        pin = float(raw["pin"]) if raw.get("pin") is not None else chin + pin_pad
+        return beard, pin
+    chin = float(raw)
+    return chin + beard_pad, chin + pin_pad
 
 
 def assign_full_captions(shots, chins, layout, height=1920):
-    """Place each full-face caption from that shot's chin, between beard and pin.
+    """Place each full-face caption between the beard and the pin.
 
-    A wide band keeps the 67 px line with its top at least 25 px below the beard.
-    A band too narrow for that line uses 60 px, centered between the beard and the pin.
+    A wide band keeps the 67 px line 25 px above the pin and at least 25 px
+    below the beard. A band too narrow for that line uses 60 px and still
+    prefers the 20-30 px band above the pin.
     """
     wide = float(layout.get("caption_full_px", 67))
     narrow = float(layout.get("caption_full_narrow_px", 60))
     beard_pad = float(layout.get("full_beard_below_chin_px", 48))
     pin_pad = float(layout.get("full_pin_below_chin_px", 200))
     below = float(layout.get("caption_beard_gap_px", 25))
-    above = float(layout.get("caption_pin_gap_px", 30))
+    above = float(layout.get("caption_pin_gap_px", 25))
     line = 1.02
     for shot in shots or []:
         if shot.get("layout") not in {"full", "punch_in"}:
             continue
-        chin = chins.get(shot.get("id"))
-        if chin is None:
+        raw = chins.get(shot.get("id"))
+        if raw is None:
             continue
-        beard = float(chin) + beard_pad
-        pin = float(chin) + pin_pad
-        room = pin - beard - below - above
-        if room >= wide * line:
+        beard, pin = _face_rows(raw, beard_pad, pin_pad)
+        if pin <= beard + 40:
+            pin = beard + pin_pad
+        room = pin - beard - below - 20.0
+        measured = isinstance(raw, dict) and raw.get("beard") is not None
+        if measured and room < narrow * line:
+            # The mic sits close under a long beard. Shrink the line until
+            # 25 px under the beard and 20 px above the pin both fit.
+            font = max(42.0, room / line)
+        elif room >= wide * line:
             font = wide
-            top = full_caption_top(beard, pin, font, below, above, line)
         else:
             font = narrow
-            box = font * line
-            top = beard + max(0.0, (pin - beard) - box) / 2.0
-            if pin - (top + box) < above and pin - beard >= box + above:
-                top = pin - above - box
-            if top < beard:
-                top = beard
-        shot["caption_px"] = font
+        top = full_caption_top(beard, pin, font, below, above, line)
+        shot["caption_px"] = round(font, 1)
         shot["caption_y"] = round(top / float(height) * 100, 3)
     return shots
 
@@ -304,11 +323,11 @@ def build_kallaway(spec, spec_path, project):
             f'tl.set("#presenter-camera",{{scale:{camera_scale},transformOrigin:"50% 30%"}},{start});')
         if layout == "split" and placed:
             animations.append(f'tl.set(".aroll",{{autoAlpha:0}},{start});')
-            animations.append(f'tl.set("#speaker-plate",{{autoAlpha:1}},{start});')
+            animations.append(f'tl.set("#speaker-plate, #speaker-plate-hold",{{autoAlpha:1}},{start});')
         else:
             animations.append(f'tl.set(".aroll",{{autoAlpha:1}},{start});')
             if plate_src:
-                animations.append(f'tl.set("#speaker-plate",{{autoAlpha:0}},{start});')
+                animations.append(f'tl.set("#speaker-plate, #speaker-plate-hold",{{autoAlpha:0}},{start});')
             if shot.get("object_position"):
                 animations.append(
                     f'tl.set(".aroll",{{objectPosition:{json.dumps(shot["object_position"])}}},{start});')
@@ -329,6 +348,15 @@ def build_kallaway(spec, spec_path, project):
                         shot.get("object_position") or position, height)
                 animations.append(
                     f'tl.set("#pop-camera",{json.dumps({key: geo[key] for key in ("left", "top", "width", "height")})},{start});')
+                animations.append(f'tl.set("#pop-camera",{{y:0}},{start});')
+                for span in (popout.get("reframes") or []):
+                    if float(span["end"]) <= start or float(span["start"]) >= end:
+                        continue
+                    animations.append(
+                        f'tl.set("#pop-camera",{{y:{float(span["dy"]):.1f}}},{max(start, float(span["start"])):.3f});')
+                    back = min(end, float(span["end"]))
+                    if back < end - 0.01:
+                        animations.append(f'tl.set("#pop-camera",{{y:0}},{back:.3f});')
                 animations.append(
                     f'tl.set("#speaker-pop",{json.dumps({"autoAlpha": 1, "clipPath": geo["clipPath"]})},{start});')
             else:
@@ -473,6 +501,12 @@ def build_kallaway(spec, spec_path, project):
         parts.append(
             f'<div id="hdr-{index}" class="header clip" data-start="{start:.4f}" data-duration="{end-start:.4f}" '
             f'data-track-index="4">{inner}</div>')
+        # A chapter that shares a layout cut slides in after the cut. The whoosh
+        # is placed on that motion, not on the hard cut.
+        if start > 0.3:
+            animations.append(f'tl.set("#hdr-{index}",{{y:72,opacity:0}},{start:.3f});')
+            animations.append(
+                f'tl.to("#hdr-{index}",{{y:0,opacity:1,duration:0.24,ease:"power2.out"}},{start + 0.12:.3f});')
 
     mono_family = theme["fonts"]["mono"]["family"]
     for index, notice in enumerate(spec.get("notices") or []):
@@ -570,7 +604,8 @@ def build_kallaway(spec, spec_path, project):
     *{{box-sizing:border-box}} body{{margin:0;background:{colors['background']}}}
     #root{{position:relative;width:{width}px;height:{height}px;overflow:hidden;{background}}}
     #speaker-card{{position:absolute;left:{first['left']}px;top:{first['top']}px;width:{first['width']}px;height:{first['height']}px;overflow:hidden;z-index:4;border-radius:{card_radius_css};box-shadow:{first['boxShadow']};background:{colors['contrast']}}}
-    #speaker-plate{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:0;{plate_open}}}
+    #speaker-plate-hold{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:0;{plate_open}}}
+    #speaker-plate{{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:1;{plate_open}}}
     #presenter-camera{{position:absolute;inset:0;transform-origin:50% 30%;width:100%;height:100%;z-index:1}}
     .aroll{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:{position};{aroll_open}}}
     #speaker-pop{{position:absolute;left:0;top:0;width:{width}px;height:{height}px;z-index:6;overflow:hidden;pointer-events:none;visibility:hidden;opacity:0}}
@@ -771,9 +806,11 @@ def build_kallaway(spec, spec_path, project):
     '''
     # _rgba is used above; import locally to keep the css f-string valid.
     cover = "visibility:hidden;opacity:0;" if spec.get("speaker_reveal") else ""
+    hold_src = media(popout["plate_hold"]) if popout.get("plate_hold") else ""
     if plate_src and plate_src.lower().endswith((".mp4", ".mov", ".webm")):
+        hold_html = f'<img id="speaker-plate-hold" src="{hold_src}" alt="">' if hold_src else ""
         plate_html = (
-            f'<video id="speaker-plate" class="clip" src="{plate_src}" '
+            f'{hold_html}<video id="speaker-plate" class="clip" src="{plate_src}" '
             f'data-start="0" data-duration="{duration:.6f}" data-media-start="0" muted playsinline></video>')
     else:
         plate_html = f'<img id="speaker-plate" src="{plate_src}" alt="">' if plate_src else ""

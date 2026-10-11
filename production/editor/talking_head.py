@@ -115,12 +115,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         raw_words = _read_words(words_path)
     else:
         raw_words = _try_transcribe(source, project / "whisper-words.json")
+    pause_trims = stage_plan.get("pause_trims") if isinstance(stage_plan, dict) else None
     tightened = tighten_video(
         source, raw_words, project / "tightened.mp4",
         gap=float(audio_cfg["pause_gap_seconds"]),
         handle=float(audio_cfg["join_handle_seconds"]),
         crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)),
-        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])))
+        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])),
+        pause_trims=pause_trims)
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),

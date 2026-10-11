@@ -55,16 +55,17 @@ PLATE_MOTION = 0.60
 PLATE_DILATE_PX = 36
 PLATE_RECIPE = "blur-cover-clean-v3"
 # Card pixels. The frame-edge fade is this long. A wider ramp smears the seam.
-BOUNDARY_RAMP_CARD_PX = 28.0
+# 28 measured 35-45 px on the card. 18 lands in the 15-30 px band.
+BOUNDARY_RAMP_CARD_PX = 18.0
 # A hand that crosses the frame fades only across this many card pixels.
-HAND_RAMP_CARD_PX = 28.0
+HAND_RAMP_CARD_PX = 18.0
 # A run this wide, touching the frame, is the torso. A narrower contact is a hand.
 TORSO_RUN_FRACTION = 0.28
 # A matte that stops this close to the frame is still the source edge. Robust
 # Video Matting often pulls the alpha a few pixels in from a hard crop.
 EDGE_CONTACT_PX = 16
 # Short fade on every source edge. The old wide torso ramp is gone.
-BOUNDARY_RAMP_RECIPE = "boundary-ramp-v7"
+BOUNDARY_RAMP_RECIPE = "boundary-ramp-v8"
 # First frames of a segment are seeded from this many frames later, then checked.
 # Three covers the first frame after the cut and the two that follow it.
 SEGMENT_OPEN_FRAMES = 3
@@ -105,11 +106,12 @@ GUIDE_EPS = 8e-4
 # Soft ramp on the silhouette. Two to three pixels, not a halo and not a stair.
 FEATHER_PX = 2.5
 # Weight of the current frame on the uncertain edge. The solid body is not blended.
-TEMPORAL_NOW = 0.38
+# A low weight leaves the matte a frame behind the picture.
+TEMPORAL_NOW = 0.72
 # Gaussian on the alpha before the threshold, so the crown stays round.
 CONTOUR_SIGMA = 1.45
-# A second blur of the mask. Wide enough to kill a 1 px stair, short of a flat crown.
-CONTOUR_ROUND_SIGMA = 1.8
+# A second blur of the mask. Wide enough to hold roughness and jitter under 1 px.
+CONTOUR_ROUND_SIGMA = 3.0
 # Connected components smaller than this are specks, including islands above the hair.
 SPECK_MIN_PX = 200
 # Foliage green is pulled off this many pixels either side of the contour.
@@ -120,13 +122,18 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-spike"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-smooth30-now72"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
-# Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
+# The render still rebuilds a leaf shell. The encoded master is scored tighter.
 OPEN_FRINGE_IN = 0.11
 OPEN_FRINGE_OUT = 0.155
 OPEN_FRINGE_RING_PX = 8.0
 OPEN_FRINGE_CROWN = 0.15
+# Encoded-master limits. Green is the foliage fraction. Dark is a halo.
+MASTER_FRINGE_GREEN = 0.03
+MASTER_FRINGE_DARK = 0.05
+# Split caption clearance: the emphasis line stays at least this far above the hair.
+SPLIT_CAPTION_CLEARANCE_PX = 18.0
 
 
 def _run(args):
@@ -375,6 +382,30 @@ def _decode_gray(path, width, fps=None, frames=None, start=0.0):
     return masks, sample_w, sample_h, facts
 
 
+def _dense_crowns(matte_path, facts, crowns, step, fine=0.10):
+    """Crown rows at 0.1 s so a brief pop is not missed between 0.25 s samples.
+
+    The anchor (face size and resting crown) stays on the coarser pass. Only
+    the sample list used for captions and reframes gets the finer grid.
+    """
+    if float(step) <= float(fine) + 0.02:
+        return crowns
+    duration = facts["duration"]
+    times = np.arange(0.05, max(0.06, duration - 0.05), fine)
+    masks, _sample_w, sample_h, _facts = _decode_gray(matte_path, 180, fps=round(1.0 / fine, 3))
+    if not masks:
+        return crowns
+    scale_y = facts["height"] / float(sample_h)
+    fine_rows = []
+    for index, mask in enumerate(masks):
+        found = _head_from_mask(mask)
+        if not found:
+            continue
+        when = float(times[index]) if index < len(times) else index * float(fine)
+        fine_rows.append({"at": round(when, 3), "top": round(float(found["top"]) * scale_y, 2)})
+    return fine_rows or crowns
+
+
 def measure_head(matte_path, step=0.25):
     """Head top and height in the matte's own pixel grid, plus raised-hand times."""
     facts = _video_facts(matte_path)
@@ -410,7 +441,7 @@ def measure_head(matte_path, step=0.25):
         "pop_fraction": round(choice["fraction"], 4),
         "samples": len(tops),
         "hands": hands,
-        "crown_samples": crowns,
+        "crown_samples": _dense_crowns(matte_path, facts, crowns, step),
     }
 
 
@@ -562,6 +593,56 @@ def fringe_green_fractions(rgb, person, ring_px=OPEN_FRINGE_RING_PX, crown_fract
         return float(np.count_nonzero(green & mask) / count)
 
     return fraction(soft), fraction(ring)
+
+
+def fringe_dark_fractions(rgb, person, ring_px=OPEN_FRINGE_RING_PX, crown_fraction=OPEN_FRINGE_CROWN):
+    """Dark-halo fraction in the soft crown and in the ring just outside it.
+
+    A pixel counts when it is at least 22 levels under the plate beside the
+    hair. The plate's own shadow does not, because that floor is the plate.
+    """
+    person = np.asarray(person, dtype=np.float32)
+    rgb = np.asarray(rgb)
+    inside = person >= 0.5
+    if not np.any(inside):
+        return 0.0, 0.0
+    crown = _crown_rows(inside, crown_fraction)
+    dist_out = ndimage.distance_transform_edt(~inside)
+    soft = (person >= 0.03) & (person < 0.80) & crown
+    ring = (dist_out > 0) & (dist_out <= float(ring_px)) & crown
+    luma = rgb.astype(np.float32).mean(axis=2)
+    outer = (dist_out > float(ring_px)) & (dist_out <= float(ring_px) + 12.0) & crown
+    floor = float(np.median(luma[outer])) if np.any(outer) else 80.0
+    dark = luma <= max(26.0, floor - 22.0)
+
+    def fraction(mask):
+        count = int(mask.sum())
+        if count <= 0:
+            return 0.0
+        return float(np.count_nonzero(dark & mask) / count)
+
+    return fraction(soft), fraction(ring)
+
+
+def _cut_dark_fringe(person, rgb):
+    """Drop a dark crown halo so the plate shows instead of a black rim."""
+    person = np.asarray(person, dtype=np.float32)
+    soft, ring = fringe_dark_fractions(rgb, person)
+    if max(soft, ring) <= MASTER_FRINGE_DARK:
+        return person
+    inside = person >= 0.5
+    if not np.any(inside):
+        return person
+    crown = _crown_rows(inside, OPEN_FRINGE_CROWN)
+    dist_out = ndimage.distance_transform_edt(~inside)
+    luma = np.asarray(rgb).astype(np.float32).mean(axis=2)
+    outer = (dist_out > OPEN_FRINGE_RING_PX) & (dist_out <= OPEN_FRINGE_RING_PX + 12.0) & crown
+    floor = float(np.median(luma[outer])) if np.any(outer) else 80.0
+    dark = luma <= max(26.0, floor - 22.0)
+    band = crown & ((person >= 0.03) & (person < 0.85) | ((dist_out > 0) & (dist_out <= 3.0)))
+    cleaned = person.copy()
+    cleaned[dark & band] = 0.0
+    return cleaned
 
 
 def fringe_fails(rgb, person, limit_in=OPEN_FRINGE_IN, limit_out=OPEN_FRINGE_OUT):
@@ -718,6 +799,14 @@ def cast_shadow(person, offset_y=SHADOW_OFFSET_Y, sigma=SHADOW_SIGMA, opacity=SH
     return np.clip(shifted * opacity, 0, 1).astype(np.float32)
 
 
+def _round_binary(binary, sigma=None):
+    """Threshold a blurred mask so the crown is a curve instead of a stair."""
+    sigma = CONTOUR_ROUND_SIGMA if sigma is None else float(sigma)
+    rounded = ndimage.gaussian_filter(np.asarray(binary, dtype=np.float32), sigma)
+    out = ndimage.binary_fill_holes(rounded >= 0.5)
+    return _drop_specks(out)
+
+
 def refine_frame(rgb, coarse, previous=None):
     """Feather a full-resolution matte and composite a contact shadow.
 
@@ -747,7 +836,24 @@ def refine_frame(rgb, coarse, previous=None):
     binary = ndimage.binary_fill_holes(binary)
     binary = _drop_specks(binary)
     binary = _drop_foliage(binary, rgb)
+    binary = _round_binary(binary)
+    for _step in range(8):
+        soft, ring = fringe_green_fractions(rgb, binary.astype(np.float32))
+        if max(soft, ring) <= MASTER_FRINGE_GREEN:
+            break
+        nxt = _shrink_green_crown(binary, rgb, steps=1)
+        if np.array_equal(nxt, binary):
+            break
+        binary = nxt
+    # The leaf shrink is a 1 px stair. Round it again, then take back any
+    # green the blur pulled into the ring.
+    binary = _round_binary(binary, sigma=1.6)
+    soft, ring = fringe_green_fractions(rgb, binary.astype(np.float32))
+    if max(soft, ring) > MASTER_FRINGE_GREEN:
+        binary = _shrink_green_crown(binary, rgb, steps=2)
+        binary = _round_binary(binary, sigma=1.2)
     person = _distance_feather(binary, FEATHER_PX)
+    person = _cut_dark_fringe(person, rgb)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
     person = np.where(core, 1.0, person).astype(np.float32)
@@ -1054,15 +1160,20 @@ def check_master_fringes(master, picture, mask, ranges, box, fps=30, opens=3, wo
             matte = matte[:, :, 0]
         person = matte.astype(np.float32) / 255.0
         soft, ring = fringe_green_fractions(rgb, person)
+        dark_in, dark_out = fringe_dark_fractions(rgb, person)
         master_rgb = np.array(Image.open(masters[index]))
         projected = project_matte(matte, box, height=master_rgb.shape[0], width=master_rgb.shape[1])
         olive = composite_crown_olive(master_rgb, projected)
-        failed = soft > OPEN_FRINGE_IN or ring > OPEN_FRINGE_OUT or olive > 0.22
+        green = max(soft, ring)
+        dark = max(dark_in, dark_out)
+        failed = green > MASTER_FRINGE_GREEN or dark > MASTER_FRINGE_DARK
         rows.append({
             "frame": index,
             "t": round(index / float(fps or 30), 3),
             "green_in": round(soft, 3),
             "green_out": round(ring, 3),
+            "dark_in": round(dark_in, 3),
+            "dark_out": round(dark_out, 3),
             "olive": round(olive, 3),
             "failed": bool(failed),
         })
@@ -1495,17 +1606,23 @@ def caption_band_px(layout_spec, height):
     return _caption_line_px(font) + CAPTION_GAP_ABOVE_CROWN_PX * scale + CAPTION_GAP_BELOW_STAGE_PX * scale
 
 
+def split_caption_line_px(font_px):
+    """Pixels from the CSS top to the bottom of an emphasis word.
+
+    The cap height alone leaves the line box and a marker word on the hair.
+    """
+    return float(font_px) * CAPTION_LINE_FACTOR * CAPTION_EMPHASIS
+
+
 def split_caption_top_px(crown_canvas_y, font_px, height):
-    """CSS top of the one-line caption. The baseline is 35 px above this crown.
+    """CSS top of the one-line caption. The line stays 18 px above this crown.
 
     The line does not track the head inside the shot. The caller passes that
-    segment's highest crown. A marker word is about 5 px taller, so the gap
-    stays inside 25-50 px.
+    segment's highest crown. Clearance is measured to the emphasis line, not
+    only to the cap height.
     """
     scale = float(height) / 1920.0
-    cap = _caption_line_px(font_px)
-    baseline = float(crown_canvas_y) - CAPTION_GAP_ABOVE_CROWN_PX * scale
-    top = baseline - cap
+    top = float(crown_canvas_y) - SPLIT_CAPTION_CLEARANCE_PX * scale - split_caption_line_px(font_px)
     floor = 248.0 * scale
     return max(floor, top)
 
@@ -1691,8 +1808,46 @@ def frame_popout(timeline, head, theme):
         "head_px": round(solved["face_px"], 1),
         "samples": head["samples"],
         "hands": hands,
+        "reframes": crown_reframe_spans(head, scale, pop),
     }
     return timeline
+
+
+def crown_reframe_spans(head, scale, pop_px, limit=100.0, target=70.0):
+    """Windows where the crown clears more than ``limit`` px above the card.
+
+    The whole take stays at one scale. These windows only shift the pop down
+    so that span sits near ``target`` instead of letting the eyes clear the card.
+    """
+    samples = sorted(
+        (item for item in (head.get("crown_samples") or []) if item.get("top") is not None),
+        key=lambda item: float(item["at"]),
+    )
+    hot = []
+    for item in samples:
+        above = float(pop_px) + (float(head["head_top"]) - float(item["top"])) * float(scale)
+        if above > float(limit):
+            hot.append((float(item["at"]), above))
+    if not hot:
+        return []
+    groups = []
+    start, end, peak = hot[0][0], hot[0][0], hot[0][1]
+    for at, above in hot[1:]:
+        if at - end <= 0.45:
+            end = at
+            peak = max(peak, above)
+        else:
+            groups.append((start, end, peak))
+            start, end, peak = at, at, above
+    groups.append((start, end, peak))
+    spans = []
+    for begin, finish, peak in groups:
+        spans.append({
+            "start": round(max(0.0, begin - 0.12), 3),
+            "end": round(finish + 0.16, 3),
+            "dy": round(float(peak) - float(target), 1),
+        })
+    return spans
 
 
 def _frame_rgb(path, when, width, height):
@@ -1803,7 +1958,7 @@ def contact_gain(alpha, ramp_px, shoulder_y, hand_ramp_px, rgb=None):
 def feather_boundary_alpha(alpha, ramp_px, shoulder_y, gain=None, hand_ramp_px=None, rgb=None):
     """Ease alpha where the body is cut by the source frame.
 
-    The fade is ``hand_ramp_px`` (about 28 card pixels once placed). A hand
+    The fade is ``hand_ramp_px`` (about 18 card pixels once placed). A hand
     inside the frame stays opaque. A wide run above ``shoulder_y`` is the head
     and is not faded. There is no fade along the bottom.
     """
@@ -2285,6 +2440,14 @@ def attach_popout(timeline, raw_source, ranges, picture, theme):
     ensure_live_plate(
         picture, mask, popped["card_width"], popped["card_height"], plate)
     popped["plate"] = str(plate.resolve())
+    hold = picture.with_name("speaker-plate-hold.jpg")
+    try:
+        from PIL import Image
+        still = _frame_rgb(plate, 1.0, int(popped["card_width"]), int(popped["card_height"]))
+        Image.fromarray(still).save(hold, quality=90)
+        popped["plate_hold"] = str(hold.resolve())
+    except (RuntimeError, OSError, subprocess.CalledProcessError):
+        popped.pop("plate_hold", None)
     try:
         tint = _frame_rgb(plate, 0.4, int(popped["card_width"]), int(popped["card_height"]))
         mean = tint.mean(axis=(0, 1))
@@ -2334,8 +2497,68 @@ def _read_frame(path, moment, width, height):
     return np.array(np.frombuffer(raw[:need], dtype=np.uint8), copy=True).reshape(height, width, 3)
 
 
+def measure_beard_pin(rgb, box):
+    """Beard bottom and pin top, in the same pixels as the frame.
+
+    YuNet's box ends on a clean-shaven chin. The beard is the skin that
+    continues under that box until the under-chin gap. The pin is the first
+    small bright object on the chest below the beard. When it is not in frame,
+    the pin sits 180 px under the beard, where this mic lands.
+    """
+    rgb = np.asarray(rgb)
+    height, width = rgb.shape[:2]
+    x, y, w, h = [float(value) for value in box[:4]]
+    x0 = int(max(0, x + 0.18 * w))
+    x1 = int(min(width, x + 0.82 * w))
+    chin = y + h
+    y1 = int(min(height - 1, chin + 0.62 * h))
+    # ffmpeg and YuNet hand this function BGR.
+    blue = rgb[:, :, 0].astype(np.int16)
+    green = rgb[:, :, 1].astype(np.int16)
+    red = rgb[:, :, 2].astype(np.int16)
+    # White caption pixels are not beard.
+    skin = (red > 130) & (green > 60) & (blue < 200) & (red > green + 12) & (red > blue + 12)
+    skin &= (red + green + blue) < 700
+    beard = int(chin)
+    gap = 0
+    for row in range(int(chin), max(int(chin) + 1, y1)):
+        frac = float(skin[row, x0:x1].mean()) if x1 > x0 else 0.0
+        if frac > 0.18:
+            beard = row
+            gap = 0
+        else:
+            gap += 1
+            if gap > 16 and beard > chin + 8:
+                break
+    pin = None
+    luma = rgb.astype(np.float32).mean(axis=2)
+    y2 = int(min(height - 1, beard + 280))
+    top = int(min(y2 - 1, beard + 40))
+    if y2 > top + 16 and x1 > x0:
+        region = luma[top:y2, x0:x1]
+        floor = float(np.median(region))
+        bright = region > max(floor + 50.0, 160.0)
+        run = 0
+        run_start = None
+        for index, row in enumerate(bright):
+            count = int(row.sum())
+            if 8 <= count <= 90:
+                if run == 0:
+                    run_start = index
+                run += 1
+                if run >= 10:
+                    pin = top + run_start
+                    break
+            else:
+                run = 0
+                run_start = None
+    if pin is None or pin < beard + 70:
+        pin = beard + 190
+    return float(beard), float(pin)
+
+
 def sample_shot_chins(video_path, shots):
-    """One chin row per full-face or punch shot, measured on that shot's picture."""
+    """Chin, beard, and pin for each full-face or punch shot."""
     loaded = _yunet()
     if loaded is None:
         return {}
@@ -2354,5 +2577,7 @@ def sample_shot_chins(video_path, shots):
         box = _largest_face(detector, frame)
         if box is None:
             continue
-        found[shot.get("id")] = float(box[1] + box[3])
+        chin = float(box[1] + box[3])
+        beard, pin = measure_beard_pin(frame, box)
+        found[shot.get("id")] = {"chin": chin, "beard": beard, "pin": pin}
     return found

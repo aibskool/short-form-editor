@@ -550,9 +550,10 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
                 f'<div id="{ident}-pan" class="phone-pan" style="height:{img_h:.2f}%">{picture}{extras}</div>'
                 f'{scan}{bar}{thumb}{cursor}</div></div>')
         if stage.get("enter_after") or stage.get("scan"):
-            animations.append(f'tl.set("#{ident}-phone",{{y:360}},{start:.3f});')
+            # Fully off the stage until after the layout cut, then the whoosh lands on the slide.
+            animations.append(f'tl.set("#{ident}-phone",{{y:1200}},{start:.3f});')
             animations.append(
-                f'tl.fromTo("#{ident}-phone",{{y:360}},{{y:0,duration:0.24,ease:"back.out(1.4)",'
+                f'tl.fromTo("#{ident}-phone",{{y:1200}},{{y:0,duration:0.28,ease:"power2.out",'
                 f'immediateRender:false}},{events[0]["at"]});')
         else:
             animations.append(_slide(f"#{ident}-phone", events[0]["at"]))
@@ -578,6 +579,12 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         if not detailed:
             animations.append(
                 f'tl.fromTo("#{ident}-thumb",{{y:40}},{{y:-120,duration:{max(0.4, duration-0.5):.3f},ease:"power1.inOut"}},{start+0.4});')
+        if float(end) - float(start) > 3.2 and not stage.get("enter_after"):
+            # A held handset. A short drift so the panel is not frozen.
+            drift = max(1.2, min(2.4, float(end) - float(start) - 1.1))
+            animations.append(
+                f'tl.fromTo("#{ident}-phone",{{y:0}},{{y:-14,duration:{drift:.2f},ease:"sine.inOut"}},'
+                f'{float(start) + 0.85:.3f});')
         if scroll:
             # The pan is the screenshot. yPercent moves the callout with the pixels.
             extra = img_h - 100
@@ -948,6 +955,10 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         animations.append(
             f'tl.fromTo("#{ident}-beam",{{scaleX:0}},{{scaleX:1,duration:0.7,ease:"power1.inOut",'
             f'transformOrigin:"0% 50%"}},{start + 0.2:.3f});')
+        drift = max(0.8, float(end) - float(start) - 0.7)
+        animations.append(
+            f'tl.fromTo("#{ident}-hero",{{y:0}},{{y:-16,duration:{drift:.2f},ease:"sine.inOut"}},'
+            f'{float(start) + 0.55:.3f});')
 
     elif motif == "logo_row":
         labels = list(stage.get("items") or ["Plan", "Build", "Ship"])[:3]

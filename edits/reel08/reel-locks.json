@@ -1,0 +1,964 @@
+{
+  "reel": "08",
+  "base": "v8",
+  "master": "edits/reel08/2026-10-09_08_run-this-scan-and-sell-the-ada-fix_v8.mp4",
+  "sha256": "c6a103f890b61985a0b161188bb12d17bba9abf92308eeceb6dedaa40d420a26",
+  "duration_seconds": 54.066667,
+  "framing": {
+    "face_px": 214,
+    "pipeline_face_px": 215.0,
+    "crown_px": 70.0,
+    "scale": 0.3555,
+    "note": "QA measured the face at 214 px. The v8 pipeline recorded 215 px at scale 0.3555 with the crown 70 px above the card. v9 keeps that scale."
+  },
+  "cuts": [
+    {
+      "id": "shot-00",
+      "start": 0.0,
+      "end": 1.855,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-01",
+      "start": 1.855,
+      "end": 4.304,
+      "layout": "split",
+      "motif": "hero_board"
+    },
+    {
+      "id": "shot-02",
+      "start": 4.304,
+      "end": 5.466,
+      "layout": "full",
+      "motif": null
+    },
+    {
+      "id": "shot-03",
+      "start": 5.466,
+      "end": 6.469,
+      "layout": "punch_in",
+      "motif": null
+    },
+    {
+      "id": "shot-04",
+      "start": 6.469,
+      "end": 7.649,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-05",
+      "start": 7.649,
+      "end": 8.864,
+      "layout": "split",
+      "motif": "counter"
+    },
+    {
+      "id": "shot-06",
+      "start": 8.864,
+      "end": 13.654,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-07",
+      "start": 13.654,
+      "end": 17.959,
+      "layout": "split",
+      "motif": "thumbnail_grid"
+    },
+    {
+      "id": "shot-08",
+      "start": 17.959,
+      "end": 20.639,
+      "layout": "split",
+      "motif": "thumbnail_grid"
+    },
+    {
+      "id": "shot-09",
+      "start": 20.639,
+      "end": 22.069,
+      "layout": "split",
+      "motif": "counter"
+    },
+    {
+      "id": "shot-10",
+      "start": 22.069,
+      "end": 24.0,
+      "layout": "split",
+      "motif": "quote_card"
+    },
+    {
+      "id": "shot-11",
+      "start": 24.0,
+      "end": 27.5,
+      "layout": "full",
+      "motif": null
+    },
+    {
+      "id": "shot-12",
+      "start": 27.5,
+      "end": 30.863,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-13",
+      "start": 30.863,
+      "end": 32.243,
+      "layout": "split",
+      "motif": "quote_card"
+    },
+    {
+      "id": "shot-14",
+      "start": 32.243,
+      "end": 35.728,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-15",
+      "start": 35.728,
+      "end": 37.533,
+      "layout": "full",
+      "motif": null
+    },
+    {
+      "id": "shot-16",
+      "start": 37.533,
+      "end": 39.733,
+      "layout": "split",
+      "motif": "phone_frame"
+    },
+    {
+      "id": "shot-17",
+      "start": 39.733,
+      "end": 41.533,
+      "layout": "split",
+      "motif": "thumbnail_grid"
+    },
+    {
+      "id": "shot-18",
+      "start": 41.533,
+      "end": 42.508,
+      "layout": "split",
+      "motif": "offer_pair"
+    },
+    {
+      "id": "shot-19",
+      "start": 42.508,
+      "end": 44.566,
+      "layout": "full",
+      "motif": null
+    },
+    {
+      "id": "shot-20",
+      "start": 44.566,
+      "end": 49.701,
+      "layout": "split",
+      "motif": "doc_fan"
+    },
+    {
+      "id": "shot-21",
+      "start": 49.701,
+      "end": 50.986,
+      "layout": "split",
+      "motif": "counter"
+    },
+    {
+      "id": "shot-22",
+      "start": 50.986,
+      "end": 52.636,
+      "layout": "split",
+      "motif": "quote_card"
+    },
+    {
+      "id": "shot-23",
+      "start": 52.636,
+      "end": 53.333,
+      "layout": "full",
+      "motif": null
+    },
+    {
+      "id": "shot-24",
+      "start": 53.333,
+      "end": 54.045,
+      "layout": "punch_in",
+      "motif": null
+    }
+  ],
+  "words_sha256": "a624fc0cb25f1d149c496ec764ed70b5799b70ae723546bb377f0474047a623d",
+  "words": [
+    {
+      "word": "if",
+      "start": 0.0,
+      "end": 0.155
+    },
+    {
+      "word": "you",
+      "start": 0.165,
+      "end": 0.496
+    },
+    {
+      "word": "build",
+      "start": 0.5,
+      "end": 0.766
+    },
+    {
+      "word": "websites",
+      "start": 0.77,
+      "end": 1.216
+    },
+    {
+      "word": "with",
+      "start": 1.22,
+      "end": 1.327
+    },
+    {
+      "word": "AI",
+      "start": 1.331,
+      "end": 1.855
+    },
+    {
+      "word": "this",
+      "start": 1.895,
+      "end": 2.166
+    },
+    {
+      "word": "scan",
+      "start": 2.17,
+      "end": 2.491
+    },
+    {
+      "word": "is",
+      "start": 2.495,
+      "end": 2.665
+    },
+    {
+      "word": "the",
+      "start": 2.675,
+      "end": 2.766
+    },
+    {
+      "word": "offer",
+      "start": 2.77,
+      "end": 2.965
+    },
+    {
+      "word": "you're",
+      "start": 2.977,
+      "end": 3.266
+    },
+    {
+      "word": "not",
+      "start": 3.27,
+      "end": 3.461
+    },
+    {
+      "word": "selling",
+      "start": 3.465,
+      "end": 3.825
+    },
+    {
+      "word": "it.",
+      "start": 3.845,
+      "end": 4.304
+    },
+    {
+      "word": "The",
+      "start": 4.434,
+      "end": 4.505
+    },
+    {
+      "word": "site",
+      "start": 4.509,
+      "end": 4.764
+    },
+    {
+      "word": "looks",
+      "start": 4.776,
+      "end": 4.961
+    },
+    {
+      "word": "great.",
+      "start": 4.965,
+      "end": 5.479
+    },
+    {
+      "word": "Then",
+      "start": 5.609,
+      "end": 5.725
+    },
+    {
+      "word": "I",
+      "start": 5.729,
+      "end": 5.845
+    },
+    {
+      "word": "ran",
+      "start": 5.849,
+      "end": 6.005
+    },
+    {
+      "word": "an",
+      "start": 6.009,
+      "end": 6.311
+    },
+    {
+      "word": "ADA",
+      "start": 6.319,
+      "end": 6.465
+    },
+    {
+      "word": "scan",
+      "start": 6.469,
+      "end": 7.109
+    },
+    {
+      "word": "about",
+      "start": 7.121,
+      "end": 7.645
+    },
+    {
+      "word": "56",
+      "start": 7.649,
+      "end": 8.106
+    },
+    {
+      "word": "errors.",
+      "start": 8.119,
+      "end": 8.864
+    },
+    {
+      "word": "Before",
+      "start": 8.994,
+      "end": 9.475
+    },
+    {
+      "word": "launch",
+      "start": 9.479,
+      "end": 10.094
+    },
+    {
+      "word": "have",
+      "start": 10.134,
+      "end": 10.379
+    },
+    {
+      "word": "ChatGPT's",
+      "start": 10.387,
+      "end": 11.236
+    },
+    {
+      "word": "Astra",
+      "start": 11.24,
+      "end": 11.69
+    },
+    {
+      "word": "scan",
+      "start": 11.694,
+      "end": 12.06
+    },
+    {
+      "word": "it",
+      "start": 12.064,
+      "end": 12.244
+    },
+    {
+      "word": "in",
+      "start": 12.256,
+      "end": 12.466
+    },
+    {
+      "word": "the",
+      "start": 12.474,
+      "end": 12.531
+    },
+    {
+      "word": "cloud",
+      "start": 12.539,
+      "end": 12.739
+    },
+    {
+      "word": "browser.",
+      "start": 12.751,
+      "end": 13.519
+    },
+    {
+      "word": "It",
+      "start": 13.654,
+      "end": 13.765
+    },
+    {
+      "word": "flags",
+      "start": 13.769,
+      "end": 14.22
+    },
+    {
+      "word": "missing",
+      "start": 14.224,
+      "end": 14.664
+    },
+    {
+      "word": "alt",
+      "start": 14.669,
+      "end": 14.844
+    },
+    {
+      "word": "context",
+      "start": 14.856,
+      "end": 15.684
+    },
+    {
+      "word": "low",
+      "start": 15.724,
+      "end": 15.92
+    },
+    {
+      "word": "contrast",
+      "start": 15.924,
+      "end": 16.729
+    },
+    {
+      "word": "and",
+      "start": 16.769,
+      "end": 16.92
+    },
+    {
+      "word": "unreadable",
+      "start": 16.924,
+      "end": 17.29
+    },
+    {
+      "word": "buttons.",
+      "start": 17.294,
+      "end": 17.959
+    },
+    {
+      "word": "Then",
+      "start": 18.089,
+      "end": 18.235
+    },
+    {
+      "word": "have",
+      "start": 18.239,
+      "end": 18.454
+    },
+    {
+      "word": "the",
+      "start": 18.464,
+      "end": 18.595
+    },
+    {
+      "word": "AI",
+      "start": 18.599,
+      "end": 19.084
+    },
+    {
+      "word": "fix",
+      "start": 19.124,
+      "end": 19.27
+    },
+    {
+      "word": "every",
+      "start": 19.274,
+      "end": 19.674
+    },
+    {
+      "word": "flag.",
+      "start": 19.679,
+      "end": 20.619
+    },
+    {
+      "word": "rescan",
+      "start": 20.639,
+      "end": 21.189
+    },
+    {
+      "word": "until",
+      "start": 21.201,
+      "end": 21.591
+    },
+    {
+      "word": "it's",
+      "start": 21.599,
+      "end": 21.769
+    },
+    {
+      "word": "clean",
+      "start": 21.774,
+      "end": 22.069
+    },
+    {
+      "word": "then",
+      "start": 22.109,
+      "end": 22.32
+    },
+    {
+      "word": "charge",
+      "start": 22.324,
+      "end": 22.64
+    },
+    {
+      "word": "for",
+      "start": 22.644,
+      "end": 22.835
+    },
+    {
+      "word": "that",
+      "start": 22.839,
+      "end": 23.109
+    },
+    {
+      "word": "compliance",
+      "start": 23.149,
+      "end": 23.375
+    },
+    {
+      "word": "pass.",
+      "start": 23.379,
+      "end": 23.974
+    },
+    {
+      "word": "AI",
+      "start": 24.104,
+      "end": 24.485
+    },
+    {
+      "word": "builds",
+      "start": 24.489,
+      "end": 24.89
+    },
+    {
+      "word": "fast",
+      "start": 24.894,
+      "end": 25.687
+    },
+    {
+      "word": "but",
+      "start": 25.709,
+      "end": 25.907
+    },
+    {
+      "word": "it",
+      "start": 25.911,
+      "end": 25.954
+    },
+    {
+      "word": "doesn't",
+      "start": 25.969,
+      "end": 26.269
+    },
+    {
+      "word": "always",
+      "start": 26.281,
+      "end": 26.724
+    },
+    {
+      "word": "build",
+      "start": 26.736,
+      "end": 26.87
+    },
+    {
+      "word": "accessible.",
+      "start": 26.874,
+      "end": 27.474
+    },
+    {
+      "word": "In",
+      "start": 27.604,
+      "end": 27.749
+    },
+    {
+      "word": "Gainesville",
+      "start": 27.759,
+      "end": 28.474
+    },
+    {
+      "word": "one",
+      "start": 28.486,
+      "end": 28.905
+    },
+    {
+      "word": "woman",
+      "start": 28.909,
+      "end": 29.265
+    },
+    {
+      "word": "sued",
+      "start": 29.269,
+      "end": 29.643
+    },
+    {
+      "word": "49",
+      "start": 29.683,
+      "end": 30.178
+    },
+    {
+      "word": "businesses.",
+      "start": 30.19,
+      "end": 30.863
+    },
+    {
+      "word": "One",
+      "start": 30.993,
+      "end": 31.129
+    },
+    {
+      "word": "bakery",
+      "start": 31.133,
+      "end": 31.345
+    },
+    {
+      "word": "settled",
+      "start": 31.349,
+      "end": 31.972
+    },
+    {
+      "word": "for",
+      "start": 31.98,
+      "end": 32.239
+    },
+    {
+      "word": "about",
+      "start": 32.243,
+      "end": 32.842
+    },
+    {
+      "word": "$6,500",
+      "start": 32.85,
+      "end": 34.233
+    },
+    {
+      "word": "not",
+      "start": 34.241,
+      "end": 34.473
+    },
+    {
+      "word": "counting",
+      "start": 34.483,
+      "end": 34.873
+    },
+    {
+      "word": "attorney",
+      "start": 34.885,
+      "end": 35.174
+    },
+    {
+      "word": "fees.",
+      "start": 35.178,
+      "end": 35.728
+    },
+    {
+      "word": "And",
+      "start": 35.858,
+      "end": 35.989
+    },
+    {
+      "word": "don't",
+      "start": 35.993,
+      "end": 36.144
+    },
+    {
+      "word": "stop",
+      "start": 36.148,
+      "end": 36.488
+    },
+    {
+      "word": "at",
+      "start": 36.5,
+      "end": 36.605
+    },
+    {
+      "word": "your",
+      "start": 36.609,
+      "end": 36.891
+    },
+    {
+      "word": "own",
+      "start": 36.895,
+      "end": 36.963
+    },
+    {
+      "word": "builds.",
+      "start": 37.003,
+      "end": 37.508
+    },
+    {
+      "word": "Scan",
+      "start": 37.638,
+      "end": 38.074
+    },
+    {
+      "word": "sites",
+      "start": 38.078,
+      "end": 38.523
+    },
+    {
+      "word": "businesses",
+      "start": 38.535,
+      "end": 38.884
+    },
+    {
+      "word": "already",
+      "start": 38.888,
+      "end": 39.369
+    },
+    {
+      "word": "have.",
+      "start": 39.373,
+      "end": 39.703
+    },
+    {
+      "word": "Show",
+      "start": 39.833,
+      "end": 40.114
+    },
+    {
+      "word": "the",
+      "start": 40.118,
+      "end": 40.264
+    },
+    {
+      "word": "owner",
+      "start": 40.268,
+      "end": 40.618
+    },
+    {
+      "word": "all",
+      "start": 40.63,
+      "end": 40.864
+    },
+    {
+      "word": "the",
+      "start": 40.868,
+      "end": 41.044
+    },
+    {
+      "word": "errors.",
+      "start": 41.048,
+      "end": 41.508
+    },
+    {
+      "word": "Offer",
+      "start": 41.638,
+      "end": 41.82
+    },
+    {
+      "word": "the",
+      "start": 41.824,
+      "end": 42.003
+    },
+    {
+      "word": "fix.",
+      "start": 42.015,
+      "end": 42.508
+    },
+    {
+      "word": "That's",
+      "start": 42.638,
+      "end": 42.9
+    },
+    {
+      "word": "two",
+      "start": 42.913,
+      "end": 43.109
+    },
+    {
+      "word": "offers",
+      "start": 43.113,
+      "end": 43.594
+    },
+    {
+      "word": "from",
+      "start": 43.598,
+      "end": 43.918
+    },
+    {
+      "word": "one",
+      "start": 43.926,
+      "end": 44.129
+    },
+    {
+      "word": "skill.",
+      "start": 44.133,
+      "end": 44.533
+    },
+    {
+      "word": "If",
+      "start": 44.663,
+      "end": 44.783
+    },
+    {
+      "word": "you",
+      "start": 44.793,
+      "end": 44.969
+    },
+    {
+      "word": "want",
+      "start": 44.973,
+      "end": 45.226
+    },
+    {
+      "word": "to",
+      "start": 45.23,
+      "end": 45.25
+    },
+    {
+      "word": "go",
+      "start": 45.25,
+      "end": 45.433
+    },
+    {
+      "word": "deeper",
+      "start": 45.445,
+      "end": 45.898
+    },
+    {
+      "word": "comment",
+      "start": 45.938,
+      "end": 46.309
+    },
+    {
+      "word": "website",
+      "start": 46.313,
+      "end": 46.783
+    },
+    {
+      "word": "and",
+      "start": 46.823,
+      "end": 46.843
+    },
+    {
+      "word": "I'll",
+      "start": 46.847,
+      "end": 46.987
+    },
+    {
+      "word": "send",
+      "start": 46.991,
+      "end": 47.177
+    },
+    {
+      "word": "you",
+      "start": 47.181,
+      "end": 47.307
+    },
+    {
+      "word": "my",
+      "start": 47.311,
+      "end": 47.487
+    },
+    {
+      "word": "AI",
+      "start": 47.491,
+      "end": 47.931
+    },
+    {
+      "word": "Business",
+      "start": 47.943,
+      "end": 48.222
+    },
+    {
+      "word": "Idea",
+      "start": 48.226,
+      "end": 48.681
+    },
+    {
+      "word": "Vault.",
+      "start": 48.693,
+      "end": 48.996
+    },
+    {
+      "word": "30",
+      "start": 49.126,
+      "end": 49.391
+    },
+    {
+      "word": "plus",
+      "start": 49.431,
+      "end": 49.701
+    },
+    {
+      "word": "AI",
+      "start": 49.741,
+      "end": 50.096
+    },
+    {
+      "word": "business",
+      "start": 50.108,
+      "end": 50.457
+    },
+    {
+      "word": "ideas",
+      "start": 50.461,
+      "end": 50.986
+    },
+    {
+      "word": "each",
+      "start": 51.026,
+      "end": 51.226
+    },
+    {
+      "word": "with",
+      "start": 51.246,
+      "end": 51.618
+    },
+    {
+      "word": "an",
+      "start": 51.622,
+      "end": 51.766
+    },
+    {
+      "word": "A",
+      "start": 51.806,
+      "end": 51.967
+    },
+    {
+      "word": "to",
+      "start": 51.971,
+      "end": 52.047
+    },
+    {
+      "word": "Z",
+      "start": 52.051,
+      "end": 52.267
+    },
+    {
+      "word": "guide",
+      "start": 52.271,
+      "end": 52.636
+    },
+    {
+      "word": "to",
+      "start": 52.676,
+      "end": 52.802
+    },
+    {
+      "word": "landing",
+      "start": 52.806,
+      "end": 52.997
+    },
+    {
+      "word": "your",
+      "start": 53.001,
+      "end": 53.356
+    },
+    {
+      "word": "first",
+      "start": 53.396,
+      "end": 53.508
+    },
+    {
+      "word": "client",
+      "start": 53.512,
+      "end": 53.946
+    }
+  ],
+  "v9_allowed_deltas": [
+    "Five sentence holes trimmed from the silence after the consonant: it. to The, fees. to And, builds. to Scan, fix. to That's, Vault. to 30.",
+    "The closing punch-in at 53.333 is removed so the final full-face shot is one piece, and its start may move earlier by about 0.11 s to reach 1.5 s.",
+    "Split captions, the 39.4 s crown reframe, matte edge, plate hold, whoosh timing, bell timing, seam width, held-panel drift, and the keyword pop are not cut-list changes."
+  ]
+}

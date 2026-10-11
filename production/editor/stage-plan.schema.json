@@ -67,7 +67,17 @@
     "bed_bpm": {"type": "number", "minimum": 70, "maximum": 130, "description": "Lo-fi bed tempo for this reel. The default bed stays 82 when this is omitted."},
     "punch_scale": {"type": "number", "description": "Scale for punch-in shots in this plan. The theme default stays 1.16."},
     "object_position": {"type": "string", "description": "CSS object-position for the face, such as 50% 28%."},
-    "omit_cta": {"type": "boolean", "description": "Reach reel. No Comment header and no keyword chip. The style check skips the comment requirement."}
+    "omit_cta": {"type": "boolean", "description": "Reach reel. No Comment header and no keyword chip. The style check skips the comment requirement."},
+    "pause_trims": {
+      "type": "array",
+      "description": "Sentence holes to shorten from the silence after the consonant. Each pair is the previous word and the next word, matched as token prefixes. Other pauses stay.",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {"type": "string", "minLength": 1}
+      }
+    }
   },
   "$defs": {
     "stage": {

@@ -544,11 +544,21 @@ def _cover_sfx(shots, words, styles, unders=None, fps=30, headers=None):
                 for item in events
             )
             if not covered:
+                # The header slides in after the layout cut. The whoosh rides that motion.
+                motion = round(at + 0.12, 3) if at > 0.3 else round(at, 3)
                 events.append({
-                    "at": round(at, 3), "kind": "whoosh", "combo": "8",
+                    "at": motion, "kind": "whoosh", "combo": "8",
                     "label": "Chapter header", "rotate": "whoosh", "band": "mid",
                     "lands_on": f"chapter header: {text}",
                 })
+        if header.get("payoff_style") == "box":
+            from kallaway_pack import keyword_pop_file
+            events.append({
+                "at": round(at + 0.06, 3), "kind": "pop", "combo": "20",
+                "file": keyword_pop_file(), "label": "Word Pop", "fixed_file": True,
+                "band": "high", "sound_at": round(at + 0.06, 3),
+                "lands_on": f"keyword box: {header.get('payoff') or header.get('emphasis') or text}",
+            })
         if text:
             previous = text
     if shots:
