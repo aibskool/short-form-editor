@@ -677,7 +677,7 @@
     "cta_t": 18.867
    },
    "v2": {
-    "duration": 23.8,
+    "duration": 23.6,
     "shot_count": 11,
     "cuts": [
      2.433,
@@ -754,18 +754,12 @@
      },
      {
       "t0": 20.4,
-      "t1": 23.8,
+      "t1": 23.6,
       "kind": "face",
       "plate": ""
      }
     ],
     "cues": [
-     {
-      "t": 1.867,
-      "role": "thump",
-      "trigger": "punch",
-      "gain": -12.0
-     },
      {
       "t": 3.467,
       "role": "negative",
@@ -803,37 +797,37 @@
       "gain": 4.8
      },
      {
-      "t": 6.7,
+      "t": 6.733,
       "role": "tick",
       "trigger": "tick-2",
       "gain": 4.8
      },
      {
-      "t": 6.8,
+      "t": 6.867,
       "role": "tick",
       "trigger": "tick-3",
       "gain": 4.8
      },
      {
-      "t": 6.9,
+      "t": 7.0,
       "role": "tick",
       "trigger": "tick-4",
       "gain": 4.8
      },
      {
-      "t": 7.0,
+      "t": 7.133,
       "role": "tick",
       "trigger": "tick-5",
       "gain": 4.8
      },
      {
-      "t": 7.1,
+      "t": 7.267,
       "role": "tick",
       "trigger": "tick-6",
       "gain": 4.8
      },
      {
-      "t": 7.2,
+      "t": 7.4,
       "role": "tick",
       "trigger": "tick-7",
       "gain": 4.8
@@ -857,25 +851,25 @@
       "gain": 4.8
      },
      {
-      "t": 10.933,
+      "t": 10.967,
       "role": "tick",
       "trigger": "tick-500",
       "gain": 4.8
      },
      {
-      "t": 11.033,
+      "t": 11.1,
       "role": "tick",
       "trigger": "tick-1000",
       "gain": 4.8
      },
      {
-      "t": 11.133,
+      "t": 11.233,
       "role": "tick",
       "trigger": "tick-1500",
       "gain": 4.8
      },
      {
-      "t": 11.233,
+      "t": 11.367,
       "role": "tick",
       "trigger": "tick-2000",
       "gain": 4.8
@@ -1247,7 +1241,7 @@
     "cta_t": 23.5
    },
    "v2": {
-    "duration": 28.367,
+    "duration": 28.167,
     "shot_count": 15,
     "cuts": [
      1.8,
@@ -1260,10 +1254,10 @@
      14.067,
      17.467,
      18.4,
-     22.2,
-     22.833,
-     24.467,
-     26.733
+     21.967,
+     22.6,
+     24.233,
+     26.5
     ],
     "shots": [
      {
@@ -1328,31 +1322,31 @@
      },
      {
       "t0": 18.4,
-      "t1": 22.2,
+      "t1": 21.967,
       "kind": "mg",
       "plate": "features"
      },
      {
-      "t0": 22.2,
-      "t1": 22.833,
+      "t0": 21.967,
+      "t1": 22.6,
       "kind": "bleed",
       "plate": "09form"
      },
      {
-      "t0": 22.833,
-      "t1": 24.467,
+      "t0": 22.6,
+      "t1": 24.233,
       "kind": "face",
       "plate": ""
      },
      {
-      "t0": 24.467,
-      "t1": 26.733,
+      "t0": 24.233,
+      "t1": 26.5,
       "kind": "face",
       "plate": ""
      },
      {
-      "t0": 26.733,
-      "t1": 28.367,
+      "t0": 26.5,
+      "t1": 28.167,
       "kind": "face",
       "plate": ""
      }
@@ -1497,31 +1491,31 @@
       "gain": -4.5
      },
      {
-      "t": 20.833,
+      "t": 20.733,
       "role": "pop",
       "trigger": "icon-book",
       "gain": -4.5
      },
      {
-      "t": 21.967,
+      "t": 21.767,
       "role": "pop",
       "trigger": "icon-calc",
       "gain": -4.5
      },
      {
-      "t": 22.2,
+      "t": 21.967,
       "role": "pop",
       "trigger": "insert-09form",
       "gain": -4.5
      },
      {
-      "t": 22.833,
+      "t": 22.6,
       "role": "pop",
       "trigger": "cta-sites",
       "gain": -4.5
      },
      {
-      "t": 25.033,
+      "t": 24.8,
       "role": "negative",
       "trigger": "negative-pages",
       "gain": -9.8
@@ -1529,7 +1523,7 @@
     ],
     "caption_baseline": 1462,
     "title_off": 6.133,
-    "cta_t": 22.833
+    "cta_t": 22.6
    }
   }
  }

@@ -1268,7 +1268,7 @@ def _jump_times(spans, t0, t1):
     return jumps
 
 
-def _spike_times(path, thresh=11.0):
+def _spike_times(path, thresh=11.0, edge=4):
     """Frames inside a shot whose luma jump would read as a cut."""
     raw = subprocess.check_output([
         "ffmpeg", "-v", "error", "-i", str(path), "-vf", "scale=135:240",
@@ -1280,7 +1280,7 @@ def _spike_times(path, thresh=11.0):
     diff = np.mean(np.abs(np.diff(frames, axis=0)), axis=(1, 2))
     times = []
     for i, d in enumerate(diff, start=1):
-        if d > thresh and 4 < i < len(frames) - 4:
+        if d > thresh and edge < i < len(frames) - edge:
             times.append(i / FPS)
     return times
 
@@ -1369,11 +1369,12 @@ def render_base(plan, work):
             # Hard cut at every take change. A nod inside the take is a 2-frame
             # hold, never a dissolve of two faces.
             jumps = [t - shot.t0 for t in _jump_times(plan["spans"], shot.t0, shot.t1)]
-            spikes = [t for t in _spike_times(dest) if not any(abs(t - j) < 0.08 for j in jumps)]
+            # A nod is eased across a few frames of the same take. A take change
+            # stays a hard cut: blending those frames is the ghosted double face.
+            spikes = [t for t in _spike_times(dest, edge=1) if not any(abs(t - j) < 0.08 for j in jumps)]
             if spikes:
-                from brandon_v2 import freeze_spikes
-                frozen = work / f"holdjump_{i:02d}.mp4"
-                dest = freeze_spikes(dest, frozen, spikes, work)
+                eased = work / f"ease_{i:02d}.mp4"
+                dest = _soften_jumps(dest, eased, spikes, work, frames_n=4)
                 dest = _ensure(dest, n, work)
             prev = dest
         else:
@@ -1385,16 +1386,7 @@ def render_base(plan, work):
     lst.write_text("".join(f"file '{p}'\n" for p in parts))
     base = work / "base.mp4"
     ff("-y", "-f", "concat", "-safe", "0", "-i", str(lst), *ENC, str(base))
-    from brandon_v2 import freeze_spikes, mask_pins
-    starts = [s.t0 for s in plan["shots"] if s.t0 > 0.05]
-    held = work / "base_hold.mp4"
-    spikes = []
-    for t in _spike_times(base, thresh=10.2):
-        if any(abs(t - b) < 0.12 for b in starts):
-            continue
-        spikes.append(t)
-    if spikes:
-        base = freeze_spikes(base, held, spikes, work, frames_n=2)
+    from brandon_v2 import mask_pins
     faces = [(s.t0, s.t1) for s in plan["shots"] if s.kind == "face"]
     masked = work / "base_pin.mp4"
     return mask_pins(base, masked, faces, work)
@@ -1634,9 +1626,8 @@ def render(reel, dest, work=None):
     if len(voice) < n:
         voice = np.pad(voice, (0, n - len(voice)))
     voice = voice[:n]
-    if plan["reel"] == "09":
-        from brandon_v2 import highpass_voice
-        voice = highpass_voice(voice)
+    from brandon_v2 import clean_voice, kill_dc
+    voice = clean_voice(voice, plan["reel"])
     bed, placed = mix_sfx(plan["cues"], n)
     events = sfx_events(bed)
     per_min = len(events) / plan["duration"] * 60
@@ -1669,6 +1660,7 @@ def render(reel, dest, work=None):
     overlay = render_overlay(plan, work)
     print("mix", flush=True)
     mix, info = fit_loudness(voice, bed)
+    mix = kill_dc(mix)
     wav = work / "mix.wav"
     stereo = np.column_stack([mix, mix])
     # write stereo 16-bit

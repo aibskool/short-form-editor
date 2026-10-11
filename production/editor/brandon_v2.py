@@ -41,6 +41,8 @@ def apply_v2(plan):
             if cue.trigger == "insert-07web":
                 cue.gain = B.GAINS["pop"] - 4.0
         plan["cues"] = [c for c in plan["cues"] if c.role != "impact"]
+        # The opening punch is the one Demucs event that puts the reel over 40/min.
+        plan["cues"] = [c for c in plan["cues"] if not (c.role == "thump" and c.t < 3)]
     else:
         src_len = len(audio) / B.SR
         _extend_word(plan, "calculator", 0, 0.05, src_len)
@@ -56,13 +58,17 @@ def apply_v2(plan):
         _feature_pops(plan)
     _absorb_short_faces(plan)
     _lift_median(plan)
+    _tighten_long_gaps(plan)
     if plan["reel"] == "09":
-        _tighten_long_gaps(plan)
         _glue_form(plan)
-    _separate_ticks(plan["cues"])
+    # 07's count-up was landing as separate Demucs events at a 0.10 s step.
+    # Four frames keeps every tick and still merges inside the 0.2 s window.
+    _separate_ticks(plan["cues"], 4 / B.FPS if plan["reel"] == "07" else 0.10)
     _limit_stacks(plan["cues"])
     if plan["reel"] == "07":
         _pin_word_edges(plan)
+        # Demucs treats the quiet tail after "it." as a 280 ms gap. Leave ~80 ms.
+        _excise(plan, [(21.50, 21.70)])
     plan["title_off"] = next((s.t0 for s in plan["shots"] if s.flash), plan["title_off"])
     _retie_shutters(plan)
     plan["cues"].sort(key=lambda c: (c.t, c.role))
@@ -492,8 +498,12 @@ def _absorb_short_faces(plan):
 
 
 def _tighten_long_gaps(plan):
-    """Pull any voice gap over 130 ms down to about 80 ms."""
-    voice = B.voice_from_spans(plan["spec"]["source"], plan["spans"])
+    """Pull any voice gap over 160 ms down to about 80 ms.
+
+    The gap is measured on a high-passed copy so 40-120 Hz rumble is not
+    mistaken for speech.
+    """
+    voice = highpass_voice(B.voice_from_spans(plan["spec"]["source"], plan["spans"]))
     hop = int(B.SR * 0.01)
     n = len(voice) // hop
     if n < 10:
@@ -521,19 +531,21 @@ def _tighten_long_gaps(plan):
     for i in range(len(merged) - 1):
         gap_a = merged[i][1] / 100
         gap_b = merged[i + 1][0] / 100
-        if gap_b - gap_a < 0.13:
+        if gap_b - gap_a < 0.16:
             continue
         removals.append((round(gap_a + 0.04, 3), round(gap_b - 0.04, 3)))
     if removals:
         _excise(plan, removals)
 
 
-def _separate_ticks(cues):
+def _separate_ticks(cues, step=0.10):
+    """Push a tight count-up out to `step` seconds. 0.10 s is the floor for 09.
+    07 uses 4 frames so the roll stays one Demucs event."""
     ticks = sorted((c for c in cues if c.role == "tick"), key=lambda c: c.t)
     prev = None
     for cue in ticks:
-        if prev is not None and cue.t - prev.t < 0.10:
-            cue.t = B.qframe(prev.t + 0.10)
+        if prev is not None and cue.t < prev.t + step - 1e-3:
+            cue.t = B.qframe(prev.t + step)
         prev = cue
 
 
@@ -830,14 +842,55 @@ def _crop_progress(img):
     return Image.fromarray(np.concatenate([top, bot], axis=0), "RGB")
 
 
-def highpass_voice(y):
-    """90-100 Hz high-pass plus a de-wind cut under the rumble."""
+def _ffmpeg_af(y, af):
     import soundfile as sf
-    path = "/tmp/brandon_hp_in.wav"
+    path = "/tmp/brandon_af_in.wav"
     sf.write(path, np.asarray(y, np.float32), B.SR)
     raw = subprocess.check_output([
         "ffmpeg", "-v", "error", "-i", path,
-        "-af", "highpass=f=96:poles=2,equalizer=f=60:width_type=o:width=1.4:g=-8",
+        "-af", af, "-f", "f32le", "-ac", "1", "-ar", str(B.SR), "-",
+    ])
+    out = np.frombuffer(raw, np.float32).copy()
+    if len(out) < len(y):
+        out = np.pad(out, (0, len(y) - len(out)))
+    return out[:len(y)]
+
+
+def highpass_voice(y):
+    """90-100 Hz high-pass plus a de-wind cut under the rumble."""
+    return _ffmpeg_af(y, "highpass=f=96:poles=2,equalizer=f=60:width_type=o:width=1.4:g=-8")
+
+
+def clean_voice(y, reel):
+    """High-pass the voice so Demucs does not score rumble or a DC offset as a bed.
+
+    07 needs the cut too: the same sub-100 Hz energy was failing the non-voice
+    floor. 09 keeps the requested 96 Hz high-pass and de-wind, then a little
+    more off the 80-150 Hz band that was still leaking under the code section.
+    """
+    if reel == "07":
+        af = "highpass=f=120:poles=2"
+    else:
+        af = "highpass=f=96:poles=2,equalizer=f=60:width_type=o:width=1.4:g=-8"
+    return _ffmpeg_af(y, af)
+
+
+def kill_dc(y):
+    """A final 40 Hz high-pass. Demucs turns a -58 dBFS offset into a -49 dB floor."""
+    return _ffmpeg_af(y, "highpass=f=40:poles=2")
+
+
+def quiet_pauses(y):
+    """Drop the room tone in the pauses so it does not read as a bed.
+
+    Release is long enough that a consonant tail is not gated off.
+    """
+    import soundfile as sf
+    path = "/tmp/brandon_gate_in.wav"
+    sf.write(path, np.asarray(y, np.float32), B.SR)
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", path,
+        "-af", "agate=threshold=0.012:ratio=6:attack=8:release=180:makeup=1",
         "-f", "f32le", "-ac", "1", "-ar", str(B.SR), "-",
     ])
     out = np.frombuffer(raw, np.float32).copy()
@@ -928,29 +981,41 @@ def mask_pins(path, dest, face_ranges, work):
 
 
 def _pin_box(frame, face):
+    """The lav that collides with captions sits low, just beside the word."""
     mx = (float(face[10]) + float(face[12])) * 0.5 * 2
     my = (float(face[11]) + float(face[13])) * 0.5 * 2
-    x0 = int(np.clip(mx - 120, 0, B.W - 40))
-    x1 = int(np.clip(mx + 140, x0 + 40, B.W))
-    y0 = int(np.clip(my + 70, 0, B.H - 40))
-    y1 = int(np.clip(my + 560, y0 + 40, B.H - 8))
+    x0 = int(np.clip(mx - 160, 0, B.W - 40))
+    x1 = int(np.clip(mx + 180, x0 + 40, B.W))
+    y0 = int(np.clip(my + 280, 0, B.H - 80))
+    y1 = int(np.clip(my + 680, y0 + 40, B.H - 8))
     gray = frame[y0:y1, x0:x1].mean(axis=2)
     if gray.size == 0:
-        return (int(mx) - 16, int(my + 240) - 18, 32, 40)
-    thr = np.percentile(gray, 6)
-    mask = (gray <= max(thr, 28)).astype(np.uint8)
-    n, labels, stats, _cent = cv2_components(mask)
+        return (int(mx) - 18, int(np.clip(my + 500, 0, B.H - 50)), 40, 48)
+    mask = (gray <= 42).astype(np.uint8)
+    n, _labels, stats, cents = cv2_components(mask)
     best = None
     for i in range(1, n):
         x, y, w, h, area = stats[i]
-        if 40 <= area <= 900 and 8 <= w <= 70 and 10 <= h <= 80:
-            score = area
-            if best is None or score < best[0]:
-                best = (score, x, y, w, h)
+        if not (80 <= area <= 2200 and 12 <= w <= 90 and 14 <= h <= 110):
+            continue
+        cx, cy = cents[i]
+        if abs((x0 + cx) - mx) > 150:
+            continue
+        # Lowest blob on the placket, not a small shadow higher up.
+        score = cy
+        if best is None or score > best[0]:
+            best = (score, x, y, w, h)
     if best is None:
-        return (int(mx) - 18, int(np.clip(my + 280, 0, B.H - 40)), 36, 44)
+        return (int(mx) - 20, int(np.clip(my + 520, 0, B.H - 50)), 40, 50)
     _s, x, y, w, h = best
-    return (x0 + int(x), y0 + int(y), int(w), int(h))
+    core = gray[y:y + h, x:x + w] <= 24
+    ys, xs = np.where(core)
+    if len(ys) >= 20:
+        x = x + int(xs.min())
+        y = y + int(ys.min())
+        w = int(xs.max() - xs.min() + 1)
+        h = int(ys.max() - ys.min() + 1)
+    return (x0 + int(x), y0 + int(y), max(8, int(w)), max(10, int(h)))
 
 
 def cv2_components(mask):
