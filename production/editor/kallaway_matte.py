@@ -874,13 +874,16 @@ def cast_shadow(person, offset_y=SHADOW_OFFSET_Y, sigma=SHADOW_SIGMA, opacity=SH
     return np.clip(shifted * opacity, 0, 1).astype(np.float32)
 
 
-def refine_frame(rgb, coarse, previous=None):
+def refine_frame(rgb, coarse, previous=None, hold_edge=False):
     """Feather a full-resolution matte and composite a contact shadow.
 
     The incoming alpha is already at the picture size. Optical flow steadies
     the edge, a 1-2px ramp antialiases it, and green foliage is pulled off
     that ramp. Returns person alpha, straight RGB, straight alpha (person over
     the shadow), and the state to carry into the next frame.
+
+    ``hold_edge`` keeps a mask that was already pulled off a halo. The contour
+    blur would grow that edge back into the fringe, so it is skipped.
     """
     rgb = np.asarray(rgb)
     alpha = np.asarray(coarse, dtype=np.float32)
@@ -889,21 +892,28 @@ def refine_frame(rgb, coarse, previous=None):
         alpha = cv2.resize(alpha, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
     alpha = np.clip(alpha, 0, 1).astype(np.float32)
     gray = np.clip(rgb.astype(np.float32).mean(axis=2), 0, 255).astype(np.uint8)
-    alpha = _flow_stabilize(alpha, previous, gray)
-    # Blur the contour only. The state carried forward stays sharp so the blur
-    # does not accumulate, and the crown stays a curve instead of a flat cut.
-    contour = ndimage.gaussian_filter(alpha, CONTOUR_SIGMA)
-    binary = contour >= 0.5
-    binary = ndimage.binary_fill_holes(binary)
-    # Close pinholes. Do not open: opening eats the ear.
-    binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
-    binary = _drop_specks(binary)
-    rounded = ndimage.gaussian_filter(binary.astype(np.float32), CONTOUR_ROUND_SIGMA)
-    binary = rounded >= 0.5
-    binary = ndimage.binary_fill_holes(binary)
-    binary = _drop_specks(binary)
+    if hold_edge:
+        binary = alpha >= 0.5
+        binary = ndimage.binary_fill_holes(binary)
+        binary = _drop_specks(binary)
+    else:
+        alpha = _flow_stabilize(alpha, previous, gray)
+        # Blur the contour only. The state carried forward stays sharp so the blur
+        # does not accumulate, and the crown stays a curve instead of a flat cut.
+        contour = ndimage.gaussian_filter(alpha, CONTOUR_SIGMA)
+        binary = contour >= 0.5
+        binary = ndimage.binary_fill_holes(binary)
+        # Close pinholes. Do not open: opening eats the ear.
+        binary = ndimage.binary_closing(binary, structure=np.ones((3, 3), dtype=bool))
+        binary = _drop_specks(binary)
+        rounded = ndimage.gaussian_filter(binary.astype(np.float32), CONTOUR_ROUND_SIGMA)
+        binary = rounded >= 0.5
+        binary = ndimage.binary_fill_holes(binary)
+        binary = _drop_specks(binary)
     binary = _drop_foliage(binary, rgb)
     binary = _drop_background_rim(binary, rgb)
+    if hold_edge:
+        alpha = binary.astype(np.float32)
     person = _distance_feather(binary, FEATHER_PX)
     # The chest stays solid. A clip through it must not show the panel.
     core = ndimage.binary_erosion(binary, iterations=1)
@@ -1521,7 +1531,7 @@ def restabilize_crown(person, rgb, coarse, reference_person, reference_rgb):
                 if np.array_equal(nxt, binary):
                     break
             binary = nxt
-        repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None)
+        repaired = refine_frame(np.asarray(rgb), binary.astype(np.float32), None, hold_edge=True)
     if _opening_frame_fails(repaired[0], rgb, reference_person, reference_rgb):
         soft, ring = fringe_green_fractions(rgb, repaired[0])
         dark = fringe_dark_fraction(rgb, repaired[0])
@@ -1567,7 +1577,7 @@ def _rematte_failed_opening(refined, frames, seed_index):
                     if np.array_equal(nxt, binary):
                         break
                 binary = nxt
-            refined[index] = refine_frame(rgb, binary.astype(np.float32), None)
+            refined[index] = refine_frame(rgb, binary.astype(np.float32), None, hold_edge=True)
         if _opening_frame_fails(refined[index][0], rgb, seed_person, seed_rgb):
             area, rim = _matte_green_stats(refined[index][0], rgb)
             _soft, ring = fringe_green_fractions(rgb, refined[index][0])
