@@ -542,10 +542,23 @@ def motif_markup(motif, stage, start, end, box, colors, ident, media_url=None, t
         if zoom_scale > 1.02:
             # Scale the recording inside the glass. The bezel stays put, the
             # callout is inside the pan, and fewer lines fill the screen.
-            ox = float(zoom.get("x", 0.5)) * 100.0
-            oy = float(zoom.get("y", 0.42)) * 100.0
-            animations.append(
-                f'tl.set("#{ident}-pan",{{scale:{zoom_scale:.3f},transformOrigin:"{ox:.1f}% {oy:.1f}%"}},{start + 0.02:.3f});')
+            # Holds are whole-column framings. Each one keeps a margin around
+            # the words, and the switch is a cut so the move never sits mid-glyph.
+            holds = [item for item in (zoom.get("holds") or []) if isinstance(item, dict)]
+            if holds:
+                def _origin(item):
+                    ox = float(item.get("x", 0.5)) * 100.0
+                    oy = float(item.get("y", 0.42)) * 100.0
+                    return f"{ox:.1f}% {oy:.1f}%"
+                for item in holds:
+                    at = start + float(item.get("at", 0.2))
+                    animations.append(
+                        f'tl.set("#{ident}-pan",{{scale:{zoom_scale:.3f},transformOrigin:"{_origin(item)}"}},{at:.3f});')
+            else:
+                ox = float(zoom.get("x", 0.5)) * 100.0
+                oy = float(zoom.get("y", 0.42)) * 100.0
+                animations.append(
+                    f'tl.set("#{ident}-pan",{{scale:{zoom_scale:.3f},transformOrigin:"{ox:.1f}% {oy:.1f}%"}},{start + 0.02:.3f});')
         if stage.get("callout"):
             at = float(stage["callout"]["at"])
             draw = float(stage["callout"].get("draw") or DRAW_SECONDS)

@@ -428,6 +428,20 @@ class KallawayTests(unittest.TestCase):
             "phone_frame", zoomed, 0.0, 3.0,
             {"left": 0, "top": 0, "width": 400, "height": 700}, colors, "stage-z", None)
         self.assertTrue(any("scale:2.000" in line and "stage-z-pan" in line for line in zoom_animations))
+        columns = {
+            "motif": "phone_frame",
+            "zoom": {"scale": 1.82, "holds": [
+                {"x": 0.0, "y": 0.40, "at": 0.25},
+                {"x": 1.0, "y": 0.48, "at": 1.55},
+            ]},
+        }
+        _section, column_animations, _events = motif_markup(
+            "phone_frame", columns, 12.0, 16.0,
+            {"left": 0, "top": 0, "width": 400, "height": 700}, colors, "stage-c", None)
+        joined = "\n".join(column_animations)
+        self.assertIn('transformOrigin:"0.0% 40.0%"', joined)
+        self.assertIn('transformOrigin:"100.0% 48.0%"', joined)
+        self.assertNotIn("12.0% 46.0%", joined)
         bad = {
             "style": "kallaway", "theme": "ai-builder-school", "theme_mode": "dark",
             "output": {"width": 1080, "height": 1920, "fps": 30},
@@ -1667,6 +1681,10 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(whip["sound_at"], 5.467 - 3 / 30)
         self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085, delta=0.002)
         self.assertAlmostEqual(pop["sound_at"], 6.1, delta=0.001)
+        from kallaway_plan import apply_sfx_shifts
+        apply_sfx_shifts(timeline, [{"match": "Quick Swing B", "seconds": 0.080}])
+        self.assertAlmostEqual(swing["sound_at"], 18.200 - 4 / 30 - 0.085 + 0.080, delta=0.002)
+        self.assertAlmostEqual(whip["sound_at"], 5.467 - 4 / 30 - 0.12 + 3 / 30, delta=0.002)
 
     def test_full_face_baseline_is_per_take(self):
         from kallaway_matte import frame_popout
@@ -1713,6 +1731,9 @@ class KallawayTests(unittest.TestCase):
         # 320/30 is 10.6666... Rounding that to 10.667 lands after the frame.
         self.assertLessEqual(quantize_cut(320 / 30), 320 / 30)
         self.assertGreater(quantize_cut(320 / 30), 319 / 30)
+        # Four milliseconds before the frame, outside a 1 ms renderer epsilon.
+        self.assertLessEqual(320 / 30 - quantize_cut(320 / 30), 0.006)
+        self.assertGreaterEqual(320 / 30 - quantize_cut(320 / 30), 0.003)
         shots = [
             {"layout": "full", "start": 9.036, "end": 10.700},
             {"layout": "split", "start": 10.700, "end": 12.800},
@@ -1720,7 +1741,7 @@ class KallawayTests(unittest.TestCase):
         ]
         # The third shot is only here so the 10.700 edge is not the timeline end.
         snapped = snap_shot_edges(shots, [10.666667, 10.700, 22.933333])
-        self.assertAlmostEqual(snapped[1]["start"], 10.666, places=3)
+        self.assertAlmostEqual(snapped[1]["start"], 10.663, places=3)
         self.assertLessEqual(snapped[1]["start"], 320 / 30)
         self.assertGreater(snapped[1]["start"], 319 / 30)
         # A picture cut just after the planned punch moves the punch onto that frame.
@@ -1826,6 +1847,10 @@ class KallawayTests(unittest.TestCase):
         cuts = tightened_cut_frames([(0.0, 6.527), (6.527, 6.568), (6.568, 7.0)], 30)
         self.assertEqual(cuts[0], trim_frame_count(0.0, 6.527, 30))
         self.assertEqual(cuts[1], cuts[0] + 2)
+        # 7.202–7.231 contains no frame. Counting it as one delays every later cut.
+        empty = tightened_cut_frames([(6.566, 7.202), (7.202, 7.231), (7.916, 8.516)], 30)
+        self.assertEqual(trim_frame_count(7.202, 7.231, 30), 0)
+        self.assertEqual(empty, [trim_frame_count(6.566, 7.202, 30)])
 
     def test_a_flow_smear_on_the_crown_is_rebuilt_from_the_coarse_matte(self):
         from kallaway_matte import fringe_fails, restabilize_crown
@@ -1870,6 +1895,35 @@ class KallawayTests(unittest.TestCase):
         self.assertLess(float(refined[0][0][60, 16]), 0.2)
         self.assertGreater(float(refined[0][0][80, 64]), 0.9)
         self.assertLess(float(refined[1][0][60, 16]), 0.2)
+
+    def test_a_flat_contrast_side_is_a_missing_plate(self):
+        from kallaway_matte import split_plate_missing
+        frame = np.zeros((1920, 1080, 3), np.uint8)
+        frame[:] = (40, 70, 36)
+        frame[1408:, :80] = (17, 17, 17)
+        frame[1408:, -80:] = (17, 17, 17)
+        self.assertTrue(split_plate_missing(frame))
+        leafy = np.zeros((1920, 1080, 3), np.uint8)
+        leafy[:] = (40, 70, 36)
+        leafy[1408:] = (52, 78, 34)
+        leafy[1500:1600, 400:700] = (180, 150, 120)
+        self.assertFalse(split_plate_missing(leafy))
+
+    def test_a_leaf_off_the_torso_is_dropped_and_the_shirt_stays(self):
+        from kallaway_matte import _drop_foliage
+        height, width = 220, 160
+        binary = np.zeros((height, width), dtype=bool)
+        binary[30:200, 40:120] = True
+        # A thin leaf, bigger than max_area, that does not reach the eroded torso.
+        binary[20:200, 0:10] = True
+        rgb = np.zeros((height, width, 3), np.uint8)
+        rgb[:] = (30, 40, 28)
+        rgb[binary] = (40, 48, 36)
+        rgb[20:200, 0:10] = (36, 150, 40)
+        rgb[80:140, 55:100] = (48, 140, 46)
+        cleaned = _drop_foliage(binary, rgb, max_area=1000)
+        self.assertFalse(bool(cleaned[80, 4]))
+        self.assertTrue(bool(cleaned[110, 80]))
 
     def test_a_decaying_vowel_keeps_about_45ms(self):
         rate = 16000

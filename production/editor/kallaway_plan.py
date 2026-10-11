@@ -441,6 +441,26 @@ def reanchor_led_sfx(timeline, original_starts, fps=30, attack_of=None):
     return timeline
 
 
+def apply_sfx_shifts(timeline, shifts):
+    """Move named cues by a locked offset. Other files stay where the anchor put them."""
+    moved = False
+    for shift in shifts or []:
+        needle = str(shift.get("match") or "")
+        delta = float(shift.get("seconds") or 0)
+        if not needle or abs(delta) < 1e-6:
+            continue
+        for cue in timeline.get("sfx") or []:
+            if cue.get("mute"):
+                continue
+            if needle not in str(cue.get("file") or ""):
+                continue
+            cue["sound_at"] = round(float(cue.get("sound_at", cue.get("at", 0))) + delta, 3)
+            moved = True
+    if moved:
+        timeline["sfx_log"] = sfx_placement_rows(timeline.get("sfx"))
+    return timeline
+
+
 def _shift_counters(timeline, originals, starts):
     """Keep the count-up bell on the snapped shot, with the digits."""
     for cue in timeline.get("sfx") or []:

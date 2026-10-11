@@ -1576,7 +1576,8 @@ def _outgoing_fade(samples, rate, end, fps=30):
     return 0.0
 
 
-def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None):
+def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, sentence_gap=None,
+                  range_lock=None):
     """Write a tight 1x cut of the talking-head take and remap word times.
 
     Each word keeps its decay plus a safety tail. Mid-phrase pauses are cut
@@ -1589,20 +1590,27 @@ def tighten_video(source, words, output, gap=0.04, handle=0.0, crossfade=0.012, 
     duration = _probe_duration(source)
     samples = _load_mono(source)
     refined = refine_word_bounds(samples, RATE, words)
-    ranges = keep_ranges(refined, duration, gap=gap, handle=handle, sentence_gap=sentence_gap)
-    # A keep-range hole inside one word is a cut through the consonant. Close it
-    # before the silence pass, so the pass can still drop a truly silent interior
-    # (the stop in "ends") without gluing that air back in.
-    ranges = seal_word_interiors(ranges, refined)
-    ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
-    ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10)
-    ranges = trim_final_nonspeech(samples, RATE, ranges)
-    ranges = attach_stop_release(samples, RATE, ranges, words=refined)
-    # Last. A pause target must not have eaten the consonant to get there.
-    ranges = protect_aligned_tails(ranges, refined, samples, RATE)
-    # A tenth of a second after the last word, when the source still has it.
-    # The closing face can use this hold without crossing back over a picture cut.
-    ranges = extend_closing_hold(ranges, duration, hold=0.10)
+    if range_lock:
+        # The lock is the edit. Adaptive trims are what moved pauses and cuts
+        # that had already passed.
+        ranges = [(round(float(begin), 3), round(float(end), 3)) for begin, end in range_lock]
+        if not ranges:
+            raise ValueError("range lock is empty")
+    else:
+        ranges = keep_ranges(refined, duration, gap=gap, handle=handle, sentence_gap=sentence_gap)
+        # A keep-range hole inside one word is a cut through the consonant. Close it
+        # before the silence pass, so the pass can still drop a truly silent interior
+        # (the stop in "ends") without gluing that air back in.
+        ranges = seal_word_interiors(ranges, refined)
+        ranges = excise_internal_silence(samples, RATE, ranges, max_keep=gap)
+        ranges = trim_quiet_tails(samples, RATE, ranges, max_quiet=0.10)
+        ranges = trim_final_nonspeech(samples, RATE, ranges)
+        ranges = attach_stop_release(samples, RATE, ranges, words=refined)
+        # Last. A pause target must not have eaten the consonant to get there.
+        ranges = protect_aligned_tails(ranges, refined, samples, RATE)
+        # A tenth of a second after the last word, when the source still has it.
+        # The closing face can use this hold without crossing back over a picture cut.
+        ranges = extend_closing_hold(ranges, duration, hold=0.10)
     # Picture hard-cuts on the word boundary. The crossfade lives in the silence
     # after the safety tail, so it does not eat the fricative.
     video = list(ranges)

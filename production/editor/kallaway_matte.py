@@ -116,7 +116,7 @@ RVM_DOWNSAMPLE = 0.5
 SHADOW_OFFSET_Y = 12
 SHADOW_SIGMA = 11.0
 SHADOW_OPACITY = 0.46
-EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage3-fringe-feather2.5-despill6-speck200-spike"
+EDGE_RECIPE = "rvm-r50-d050-flow-backseed-nofoliage4-fringe-feather2.5-despill6-speck200-spike"
 # Foliage fraction of the crown's soft band, or of the 0-8 px ring outside it.
 # Clean cut frames sit under about 0.04. A leaf halo sits above 0.13.
 OPEN_FRINGE_IN = 0.11
@@ -613,10 +613,22 @@ def _drop_foliage(binary, rgb, max_area=FOLIAGE_COMPONENT_PX, rim_px=OPEN_RIM_PX
         return binary
     labels, count = ndimage.label(green)
     counts = np.bincount(labels.ravel())
+    # The torso, not the shoulder surface. A leaf sitting on the shoulder
+    # barely overlaps this core. A green shirt does.
+    core = ndimage.binary_erosion(binary, iterations=8) if np.any(binary) else binary
+    core_px = int(np.count_nonzero(core))
     drop = np.zeros(count + 1, dtype=bool)
     for label in range(1, count + 1):
-        if 0 < int(counts[label]) <= int(max_area):
+        area = int(counts[label])
+        if area <= 0:
+            continue
+        if area <= int(max_area):
             drop[label] = True
+            continue
+        if core_px > 200 and area <= 90000:
+            overlap = int(np.count_nonzero((labels == label) & core))
+            if overlap * 8 < area:
+                drop[label] = True
     cleaned = np.array(binary, copy=True) if drop.any() else binary
     if drop.any():
         cleaned[drop[labels]] = False
@@ -939,14 +951,142 @@ def trim_frame_count(begin, end, fps):
 
 
 def tightened_cut_frames(ranges, fps):
-    """First frame index of each segment after the opening one."""
+    """First frame index of each segment after the opening one.
+
+    A window that contains no presentation time emits nothing. Counting it as
+    one frame puts the flow reset a frame late, so the new picture shows for
+    one frame under the previous matte.
+    """
     cuts = []
     acc = 0
     rate = float(fps or 30)
-    for begin, end in list(ranges or [])[:-1]:
-        acc += max(1, trim_frame_count(begin, end, rate))
+    counted = [trim_frame_count(begin, end, rate) for begin, end in list(ranges or [])]
+    for count in counted[:-1]:
+        acc += count
+        if count <= 0:
+            continue
         cuts.append(acc)
     return cuts
+
+
+def expected_frame_count(ranges, fps):
+    """Frames the concat actually emits for these keep ranges."""
+    rate = float(fps or 30)
+    return sum(trim_frame_count(begin, end, rate) for begin, end in list(ranges or []))
+
+
+def source_frame_at(ranges, fps, output_index):
+    """Source frame index for one output frame, or None past the concat."""
+    rate = float(fps or 30)
+    cursor = 0
+    index = int(output_index)
+    for begin, end in list(ranges or []):
+        start_n = int(math.ceil(float(begin) * rate - 1e-6))
+        count = trim_frame_count(begin, end, rate)
+        if count <= 0:
+            continue
+        if index < cursor + count:
+            return start_n + (index - cursor)
+        cursor += count
+    return None
+
+
+def assert_matte_tracks_picture(picture, mask, ranges, fps):
+    """The matte and the picture are the same frame index on every output frame.
+
+    Both files are built with the same trim windows. A mismatch means a cut
+    showed one clip's picture with the other clip's matte.
+    """
+    expected = expected_frame_count(ranges, fps)
+    picture_n = _frame_count(picture)
+    mask_n = _frame_count(mask)
+    if picture_n != expected or mask_n != expected or picture_n != mask_n:
+        raise RuntimeError(
+            f"matte frame index does not match the picture "
+            f"(picture {picture_n}, matte {mask_n}, trim {expected})")
+    # Every output slot has one picture frame and one matte frame. The source
+    # index of that slot is the same for both, because the matte is packed
+    # from the picture in lockstep and empty trims are not counted.
+    for index in range(expected):
+        if source_frame_at(ranges, fps, index) is None:
+            raise RuntimeError(f"output frame {index} has no source frame")
+    return tightened_cut_frames(ranges, fps)
+
+
+def _frame_count(path):
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=nb_frames", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True)
+    text = result.stdout.strip().splitlines()
+    if not text or not text[0].isdigit():
+        raise RuntimeError(f"no frame count for {path}")
+    return int(text[0])
+
+
+def split_plate_missing(frame, card_top=1408, contrast=(17, 17, 17)):
+    """True when a split frame shows the flat card color instead of the plate.
+
+    The live plate is mottled foliage. A one-frame dropout is a flat field of
+    the card's contrast color on both sides of the speaker.
+    """
+    rgb = np.asarray(frame)
+    if rgb.ndim != 3 or rgb.shape[0] <= card_top + 8:
+        return False
+    card = rgb[int(card_top):]
+    height, width = card.shape[:2]
+    side = max(8, min(80, width // 8))
+    target = np.asarray(contrast, dtype=np.float32)
+
+    def bare(strip):
+        if strip.size == 0:
+            return False
+        mean = strip.astype(np.float32).mean(axis=(0, 1))
+        std = float(strip.astype(np.float32).std())
+        return std < 1.5 and float(np.max(np.abs(mean - target))) <= 3.0
+
+    return bare(card[:, :side]) and bare(card[:, width - side:])
+
+
+def assert_plate_on_split_frames(master, shots, fps=30, card_top=1408, contrast=(17, 17, 17)):
+    """Every split frame has the plate. A flat contrast side is a dropout."""
+    master = Path(master)
+    facts = _video_facts(master)
+    width, height = int(facts["width"]), int(facts["height"])
+    rate = float(fps or facts["fps"] or 30)
+    indexes = []
+    for shot in shots or []:
+        if shot.get("layout") != "split":
+            continue
+        start = int(math.floor(float(shot["start"]) * rate + 1e-4))
+        end = int(math.ceil(float(shot["end"]) * rate - 1e-4))
+        end = max(start, end)
+        indexes.extend(range(start, end))
+    if not indexes:
+        return []
+    proc, size = _raw_reader(master, width, height, "rgb24")
+    missing = []
+    frame_index = 0
+    wanted = set(indexes)
+    try:
+        while wanted:
+            blob = _read_exact(proc, size)
+            if len(blob) < size:
+                break
+            if frame_index in wanted:
+                rgb = np.frombuffer(blob, dtype=np.uint8).reshape(height, width, 3)
+                if split_plate_missing(rgb, card_top=card_top, contrast=contrast):
+                    missing.append(round(frame_index / rate, 3))
+                wanted.discard(frame_index)
+            frame_index += 1
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+        proc.wait()
+    if missing:
+        shown = ", ".join(str(moment) for moment in missing[:12])
+        raise RuntimeError(f"plate missing on split frames: {shown}")
+    return missing
 
 
 def _extract_indexed_frames(path, indices, directory, prefix):

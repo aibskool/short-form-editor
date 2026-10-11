@@ -103,9 +103,40 @@ def _scene_times(video, threshold=SCENE_THRESHOLD):
     return times
 
 
+def _load_reel_lock(spec):
+    """A reel id in reel-locks.json, or a JSON file with ranges and a caption baseline."""
+    if not spec:
+        return None
+    path = Path(spec)
+    if path.is_file():
+        data = json.loads(path.read_text())
+        if "ranges" in data:
+            return data
+        raise SystemExit(f"{path} has no ranges")
+    library = json.loads((HERE / "reel-locks.json").read_text())
+    reels = library.get("reels") or {}
+    if spec not in reels:
+        raise SystemExit(f"no reel lock named {spec}")
+    return reels[spec]
+
+
+def _lock_ranges(lock):
+    ranges = []
+    for begin, end in lock.get("ranges") or []:
+        start = int(round(float(begin) * 1000)) / 1000.0
+        stop = int(round(float(end) * 1000)) / 1000.0
+        if stop <= start:
+            raise SystemExit(f"lock range {begin}-{end} is empty")
+        ranges.append((start, stop))
+    if not ranges:
+        raise SystemExit("reel lock has no ranges")
+    return ranges
+
+
 def render(source, output, words_path=None, project=None, keyword=None, title=None, theme_mode="dark",
            theme_path=None, stage_plan=None, music=None, emphasis=None, quality="draft", workers=1,
-           skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None):
+           skip_render=False, target_lufs=None, true_peak=None, codec_headroom_db=None,
+           reel_lock=None):
     source, output = Path(source).resolve(), Path(output).resolve()
     project = Path(project).resolve() if project else output.with_suffix("")
     project.mkdir(parents=True, exist_ok=True)
@@ -115,12 +146,15 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         raw_words = _read_words(words_path)
     else:
         raw_words = _try_transcribe(source, project / "whisper-words.json")
+    lock = _load_reel_lock(reel_lock)
+    locked_ranges = _lock_ranges(lock) if lock else None
     tightened = tighten_video(
         source, raw_words, project / "tightened.mp4",
         gap=float(audio_cfg["pause_gap_seconds"]),
         handle=float(audio_cfg["join_handle_seconds"]),
         crossfade=float(audio_cfg.get("cut_crossfade_seconds", 0.008)),
-        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])))
+        sentence_gap=float(audio_cfg.get("sentence_gap_seconds", audio_cfg["pause_gap_seconds"])),
+        range_lock=locked_ranges)
     leveled = process_voice(
         tightened["output"], project / "voice.mp4",
         target_lufs=float(audio_cfg["voice_lufs"]), true_peak=float(audio_cfg["voice_true_peak"]),
@@ -158,7 +192,7 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     if music_note:
         timeline["audio_policy"]["user_opt_out"] = music_note
     from kallaway_beats import lengthen_closing_face, snap_shot_edges
-    from kallaway_plan import reanchor_led_sfx
+    from kallaway_plan import apply_sfx_shifts, reanchor_led_sfx
     original_starts = [float(shot["start"]) for shot in (timeline.get("shots") or [])]
     picture_cuts = _scene_times(leveled["output"])
     timeline["shots"] = snap_shot_edges(timeline.get("shots") or [], picture_cuts)
@@ -168,6 +202,14 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
         timeline["shots"], timeline.get("headers"), minimum=1.52,
         scene_times=picture_cuts, video_end=float(tightened["duration"]))
     reanchor_led_sfx(timeline, original_starts, fps=float(timeline.get("output", {}).get("fps", 30)))
+    if lock and lock.get("sfx_shifts"):
+        apply_sfx_shifts(timeline, lock["sfx_shifts"])
+    if lock and lock.get("caption_full_baseline_px") is not None:
+        timeline.setdefault("captions", {})["full_baseline_px"] = float(lock["caption_full_baseline_px"])
+        got = float(timeline["captions"]["full_baseline_px"])
+        want = float(lock["caption_full_baseline_px"])
+        if abs(got - want) > 0.5:
+            raise SystemExit(f"caption baseline moved to {got}; lock holds {want}")
     timeline["capture_path"] = str(Path(source).resolve())
     timeline["source_ranges"] = [
         [round(float(begin), 4), round(float(end), 4)] for begin, end in (tightened.get("ranges") or [])
@@ -204,6 +246,17 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     attach_popout(
         timeline, source, tightened.get("ranges") or [],
         timeline["source"]["path"], theme)
+    from kallaway_matte import assert_matte_tracks_picture
+    produced = [(round(float(a), 3), round(float(b), 3)) for a, b in tightened.get("ranges") or []]
+    if lock:
+        wanted = [(round(float(a), 3), round(float(b), 3)) for a, b in locked_ranges]
+        if produced != wanted:
+            raise SystemExit(f"keep ranges drifted from the lock: {produced} != {wanted}")
+    fps = float(timeline.get("output", {}).get("fps", 30))
+    picture = project / "tightened.mp4"
+    mask = project / "person-mask.mp4"
+    if picture.is_file() and mask.is_file() and produced:
+        assert_matte_tracks_picture(picture, mask, produced, fps)
     spec_path = project / "timeline.json"
     spec_path.write_text(json.dumps(timeline, indent=2) + "\n")
     pre = check_style(spec_path, words_file)
@@ -246,6 +299,10 @@ def render(source, output, words_path=None, project=None, keyword=None, title=No
     subprocess.run(finalize, check=True, env=env)
     from check_kallaway_style import output_short_shots
     shorts = output_short_shots(final)
+    from kallaway_matte import assert_plate_on_split_frames
+    assert_plate_on_split_frames(
+        final, timeline.get("shots") or [],
+        fps=float(timeline.get("output", {}).get("fps", 30)))
     if shorts:
         raise SystemExit(
             "output has a shot under 0.5s, measured on the rendered frames: "
@@ -297,6 +354,9 @@ def main():
                         help="Leave the bed out. This is the default.")
     parser.add_argument("--quality", choices=["draft", "standard", "high"], default="draft")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--reel-lock", default=None,
+                        help="Reel id in reel-locks.json, or a JSON file of ranges and a caption baseline. "
+                             "The render uses those cuts, gaps, and the baseline instead of recomputing them.")
     parser.add_argument("--skip-render", action="store_true")
     parser.add_argument("--target-lufs", type=float, default=None)
     parser.add_argument("--true-peak", type=float, default=None)
@@ -315,7 +375,7 @@ def main():
         title=args.title, theme_mode=args.theme_mode, theme_path=args.theme, stage_plan=stage_plan,
         music=music, emphasis=emphasis, quality=args.quality, workers=args.workers,
         skip_render=args.skip_render, target_lufs=args.target_lufs, true_peak=args.true_peak,
-        codec_headroom_db=args.codec_headroom_db)
+        codec_headroom_db=args.codec_headroom_db, reel_lock=args.reel_lock)
     print(json.dumps({"output": report.get("output"), "ok": report["postcheck"]["ok"],
                       "warnings": report["postcheck"]["warnings"], "music_note": report.get("music_note"),
                       "stage_slots": report.get("stage_slots")}, indent=2))

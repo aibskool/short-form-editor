@@ -231,10 +231,12 @@ def quantize_cut(moment, fps=30):
 
     A scene at 10.6666... rounded to 3 decimals is 10.667, which is after that
     frame. The layout then changes on the next frame and the new take flashes
-    for one frame in the old layout.
+    for one frame in the old layout. Half a millisecond is still inside the
+    renderer's 1 ms time epsilon, and the plate video drops out on that frame.
+    Four milliseconds clears the epsilon and stays on the same source frame.
     """
     index = int(round(float(moment) * float(fps)))
-    return round(index / float(fps) - 0.0005, 3)
+    return round(index / float(fps) - 0.004, 3)
 
 
 def snap_shot_edges(shots, scene_times, window=0.12, minimum=0.5, fps=30):
