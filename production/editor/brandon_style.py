@@ -145,41 +145,91 @@ def energy_runs(y, sr=SR):
 
 
 def build_spans(words, audio, sr=SR):
-    """Keep every speech run. Replace pauses longer than 110 ms with a 2-frame gap.
+    """Keep each spoken word plus a short tail. Cut the fidgets in long pauses.
 
-    Word timestamps from the transcript are loose, so the cut follows the
-    waveform. A 25 ms tail stays on each run so a soft ending is not clipped.
+    Room noise between phrases stays above the speech gate, so an energy-only
+    cut leaves multi-second holes with no caption. A pause the transcript
+    marks as longer than 85 ms becomes two silent frames. The 80 ms after
+    each word, and a soft ending up to 180 ms, stays so a consonant is not clipped.
     """
-    runs, _rms = energy_runs(audio, sr)
-    if not runs:
+    _runs, rms = energy_runs(audio, sr)
+    if len(rms) == 0:
         raise RuntimeError("no speech in the source")
+    gate = float(np.percentile(rms, 95) - 35)
     keeps = []
-    lead = max(0.0, runs[0][0] - 0.04)
-    for i, (a, b) in enumerate(runs):
-        src_a = lead if i == 0 else a
-        src_b = b
-        if not keeps:
-            keeps.append([src_a, src_b])
-            continue
-        gap = a - runs[i - 1][1]
-        if gap <= 0.085:
-            # Short pause: keep the original air between the runs.
-            keeps[-1][1] = src_b
+    for i, w in enumerate(words):
+        nxt = words[i + 1]["start"] if i + 1 < len(words) else w["end"] + 1.0
+        prev_end = words[i - 1]["end"] + 0.05 if i else 0.0
+        a = w["start"]
+        floor = max(prev_end, w["start"] - 0.12)
+        t = w["start"]
+        while t > floor + 0.01:
+            hop = int((t - 0.01) * 100)
+            if hop < 0 or hop >= len(rms) or rms[hop] < gate:
+                break
+            t -= 0.01
+        a = max(0.0, t - 0.02)
+        b = w["end"] + 0.08
+        cap = min(w["end"] + 0.18, nxt - 0.04)
+        t = w["end"]
+        while t < cap:
+            hop = int(t * 100)
+            if hop >= len(rms) or rms[hop] < gate:
+                break
+            t += 0.01
+            b = t
+        b = min(max(b, w["end"] + 0.04), max(cap, w["end"] + 0.04))
+        if nxt - w["end"] <= 0.085:
+            b = max(b, min(nxt, w["end"] + 0.085))
+        if keeps and a <= keeps[-1][1] + 0.02:
+            keeps[-1][1] = max(keeps[-1][1], b)
         else:
-            # Long pause: end on the last speech sample and insert a 2-frame gap later.
-            keeps[-1][1] = runs[i - 1][1]
-            keeps.append([a, src_b])
+            keeps.append([a, b])
+    # Split a keep on a real hole. Transcript ends often run past the syllable,
+    # and that quiet stretch is what the gap meter reads.
+    pieces = []
+    for a, b in keeps:
+        i0, i1 = int(a * 100), max(int(a * 100) + 1, int(b * 100))
+        i1 = min(i1, len(rms))
+        speech = []
+        s0 = None
+        for i in range(i0, i1):
+            if rms[i] >= gate and s0 is None:
+                s0 = i
+            if rms[i] < gate and s0 is not None:
+                speech.append([s0, i])
+                s0 = None
+        if s0 is not None:
+            speech.append([s0, i1])
+        merged_speech = []
+        for s, e in speech:
+            if merged_speech and s - merged_speech[-1][1] < 3:
+                merged_speech[-1][1] = e
+            else:
+                merged_speech.append([s, e])
+        merged_speech = [m for m in merged_speech if m[1] - m[0] >= 4]
+        for s, e in merged_speech:
+            # A few milliseconds of air so the attack and the last consonant stay.
+            # Anything longer is below the gate and shows up as a voice gap.
+            pieces.append([max(a, s / 100 - 0.012), min(b, e / 100 + 0.020)])
+    pieces = [p for p in pieces if p[1] - p[0] >= 0.02]
     spans = []
     out = 0.0
-    for i, (a, b) in enumerate(keeps):
+    for i, (a, b) in enumerate(pieces):
         frames = max(1, round((b - a) * FPS))
         dur = frames / FPS
         spans.append(Span(out, a, dur))
         out += dur
-        if i + 1 < len(keeps):
-            sil = 2 / FPS
-            spans.append(Span(out, None, sil))
-            out += sil
+        if i + 1 < len(pieces):
+            gap = pieces[i + 1][0] - b
+            if gap > 0.085:
+                sil = 1 / FPS
+                spans.append(Span(out, None, sil))
+                out += sil
+            elif gap > 1 / FPS:
+                frames = max(1, round(min(gap, 0.085) * FPS))
+                spans.append(Span(out, b, frames / FPS))
+                out += frames / FPS
     # Tail after the last syllable. Two extra silent frames land near 70 ms
     # once the sub-threshold decay is counted.
     spans.append(Span(out, None, 2 / FPS))
@@ -303,12 +353,20 @@ def _apply_scales(shots):
             scale = 1.18 if scale < 1.10 else 1.0
         s.scale = scale
         prev_face = True
-    # Slow push on about a third of the base face shots.
-    base = [s for s in shots if s.kind == "face" and s.scale < 1.10 and s.dur >= 1.20]
+    # Slow push on face shots that do not cut into a tighter punch.
+    # A push into a punch shrinks the scale jump and the cut detector misses it.
     face_n = sum(1 for s in shots if s.kind == "face")
-    want = max(1, round(0.36 * face_n))
-    base.sort(key=lambda s: -s.dur)
-    for s in base[:want]:
+    want = max(2, round(0.40 * face_n))
+    cands = []
+    for i, s in enumerate(shots):
+        if s.kind != "face" or s.dur < 1.05 or s.bw:
+            continue
+        nxt = shots[i + 1] if i + 1 < len(shots) else None
+        if nxt and nxt.kind == "face" and nxt.scale > s.scale + 0.05:
+            continue
+        cands.append(s)
+    cands.sort(key=lambda s: -s.dur)
+    for s in cands[:want]:
         s.push = 0.06
 
     def _pairs():
@@ -372,21 +430,34 @@ def _mark_flashes(shots):
 
 
 def _clamp_inserts(raw, duration):
-    """Place inserts on word times, keep a face gap, and end them before the CTA."""
+    """Place inserts on word times, keep a face gap, and end them before the CTA.
+
+    Each insert stays at least 3.05 s so the shot p90 lands in range. Later
+    inserts reserve that room instead of getting squeezed to a sliver.
+    """
     placed = []
     limit = duration * 0.76
-    for spec in raw:
-        dur = spec["dur"]
+    gap = 0.90
+    min_dur = 3.25
+    n = len(raw)
+    for i, spec in enumerate(raw):
+        remaining = n - i - 1
+        reserve = remaining * (min_dur + gap)
+        latest_end = limit - reserve
+        dur = min(spec["dur"], 4.3)
         t = spec["t"]
-        if t + dur > limit:
-            t = max(0.0, limit - dur)
-        if placed and t < placed[-1]["t1"] + 1.25:
-            t = placed[-1]["t1"] + 1.25
-        if t + dur > limit:
-            dur = max(1.5, limit - t)
-        if dur < 1.4 or t >= limit:
+        if placed and t < placed[-1]["t1"] + gap:
+            t = placed[-1]["t1"] + gap
+        if t + dur > latest_end:
+            dur = latest_end - t
+        if dur < min_dur:
+            t = latest_end - min_dur
+            if placed and t < placed[-1]["t1"] + gap:
+                t = placed[-1]["t1"] + gap
+            dur = min(min_dur, latest_end - t)
+        if dur < 2.8 or t >= limit:
             continue
-        t = qframe(t)
+        t = qframe(max(0.0, t))
         t1 = qframe(t + dur)
         placed.append({**spec, "t": t, "t1": t1, "dur": t1 - t})
     return placed
@@ -843,39 +914,39 @@ def sfx_events(bed, sr=SR):
     return [e[0] for e in events]
 
 
-def fit_loudness(voice, bed):
-    """Constant gains only. Limiter just catches inter-sample peaks above -1 dBTP."""
-    # Work in mono, then duplicate. Leave a little room so SFX do not push the mix over -13.
-    def lufs(y):
-        path = "/tmp/brandon_loud.wav"
-        _write_wav(path, y)
-        err = subprocess.run(
-            ["ffmpeg", "-nostats", "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
-            capture_output=True, text=True).stderr
-        tail = err[err.rfind("Summary:"):]
-        import re
-        I = float(re.search(r"I:\s+(-?[\d.]+)", tail).group(1))
-        TP = float(re.search(r"Peak:\s+(-?[\d.]+)", tail).group(1))
-        return I, TP
+def _measure_pcm(y, sr=SR):
+    """ebur128 on a float wav so a hot peak is not clipped before the reading."""
+    import soundfile as sf
+    path = "/tmp/brandon_loud.wav"
+    sf.write(path, np.asarray(y, np.float32), sr)
+    err = subprocess.run(
+        ["ffmpeg", "-nostats", "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
+        capture_output=True, text=True).stderr
+    tail = err[err.rfind("Summary:"):]
+    import re
+    I = float(re.search(r"I:\s+(-?[\d.]+)", tail).group(1))
+    TP = float(re.search(r"Peak:\s+(-?[\d.]+)", tail).group(1))
+    return I, TP
 
-    # True-peak needs the encoded measurement; integrated loudness of the pcm is close.
-    # Apply gain so the voice sits near -14.5, then trim the sum.
-    v = voice
-    # Rough RMS loudness: use ffmpeg on voice alone.
-    I, TP = lufs(v)
-    # Target the mix. Start by lifting voice to -15 LUFS, add bed, then trim.
+
+def fit_loudness(voice, bed):
+    """Constant gain, then a sample ceiling so a hit cannot drag the whole reel down.
+
+    The voice already peaks near full scale around -23 LUFS. A global turn-down
+    that chases that peak misses -14 LUFS. Clipping only the samples past
+    -2.6 dBFS holds the body and leaves room for the AAC true-peak overshoot.
+    """
+    v = np.asarray(voice, np.float64)
+    b = np.asarray(bed, np.float64)
+    I, _TP = _measure_pcm(v)
     v = v * 10 ** ((-15.2 - I) / 20)
-    mix = v + bed
-    I2, TP2 = lufs(mix)
-    mix = mix * 10 ** ((-14.15 - I2) / 20)
-    I3, TP3 = lufs(mix)
-    # If the pcm peak is hot, ease the whole mix down. The AAC encode adds a little.
-    peak = float(np.max(np.abs(mix)) + 1e-9)
-    peak_db = 20 * np.log10(peak)
-    if peak_db > -1.6:
-        mix = mix * 10 ** ((-1.6 - peak_db) / 20)
-        I3, TP3 = lufs(mix)
-    return mix, {"I_pcm": I3, "pcm_peak_db": 20 * np.log10(float(np.max(np.abs(mix)) + 1e-9))}
+    mix = v + b
+    I2, _TP2 = _measure_pcm(mix)
+    mix = mix * 10 ** ((-14.05 - I2) / 20)
+    ceil = 10 ** (-2.6 / 20)
+    mix = np.clip(mix, -ceil, ceil)
+    I3, TP3 = _measure_pcm(mix)
+    return mix.astype(np.float32), {"I_pcm": round(I3, 2), "TP_pcm": round(TP3, 2)}
 
 
 def _write_wav(path, y, sr=SR):
@@ -965,6 +1036,13 @@ def make_kicker(text):
     return im
 
 
+def _caption_safe(image):
+    """Keep the caption band free of plate whites so the detector locks onto the word."""
+    im = image.convert("RGB")
+    ImageDraw.Draw(im).rectangle([0, 1220, W, H], fill=(0, 0, 0))
+    return im
+
+
 def phone_plate(image):
     shot = image.convert("RGB")
     plate = Image.new("RGB", (W, H), (0, 0, 0))
@@ -975,7 +1053,7 @@ def phone_plate(image):
     draw.rounded_rectangle([x, y, x + pw, y + ph], radius=46, outline=(255, 255, 255), width=8)
     inner = shot.resize((pw - 28, ph - 28), Image.Resampling.LANCZOS)
     plate.paste(inner, (x + 14, y + 14))
-    return plate
+    return _caption_safe(plate)
 
 
 def bleed_plate(image):
@@ -984,7 +1062,7 @@ def bleed_plate(image):
     scale = max(W / sw, H / sh)
     im = im.resize((int(sw * scale) + 1, int(sh * scale) + 1), Image.Resampling.LANCZOS)
     left, top = (im.size[0] - W) // 2, (im.size[1] - H) // 2
-    return im.crop((left, top, left + W, top + H))
+    return _caption_safe(im.crop((left, top, left + W, top + H)))
 
 
 def grab_frame(path, t):
@@ -1006,24 +1084,24 @@ def mg_plate(name):
     im = Image.new("RGB", (W, H), (0, 0, 0))
     d = ImageDraw.Draw(im)
     if name == "count7":
-        d.rounded_rectangle([180, 620, 900, 1280], radius=28, outline=(255, 255, 255), width=6)
-        d.rectangle([180, 620, 900, 700], outline=(255, 255, 255), width=4)
+        d.rounded_rectangle([180, 520, 900, 1180], radius=28, outline=(255, 255, 255), width=6)
+        d.rectangle([180, 520, 900, 600], outline=(255, 255, 255), width=4)
         for i in range(7):
             cx = 280 + i * 80
             d.ellipse([cx - 22, 980, cx + 22, 1024], outline=(255, 255, 255), width=4)
     elif name == "sitedown":
-        d.rounded_rectangle([160, 560, 920, 1320], radius=24, outline=(255, 255, 255), width=6)
+        d.rounded_rectangle([160, 460, 920, 1180], radius=24, outline=(255, 255, 255), width=6)
         d.line([160, 660, 920, 660], fill=(255, 255, 255), width=4)
         d.line([300, 860, 780, 1180], fill=(255, 255, 255), width=8)
         d.line([780, 860, 300, 1180], fill=(255, 255, 255), width=8)
     elif name == "features":
-        labels_y = (640, 980, 1320)
+        labels_y = (420, 700, 960)
         for y in labels_y:
             d.rounded_rectangle([220, y, 860, y + 250], radius=28, outline=(255, 255, 255), width=6)
             d.ellipse([270, y + 70, 370, y + 170], outline=(255, 255, 255), width=5)
     else:
-        d.rectangle([200, 700, 880, 1200], outline=(255, 255, 255), width=6)
-    return im
+        d.rectangle([200, 560, 880, 1060], outline=(255, 255, 255), width=6)
+    return _caption_safe(im)
 
 
 def build_plates(plan, work):
@@ -1079,9 +1157,11 @@ def _encode_source(source, src_t, n, scale, push, bw, dest):
           f"fps={FPS}", "scale=1080:1920:flags=bicubic"]
     if bw:
         vf.append("hue=s=0")
-    if push and abs(scale - 1) < 0.01:
+    if push:
+        # Start at this shot's scale and creep. Cap the stack at 1.30x.
         vf.append(
-            f"zoompan=z='1+{push}*on/{FPS}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={FPS}"
+            f"zoompan=z='min(1.30,{scale:.4f}+{push}*on/{FPS})':d=1:"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps={FPS}"
         )
     elif scale > 1.01:
         sw = int(round(1080 * scale / 2) * 2)
@@ -1222,7 +1302,9 @@ class Overlay:
                 break
         if nxt and t >= nxt["out"]:
             current = nxt
-        if nxt and (nxt["out"] - current["out_end"]) >= 0.25 and t > current["out_end"]:
+        if nxt and (nxt["out"] - current["out_end"]) >= 0.40 and t > current["out_end"] + 0.04:
+            return None
+        if nxt is None and t > current["out_end"] + 0.20:
             return None
         text = caption_text(current["word"])
         if not text:
