@@ -1060,6 +1060,19 @@ class KallawayTests(unittest.TestCase):
         hung = [{"word": "fees.", "start": 0.10, "end": 0.55}]
         snap_quiet_word_ends(quiet, rate, [(0.10, 0.32), (0.80, 0.95)], hung)
         self.assertAlmostEqual(hung[0]["end"], 0.32, places=3)
+        # The decay is still up at the marked end. The join follows it, and
+        # the next word is not pulled back to make the sentence gap.
+        held = _voiced(t, 180, 0.3, (t >= 0.10) & (t < 0.50))
+        nxt_w = _voiced(t, 160, 0.25, (t >= 0.64) & (t < 0.90))
+        extended = settle_join_tails(
+            held + nxt_w, rate,
+            [(0.10, 0.40), (0.51, 0.95)],
+            [{"word": "browser.", "start": 0.10, "end": 0.40},
+             {"word": "It", "start": 0.64, "end": 0.90}])
+        self.assertGreater(extended[0][1], 0.48)
+        self.assertLess(extended[0][1], 0.62)
+        self.assertGreaterEqual(extended[1][0], extended[0][1] - 0.001)
+        self.assertLess(extended[1][0], 0.64)
 
     def test_a_pause_after_the_word_keeps_the_release(self):
         from kallaway_audio import refine_word_bounds

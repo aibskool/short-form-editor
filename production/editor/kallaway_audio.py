@@ -1084,14 +1084,20 @@ def settle_join_tails(samples, rate, ranges, words):
 
     The release is the latest quiet 20 ms that still leaves the next word
     inside the pause budget. A stop burst just after the marked end can
-    finish. The search does not cross into the next word.
+    finish. The search does not cross into the next word. When the marked
+    end is still the vowel, the join moves forward onto the release. That
+    tail is not cut to keep a sentence gap, and the next range starts after it.
     """
     samples = np.asarray(samples, dtype=np.float64)
     times, frames = _frame_rms(samples, rate, win_s=0.01, hop_s=0.005)
     ordered = sorted(words or [], key=lambda item: float(item["start"]))
     updated = []
+    carry = None
     for index, (begin, end) in enumerate(ranges):
         begin, end = float(begin), float(end)
+        if carry is not None:
+            begin = max(begin, carry)
+            carry = None
         if index == len(ranges) - 1:
             updated.append((begin, end))
             continue
@@ -1109,7 +1115,7 @@ def settle_join_tails(samples, rate, ranges, words):
         if latest < floor_end:
             latest = floor_end
         if _tail_released(samples, rate, end, times, frames) and floor_end - 1e-9 <= end <= latest + 0.005:
-            updated.append((begin, end))
+            updated.append((begin, round(end, 4)))
             continue
         found = None
         moment = latest
@@ -1118,7 +1124,20 @@ def settle_join_tails(samples, rate, ranges, words):
                 found = round(moment, 4)
                 break
             moment = round(moment - 0.005, 4)
-        updated.append((begin, found if found is not None else end))
+        new_end = found if found is not None else end
+        if not _tail_released(samples, rate, new_end, times, frames):
+            ceiling = word_end + 0.16
+            if next_word is not None:
+                ceiling = min(ceiling, float(next_word["start"]) - 0.012)
+            moment = round(max(new_end, word_end), 4)
+            while moment <= ceiling + 1e-9:
+                if _tail_released(samples, rate, moment, times, frames):
+                    new_end = round(moment, 4)
+                    break
+                moment = round(moment + 0.005, 4)
+        if new_end > nxt - 0.004:
+            carry = round(new_end, 4)
+        updated.append((begin, round(new_end, 4)))
     return updated
 
 
