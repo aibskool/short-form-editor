@@ -1976,6 +1976,10 @@ def trim_long_sentence_holes(samples, rate, ranges, words, keep=0.13, limit=0.15
         drop_to = float(nxt["start"]) - float(keep)
         if drop_to - keep_until < 0.02 or float(nxt["start"]) - keep_until < float(limit):
             continue
+        # The aligned end included the air after the consonant. Move it back
+        # with the cut so the gap is after the word, not through it.
+        if float(prev["end"]) > keep_until + 0.004:
+            prev["end"] = round(keep_until, 4)
         drops.append((keep_until, drop_to))
     if not drops:
         return spans
