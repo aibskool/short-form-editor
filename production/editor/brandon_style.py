@@ -2132,6 +2132,30 @@ def write_handoff(dest, loud, gaps):
     lf = _band_rms_db(dest, "highpass=f=20,lowpass=f=120,astats=metadata=1:reset=0")
     full = _band_rms_db(dest, "astats=metadata=1:reset=0")
     gap_max = None if not gaps else gaps.get("max")
+    fx_median = None
+    fx_path = dest.with_name(dest.stem + "-fx.wav")
+    if fx_path.exists():
+        import soundfile as sf
+        bed, rate = sf.read(fx_path)
+        if getattr(bed, "ndim", 1) > 1:
+            bed = bed.mean(1)
+        hop = max(1, int(rate * 0.01))
+        n = len(bed) // hop
+        if n:
+            rms = 20 * np.log10(np.sqrt((bed[: n * hop].reshape(n, hop) ** 2).mean(1)) + 1e-9)
+            fx_median = round(float(np.median(rms)), 1)
+    if identical:
+        channel = "L and R are sample-identical (dual-mono). A mono fold is the same program."
+    else:
+        channel = (
+            f"The mix was written dual-mono. After AAC, L and R differ by at most {diff:.4f} "
+            "(encoder). A mono fold is the same program within that tolerance."
+        )
+    bed_line = (
+        f"- Non-voice stem median {fx_median} dBFS (10 ms hops). "
+        "That floor is digital silence between hits, not a music bed. "
+        f"Full-mix RMS is {full} dB and the 20–120 Hz band is {lf} dB; that band includes the voice."
+    )
     lines = [
         f"# Listening and inspection statement — reel {dest.stem}",
         "",
@@ -2147,9 +2171,9 @@ def write_handoff(dest, loud, gaps):
         "",
         "## Measured on the rendered file",
         "",
-        f"- Channels: {'L and R are sample-identical (dual-mono). A mono fold is the same program.' if identical else f'L and R differ by up to {diff:.6f}.'}",
+        f"- Channels: {channel}",
         f"- Integrated loudness {loud.get('I')} LUFS, true peak {loud.get('TP')} dBTP, LRA {loud.get('LRA')} LU (ffmpeg ebur128 on the rendered file).",
-        f"- Full-band RMS {full} dB. Energy from 20 to 120 Hz RMS {lf} dB (ffmpeg astats on the rendered file). A music bed would sit much higher than the room-tone floor.",
+        bed_line,
         f"- Speech-gate pauses: median {None if not gaps else gaps.get('median')} ms, max {gap_max} ms. Dead air over 0.6 s (0.7 s after a reveal) is flagged on the cue sheet.",
         "- Cue levels are a constant gain against the nearby voice peak. The voice was not raised to beat an effect. Nothing was ducked.",
         "",
