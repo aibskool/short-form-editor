@@ -51,7 +51,7 @@ class BrandonPlanTest(unittest.TestCase):
             idxs = [w["idx"] for ph in phrases for w in ph["words"]]
             self.assertEqual(idxs, list(range(len(plan["words"]))))
             for ph in phrases:
-                self.assertGreaterEqual(len(ph["words"]), 1)
+                self.assertGreaterEqual(len(ph["words"]), 3)
                 self.assertLessEqual(len(ph["words"]), 6)
                 self.assertTrue(ph["text"])
         plan = self.plans["07"]
@@ -79,6 +79,13 @@ class BrandonPlanTest(unittest.TestCase):
             self.assertTrue(all(s.push == 0 for s in plan["shots"]))
             scales = {round(s.scale, 2) for s in plan["shots"] if s.kind == "face"}
             self.assertTrue(scales <= {1.0, 1.12})
+            self.assertTrue(all(1.06 <= s <= 1.17 for s in scales if s > 1.01))
+            times = sorted(c.t for c in cues)
+            for a, b in zip(times, times[1:]):
+                self.assertGreater(b - a, 0.30)
+        form = next(s for s in self.plans["09"]["shots"] if s.plate == "09form")
+        self.assertGreaterEqual(form.dur, 1.80)
+        self.assertLessEqual(form.dur, 2.40)
 
     def test_plan_lands_inside_the_qa_ranges(self):
         import numpy as np

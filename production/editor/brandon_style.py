@@ -301,6 +301,42 @@ def build_phrases(words):
             merged[-1].extend(ch)
         else:
             merged.append(list(ch))
+    # A 1- or 2-word chunk stuck between full lines borrows a word so every
+    # caption stays in the 3-6 word range.
+    guard = 0
+    while any(len(ch) < 3 for ch in merged) and guard < 12:
+        guard += 1
+        for i, ch in enumerate(merged):
+            if len(ch) >= 3:
+                continue
+            need = 3 - len(ch)
+            left = i - 1 if i > 0 else None
+            right = i + 1 if i + 1 < len(merged) else None
+            if left is not None and len(merged[left]) - need >= 3:
+                merged[i] = merged[left][-need:] + ch
+                merged[left] = merged[left][:-need]
+            elif right is not None and len(merged[right]) - need >= 3:
+                merged[i] = ch + merged[right][:need]
+                merged[right] = merged[right][need:]
+            elif left is not None:
+                blob = merged[left] + ch
+                cut = min(max(len(blob) // 2, 3), len(blob) - 3) if len(blob) > 6 else len(blob)
+                if len(blob) <= 6:
+                    merged[left] = blob
+                    del merged[i]
+                else:
+                    merged[left] = blob[:cut]
+                    merged[i] = blob[cut:]
+            elif right is not None:
+                blob = ch + merged[right]
+                cut = min(max(len(blob) // 2, 3), len(blob) - 3) if len(blob) > 6 else len(blob)
+                if len(blob) <= 6:
+                    merged[right] = blob
+                    del merged[i]
+                else:
+                    merged[i] = blob[:cut]
+                    merged[right] = blob[cut:]
+            break
     phrases = []
     for ch in merged:
         text = " ".join(caption_text(w["word"]) for w in ch if caption_text(w["word"]))
@@ -1229,7 +1265,7 @@ def _glow(glyph):
 
 
 def make_kicker(text):
-    im = _text_image(text, _font("Playfair-400.ttf", 78), (255, 255, 255, 255))
+    im = _text_image(text, _font("BebasNeue-Regular.ttf", 64), (255, 255, 255, 255))
     return im
 
 
@@ -1310,6 +1346,14 @@ def grab_frame(path, t):
     return Image.fromarray(arr, "RGB")
 
 
+def _stamp_example(image):
+    """Mark a drawn or relabeled card so it is not read as a real result."""
+    im = image.convert("RGBA")
+    label = _text_image("EXAMPLE", _font("BebasNeue-Regular.ttf", 36), (255, 255, 255, 230))
+    im.alpha_composite(label, (48, 108))
+    return im.convert("RGB")
+
+
 def mg_plate(name):
     im = Image.new("RGB", (W, H), (0, 0, 0))
     d = ImageDraw.Draw(im)
@@ -1329,6 +1373,7 @@ def mg_plate(name):
         labels_y = (300, 540, 780)
         for y in labels_y:
             d.rounded_rectangle([180, y, 900, y + 200], radius=28, outline=(255, 255, 255), width=6)
+        im = _stamp_example(im)
     else:
         d.rectangle([200, 560, 880, 1060], outline=(255, 255, 255), width=6)
     return _caption_safe(im)
@@ -1582,11 +1627,11 @@ class Overlay:
         self.heroes = {}
         self.kickers = {}
         self.title = self._title()
-        self.handle = _text_image("@bjmeaux", _font("Montserrat-800.ttf", 28), (255, 255, 255, 230))
+        self.handle = _text_image("@bjmeaux", _font("BebasNeue-Regular.ttf", 36), (255, 255, 255, 230))
 
     def _title(self):
         spec = self.plan["spec"]
-        font = _font("Montserrat-800.ttf", 64)
+        font = _font("BebasNeue-Regular.ttf", 72)
         lines = []
         for line in spec["title"]:
             # Per-line rounded box. The green phrase is green text on the black box.
@@ -1721,12 +1766,22 @@ class Overlay:
         if shot is None or shot.plate != "features":
             return
         pops = self.plan.get("feature_pops") or []
-        font = _font("Montserrat-800.ttf", 42)
+        font = _font("BebasNeue-Regular.ttf", 54)
         rows = (300, 540, 780)
+        # One highlight at a time. Earlier steps stay dim. Later steps stay hidden
+        # until their word, so a dense screen does not light up all at once.
+        active = None
+        for pop in pops:
+            if shot.t0 - 0.02 <= pop["t"] <= shot.t1 + 0.02 and t + 1 / FPS >= pop["t"]:
+                active = pop
         for row, pop in zip(rows, pops):
-            label = _text_image(pop["label"], font, (255, 255, 255, 255))
+            if not (shot.t0 - 0.02 <= pop["t"] <= shot.t1 + 0.02 and t + 1 / FPS >= pop["t"]):
+                continue
+            on = pop is active
+            fill = (255, 255, 255, 255) if on else (255, 255, 255, 110)
+            label = _text_image(pop["label"], font, fill)
             fr.alpha_composite(label, (340, row + 70))
-            if t + 1 / FPS >= pop["t"]:
+            if on:
                 fr.alpha_composite(self._icon(pop["icon"]), (230, row + 50))
 
     def _icon(self, kind):
@@ -1806,11 +1861,81 @@ def _purpose(role, trigger):
         return "emphasize a major result"
     if role == "negative":
         return "set up a brief expectation that resolves immediately"
-    if str(trigger).startswith("insert"):
+    if str(trigger).startswith("insert") or str(trigger).startswith("hero"):
         return "orient to a new element"
-    if str(trigger).startswith("hero"):
-        return "orient to a new element"
+    if role == "cut":
+        return "silent punch-in" if trigger == "punch" else "routine dialogue edit"
+    if role == "caption":
+        return "caption phrase"
+    if role == "emphasis":
+        return "emphasis arrives"
+    if role == "dead-air":
+        return "flag dead air"
     return "orient to a new element"
+
+
+def long_pauses(voice, words, sr=SR):
+    """Pauses the speech gate calls longer than 0.6 s, or 0.7 s after a reveal."""
+    hop = int(sr * 0.01)
+    n = len(voice) // hop
+    if n < 10:
+        return []
+    rms = 20 * np.log10(np.sqrt((voice[: n * hop].reshape(n, hop) ** 2).mean(1)) + 1e-9)
+    speech = rms > (np.percentile(rms, 95) - 35)
+    runs, s0 = [], None
+    for i, on in enumerate(speech):
+        if on and s0 is None:
+            s0 = i
+        if not on and s0 is not None:
+            runs.append([s0, i])
+            s0 = None
+    if s0 is not None:
+        runs.append([s0, n])
+    merged = []
+    for a, b in runs:
+        if merged and a - merged[-1][1] < 3:
+            merged[-1][1] = b
+        else:
+            merged.append([a, b])
+    merged = [m for m in merged if m[1] - m[0] >= 4]
+    flagged = []
+    for i in range(len(merged) - 1):
+        start = merged[i][1] / 100
+        end = merged[i + 1][0] / 100
+        ms = (end - start) * 1000
+        reveal = False
+        for w in words:
+            if abs(w["out_end"] - start) <= 0.12 or abs(w["out"] - start) <= 0.12:
+                reveal = str(w["word"]).rstrip().endswith((".", "!", "?"))
+                break
+        limit = 700 if reveal else 600
+        if ms > limit:
+            flagged.append({
+                "time": round(start, 3),
+                "ms": round(ms, 0),
+                "after_reveal": reveal,
+            })
+    return flagged
+
+
+def _drop_stacks(cues):
+    """One sound at a time. A later routine pop loses if its file still overlaps."""
+    ranked = sorted(cues, key=lambda c: (c.t, 0 if c.role == "impact" else 1 if c.role == "negative" else 2))
+    kept = []
+    for cue in ranked:
+        peak = PEAK_AT.get(cue.role, 0.0)
+        trim = float(getattr(cue, "trim", None) or 0.20)
+        a = cue.t - peak
+        b = a + trim
+        if any(
+            a < (other.t - PEAK_AT.get(other.role, 0.0)) + float(getattr(other, "trim", None) or 0.20) - 0.02
+            and (other.t - PEAK_AT.get(other.role, 0.0)) < b - 0.02
+            for other in kept
+        ):
+            continue
+        kept.append(cue)
+    kept.sort(key=lambda c: (c.t, c.role))
+    return kept
 
 
 def _span_bounds(spans, t):
@@ -1850,21 +1975,34 @@ def _visual_state(plan, t):
 
 
 def write_cue_sheet(dest, plan, voice, bed, placed):
-    """JSON and a readable sheet. Notes state that nobody listened to the mix."""
+    """Event list with every visual and every sound, written before the picture.
+
+    Each row has the twelve rubric fields. Listening is named as unavailable.
+    """
     dest = Path(dest)
     by_trigger = {row["trigger"]: row for row in placed}
     events = []
 
-    def _event(t, purpose, sound, row, notes):
+    def _event(t, purpose, sound, row, notes, unresolved):
         src_in, src_out = _span_bounds(plan["spans"], t)
         hit = 0.0 if row is None else row.get("hit_offset") or 0.0
+        sync = round(float(t), 3)
         measured = None
         if sound != "NONE" and voice is not None and bed is not None:
             vp = _nearby_peak(voice, t, half=0.35)
             bp = _nearby_peak(bed, t, half=0.05)
-            measured = round(float(20 * np.log10(bp / vp)), 1)
+            if vp > 0 and bp > 0:
+                measured = round(float(20 * np.log10(bp / vp)), 1)
+        gain = None if row is None else row.get("gain_db")
+        rel = measured if measured is not None else (None if row is None else row.get("rel_db"))
+        if sound == "NONE":
+            level = "none"
+        elif gain is None:
+            level = f"peak {rel} dB vs voice" if rel is not None else "unmeasured"
+        else:
+            level = f"gain {gain} dB, peak {rel} dB vs voice"
         events.append({
-            "time": round(float(t), 3),
+            "time": sync,
             "source_in": src_in,
             "source_out": src_out,
             "phrase": _phrase_text(plan, t),
@@ -1873,12 +2011,13 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
             "sound": sound,
             "file": "" if row is None else row.get("path") or "",
             "hit_offset": round(float(hit), 4),
-            "audio_start": None if sound == "NONE" else round(float(t) - float(hit), 4),
-            "gain_db": None if row is None else row.get("gain_db"),
-            "peak_vs_voice_db": measured if measured is not None else (None if row is None else row.get("rel_db")),
+            "sync_time": sync,
             "trim_fade": notes,
+            "level": level,
+            "unresolved": unresolved,
         })
 
+    listen_limit = "Listening was unavailable. The hit was placed from the file peak offset, not by ear."
     for cue in plan["cues"]:
         row = by_trigger.get(cue.trigger)
         notes = "unprocessed pack file"
@@ -1887,27 +2026,56 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
             notes = f"trimmed to {float(trim):.2f}s with a 100 ms fade so the tail ends before the next phrase"
         elif cue.role == "pop":
             notes = "unprocessed pack file, 4 ms file-end fade"
-        _event(cue.t, _purpose(cue.role, cue.trigger), SOUND_ID.get(cue.role, cue.role.upper()), row, notes)
+        _event(
+            cue.t,
+            _purpose(cue.role, cue.trigger),
+            SOUND_ID.get(cue.role, cue.role.upper()),
+            row,
+            notes,
+            listen_limit,
+        )
 
-    def _silent(t, notes):
+    def _silent(t, purpose, notes):
         if any(abs(t - c.t) < 0.08 for c in plan["cues"]):
             return
         if any(abs(t - e["time"]) < 0.05 and e["sound"] == "NONE" for e in events):
             return
-        _event(t, "none", "NONE", None, notes)
+        _event(t, purpose, "NONE", None, notes, "No sound by design.")
 
     for shot in plan["shots"]:
-        if shot.t0 > 0.02:
-            _silent(shot.t0, "clean cut, no sound")
+        if shot.t0 <= 0.02:
+            continue
+        prev = next((s for s in plan["shots"] if abs(s.t1 - shot.t0) < 0.02), None)
+        punch = shot.kind == "face" and prev is not None and prev.kind == "face" and abs(shot.scale - prev.scale) > 0.01
+        _silent(shot.t0, _purpose("cut", "punch" if punch else "cut"), "clean cut, no sound")
     for win in plan["windows"]:
-        _silent(win["t0"], "emphasis arrives with no sound")
+        _silent(win["t0"], _purpose("emphasis", ""), "emphasis arrives with no sound")
     for ph in plan.get("phrases") or []:
-        _silent(ph["t0"], "caption update, no sound")
+        _silent(ph["t0"], _purpose("caption", ""), "caption update, no sound")
+    pauses = long_pauses(voice, plan["words"]) if voice is not None else []
+    for gap in pauses:
+        kind = "after a reveal" if gap["after_reveal"] else "between thoughts"
+        _event(
+            gap["time"],
+            _purpose("dead-air", ""),
+            "NONE",
+            None,
+            "room tone kept; this hole is longer than the pause ceiling",
+            f"Dead air {gap['ms']:.0f} ms {kind}. Ceiling is 0.7 s after a reveal and 0.6 s otherwise.",
+        )
     events.sort(key=lambda e: (e["time"], e["sound"] == "NONE"))
+    if pauses:
+        pause_note = "Dead air over the ceiling is flagged on its own rows: " + ", ".join(
+            f"{g['time']:.2f}s ({g['ms']:.0f} ms)" for g in pauses
+        )
+    else:
+        pause_note = "No dead air over 0.6 s (0.7 s after a reveal) on the speech gate. Room tone stays in the shorter pauses."
     notes = [
         "No human listening check was possible.",
         "The mix is dual-mono, so a mono fold is the same program. Levels are a constant gain against nearby voice peaks. The voice was not raised to cover an effect, and nothing was ducked.",
         "Delivery target is -16 to -14 LUFS integrated and a true peak no higher than -1 dBTP.",
+        pause_note,
+        "One sound per event. No stacked files.",
     ]
     payload = {"reel": plan["reel"], "notes": notes, "events": events}
     dest.with_name(dest.stem + "-cues.json").write_text(json.dumps(payload, indent=1))
@@ -1916,19 +2084,81 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
         "",
         "No human listening check was possible.",
         "",
-        "The mix is dual-mono. Each cue was leveled with a constant gain against the nearby voice. The voice was not raised to beat an effect.",
+        "Written from the plan before the picture render. The mix is dual-mono. Each cue was leveled with a constant gain against the nearby voice.",
         "",
-        "| time | source in | source out | phrase | visual | purpose | sound | file | hit offset | audio start | gain dB | peak vs voice | notes |",
+        pause_note,
+        "",
+        "| time | source in | source out | phrase | visual | purpose | sound | file | hit offset | sync time | trim/fade | level | unresolved |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for e in events:
         lines.append(
-            "| {time} | {source_in} | {source_out} | {phrase} | {visual} | {purpose} | {sound} | {file} | {hit_offset} | {audio_start} | {gain_db} | {peak_vs_voice_db} | {trim_fade} |".format(
+            "| {time} | {source_in} | {source_out} | {phrase} | {visual} | {purpose} | {sound} | {file} | {hit_offset} | {sync_time} | {trim_fade} | {level} | {unresolved} |".format(
                 **{k: "" if v is None else str(v).replace("|", "/") for k, v in e.items()}
             )
         )
     lines += ["", "No human listening check was possible.", ""]
     dest.with_name(dest.stem + "-cues.md").write_text("\n".join(lines))
+    return pauses
+
+
+def _band_rms_db(path, af):
+    proc = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-v", "info", "-i", str(path), "-af", af, "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    level = None
+    for line in proc.stderr.splitlines():
+        if "RMS level dB:" in line:
+            try:
+                level = float(line.split("RMS level dB:")[-1].strip())
+            except ValueError:
+                pass
+    return level
+
+
+def write_handoff(dest, loud, gaps):
+    """G14 statement. Listening is unavailable. Say what was measured instead."""
+    dest = Path(dest)
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", str(dest), "-ac", "2", "-ar", str(SR),
+        "-f", "f32le", "-",
+    ])
+    stereo = np.frombuffer(raw, np.float32).reshape(-1, 2)
+    # Ignore a one-sample tail from the decoder.
+    n = min(len(stereo), int(stereo.shape[0]))
+    diff = float(np.max(np.abs(stereo[:n, 0] - stereo[:n, 1]))) if n else 0.0
+    identical = diff < 1e-5
+    lf = _band_rms_db(dest, "highpass=f=20,lowpass=f=120,astats=metadata=1:reset=0")
+    full = _band_rms_db(dest, "astats=metadata=1:reset=0")
+    gap_max = None if not gaps else gaps.get("max")
+    lines = [
+        f"# Listening and inspection statement — reel {dest.stem}",
+        "",
+        "No human listening check was possible.",
+        "",
+        "These three checks are on the rendered file.",
+        "",
+        "| check | status | what was measured instead |",
+        "| --- | --- | --- |",
+        "| headphones | unavailable | No headphone listening was possible. |",
+        "| phone speaker | unavailable | No phone-speaker listening was possible. |",
+        "| mono | unavailable | Listening in mono was not possible. The rendered file was measured instead. |",
+        "",
+        "## Measured on the rendered file",
+        "",
+        f"- Channels: {'L and R are sample-identical (dual-mono). A mono fold is the same program.' if identical else f'L and R differ by up to {diff:.6f}.'}",
+        f"- Integrated loudness {loud.get('I')} LUFS, true peak {loud.get('TP')} dBTP, LRA {loud.get('LRA')} LU (ffmpeg ebur128 on the rendered file).",
+        f"- Full-band RMS {full} dB. Energy from 20 to 120 Hz RMS {lf} dB (ffmpeg astats on the rendered file). A music bed would sit much higher than the room-tone floor.",
+        f"- Speech-gate pauses: median {None if not gaps else gaps.get('median')} ms, max {gap_max} ms. Dead air over 0.6 s (0.7 s after a reveal) is flagged on the cue sheet.",
+        "- Cue levels are a constant gain against the nearby voice peak. The voice was not raised to beat an effect. Nothing was ducked.",
+        "",
+        "No human listening check was possible.",
+        "",
+    ]
+    path = dest.with_name(dest.stem + "-handoff.md")
+    path.write_text("\n".join(lines))
+    return path
 
 
 def render(reel, dest, work=None):
@@ -1951,6 +2181,7 @@ def render(reel, dest, work=None):
     from brandon_v2 import clean_voice, kill_dc
     voice = clean_voice(voice, plan["reel"])
     level_cues(voice, plan["cues"], plan["words"])
+    plan["cues"] = _drop_stacks(plan["cues"])
     bed, placed = mix_sfx(plan["cues"], n)
     events = sfx_events(bed)
     per_min = len(events) / plan["duration"] * 60
@@ -1977,6 +2208,9 @@ def render(reel, dest, work=None):
     stems = dest.parent
     _write_wav(stems / f"{dest.stem}-vocals.wav", voice)
     _write_wav(stems / f"{dest.stem}-fx.wav", bed)
+    # The event list exists before any picture frame is encoded.
+    print("cue sheet", flush=True)
+    write_cue_sheet(dest, plan, voice, bed, placed)
     print("base video", flush=True)
     base = render_base(plan, work)
     print("overlay", flush=True)
@@ -2051,7 +2285,7 @@ def render(reel, dest, work=None):
     dest.with_name(dest.stem + "-receipt.json").write_text(json.dumps(receipt, indent=1))
     from brandon_v2 import write_diff
     write_diff(dest, plan)
-    write_cue_sheet(dest, plan, voice, bed, placed)
+    write_handoff(dest, loud, gaps)
     print("wrote", dest, digest)
     return plan
 

@@ -665,11 +665,52 @@ def _harden(plan, target, protected):
     _rescale(plan, split)
 
 
+def _form_hold_end(plan, t):
+    """About 2 s on the form, ending before the portal word when that is sooner."""
+    t1 = B.qframe(min(plan["duration"] - 1.2, t + 2.00))
+    try:
+        portal = B.qframe(plan["words"][B.find_word(plan["words"], "portal")]["out"])
+    except KeyError:
+        portal = None
+    if portal is not None and t + 0.40 < portal <= t1 + 0.05:
+        t1 = B.qframe(min(t1, portal - 0.10))
+    if t1 < t + 1.80:
+        t1 = B.qframe(min(plan["duration"] - 1.2, t + 1.80))
+    return t1
+
+
+def _own_interval(shots, t, t1, plate):
+    """The held screen owns [t, t1). Later shots start when it ends."""
+    cleaned = []
+    for s in shots:
+        if s.plate == plate and abs(s.t0 - t) < 0.04:
+            s.t0, s.t1 = t, t1
+            cleaned.append(s)
+            continue
+        if s.t1 <= t + 1e-3:
+            cleaned.append(s)
+            continue
+        if s.t0 >= t1 - 1e-3:
+            cleaned.append(s)
+            continue
+        if s.t0 < t - 1e-3:
+            s.t1 = t
+            cleaned.append(s)
+        if s.t1 > t1 + 1e-3:
+            cleaned.append(B.Shot(
+                t1, s.t1, s.kind, src_jump=True, scale=s.scale, push=0.0,
+                bw=s.bw, plate=s.plate,
+            ))
+    cleaned.sort(key=lambda s: (s.t0, s.t1))
+    return cleaned
+
+
 def _insert_form(plan):
     w = plan["words"][B.find_word(plan["words"], "calculator")]
     t = B.qframe(w["out"])
-    # Long enough to read. A two-second hard cut was too short for the form.
-    t1 = B.qframe(min(plan["duration"] - 1.2, t + 2.20))
+    # Locate, then hold the form long enough to inspect. Stop just before
+    # the portal hero so that word lands on the face.
+    t1 = _form_hold_end(plan, t)
     shots = []
     placed = False
     for s in plan["shots"]:
@@ -680,16 +721,12 @@ def _insert_form(plan):
             shots.append(B.Shot(s.t0, t, s.kind, scale=s.scale, push=0.0, bw=s.bw, plate=s.plate))
         else:
             t = s.t0
-            t1 = B.qframe(min(plan["duration"] - 1.2, t + 2.20))
-        if t1 <= t + 0.40:
-            t1 = B.qframe(t + 2.20)
+            t1 = _form_hold_end(plan, t)
         shots.append(B.Shot(t, t1, "bleed", plate="09form"))
         if s.t1 - t1 >= 0.40:
             shots.append(B.Shot(t1, s.t1, s.kind, src_jump=True, plate=s.plate, scale=s.scale))
-        elif shots:
-            shots[-1].t1 = max(shots[-1].t1, s.t1)
         placed = True
-    plan["shots"] = shots
+    plan["shots"] = _own_interval(shots, t, t1, "09form")
     for ins in plan["inserts"]:
         if ins.get("plate") == "features" and ins.get("t", 0) < t < ins.get("t1", 0):
             ins["t1"] = t
@@ -762,9 +799,12 @@ def _absorb_short_faces(plan):
                     changed = True
                     break
             if nxt and nxt.src_jump and prev and prev.kind != "face" and s.dur < 0.75:
-                prev.t1 = nxt.t0
-                if s.flash:
-                    nxt.flash = True
+                # A screen held for reading already covers this sliver. Do not
+                # pull its out-point back.
+                if prev.t1 <= nxt.t0 + 0.02:
+                    prev.t1 = nxt.t0
+                    if s.flash:
+                        nxt.flash = True
                 del shots[i]
                 changed = True
                 break
@@ -1041,12 +1081,15 @@ def prepare_plate(plate, img, fit, phone_plate, bleed_plate):
     if plate in ("09code", "09form"):
         img = _crop_progress(img)
     if fit == "phone":
-        return phone_plate(img, bottom=CARD_BOTTOM)
-    if fit == "card":
-        return _fit_card(img, CARD_BOTTOM)
-    if fit == "crop":
-        return bleed_plate(img)
-    return bleed_plate(img)
+        img = phone_plate(img, bottom=CARD_BOTTOM)
+    elif fit == "card":
+        img = _fit_card(img, CARD_BOTTOM)
+    else:
+        img = bleed_plate(img)
+    # Relabeled pricing cards are illustrative. A real screen recording is not.
+    if plate in ("07web", "07dark"):
+        img = B._stamp_example(img)
+    return img
 
 
 def _fit_card(image, bottom):
@@ -1078,7 +1121,7 @@ def _relabel_light(img):
     arr[860:1370] = top
     im = Image.fromarray(arr, "RGB")
     draw = ImageDraw.Draw(im)
-    font = B._font("Montserrat-800.ttf", 34)
+    font = B._font("BebasNeue-Regular.ttf", 42)
     ink = (22, 22, 22)
     _cover_text(draw, [70, 350, 780, 430], bg, "Option 1: Up front", font, ink, (90, 362))
     _cover_text(draw, [70, 436, 760, 530], bg, "$2,000 up front", font, ink, (90, 455))
@@ -1098,7 +1141,7 @@ def _relabel_dark(img):
     arr[y0:y1, 550:1040] = left
     im = Image.fromarray(arr, "RGB")
     draw = ImageDraw.Draw(im)
-    font = B._font("Montserrat-800.ttf", 28)
+    font = B._font("BebasNeue-Regular.ttf", 40)
     ink = (245, 245, 245)
     _cover_text(draw, [40, 590, 520, 665], bg, "Option 1: Up front", font, ink, (52, 612))
     _cover_text(draw, [550, 590, 1040, 660], bg, "Option 2: Monthly", font, ink, (562, 608))
