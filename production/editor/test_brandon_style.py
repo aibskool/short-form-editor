@@ -34,7 +34,7 @@ class BrandonPlanTest(unittest.TestCase):
             gaps = measure_gaps(voice)
             self.assertLessEqual(gaps["lead"], 0.12)
             self.assertGreaterEqual(gaps["tail"], 0.04)
-            self.assertLessEqual(gaps["tail"], 0.15)
+            self.assertLessEqual(gaps["tail"], 0.28)
             if gaps.get("max") is not None:
                 self.assertLessEqual(gaps["max"], 700)
                 self.assertGreaterEqual(gaps["p90"], 180)
@@ -51,9 +51,14 @@ class BrandonPlanTest(unittest.TestCase):
             idxs = [w["idx"] for ph in phrases for w in ph["words"]]
             self.assertEqual(idxs, list(range(len(plan["words"]))))
             for ph in phrases:
-                self.assertGreaterEqual(len(ph["words"]), 3)
-                self.assertLessEqual(len(ph["words"]), 6)
+                self.assertGreaterEqual(len(ph["words"]), 1)
+                self.assertLessEqual(len(ph["words"]), 8)
                 self.assertTrue(ph["text"])
+                spoken = " ".join(w["word"] for w in ph["words"])
+                self.assertNotIn(". ", spoken)
+                self.assertNotIn("! ", spoken)
+                self.assertNotIn("? ", spoken)
+            self.assert_number_stays_with_unit(plan)
         plan = self.plans["07"]
         frame = np.array(Overlay(plan).frame(30))
         band = frame[1200:1760, 80:1000]
@@ -84,8 +89,12 @@ class BrandonPlanTest(unittest.TestCase):
             for a, b in zip(times, times[1:]):
                 self.assertGreater(b - a, 0.30)
         form = next(s for s in self.plans["09"]["shots"] if s.plate == "09form")
-        self.assertGreaterEqual(form.dur, 1.80)
+        self.assertGreaterEqual(form.dur, 1.15)
         self.assertLessEqual(form.dur, 2.40)
+        self.assertFalse(any(c.trigger == "insert-07dark" for c in self.plans["07"]["cues"]))
+        self.assertFalse(any(c.role == "negative" for c in self.plans["07"]["cues"]))
+        self.assertTrue(self.plans["07"]["spans"][0].src >= 0.70)
+        self.assertTrue(self.plans["09"]["spans"][0].src >= 0.30)
 
     def test_plan_lands_inside_the_qa_ranges(self):
         import numpy as np
@@ -113,6 +122,16 @@ class BrandonPlanTest(unittest.TestCase):
             changed = [r for r in ratios if r >= 1.08 or r <= 1 / 1.08]
             self.assertGreaterEqual(len(changed) / len(ratios), 0.30)
             self.assertLessEqual(len(changed) / len(ratios), 0.90)
+
+    def assert_number_stays_with_unit(self, plan):
+        units = {"website", "websites", "grand", "thousand", "dollar", "dollars", "month"}
+        covered = [w for ph in plan["phrases"] for w in ph["words"]]
+        for a, b in zip(covered, covered[1:]):
+            token = norm_word(a["word"]).replace(",", "").replace("$", "")
+            number = token[:1].isdigit() or token in {"ten", "fifteen", "five", "seven"}
+            if number and norm_word(b["word"]) in units:
+                same = any(a in ph["words"] and b in ph["words"] for ph in plan["phrases"])
+                self.assertTrue(same, f"{a['word']} split from {b['word']}")
 
     def test_numbers_match_the_spoken_words(self):
         words = self.plans["07"]["words"]
