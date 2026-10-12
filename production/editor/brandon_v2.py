@@ -2071,71 +2071,107 @@ def mask_pins(path, dest, face_ranges, work):
     net.setInputSize((540, 960))
     box = None
     feather = None
+    shot_i = None
 
     def edit(index, chunk):
-        nonlocal box, feather
+        nonlocal box, feather, shot_i
         t = index / B.FPS
-        if not any(a - 0.02 <= t < b for a, b in face_ranges):
+        shot = None
+        for i, (a, b) in enumerate(face_ranges):
+            if a - 0.02 <= t < b:
+                shot = i
+                break
+        if shot is None:
             return chunk
+        if shot != shot_i:
+            box = None
+            feather = None
+            shot_i = shot
         frame = np.frombuffer(chunk, np.uint8).reshape(B.H, B.W, 3).copy()
+        # The frame pipe is RGB. YuNet and the shirt sample are BGR.
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         small = cv2.resize(frame, (540, 960))
         _n, faces = net.detect(small)
         if faces is not None and len(faces):
-            box = _pin_box(frame, faces[0])
+            found = _pin_box(frame, faces[0])
+            box = _smooth_box(box, found)
             feather = _feather(box)
         if feather is None or box is None:
             return chunk
         _shirt_fill(frame, feather, box)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return np.ascontiguousarray(frame).tobytes()
 
     return _stream_frames(path, dest, edit, work)
 
 
 def _pin_box(frame, face):
-    """The lav that collides with captions sits low, just beside the word."""
+    """The lav is the darkest small patch on the chest, under the mouth.
+
+    A connected-component search kept the shirt seam or the lowest shadow.
+    The clip is the minimum of a small window in the band that meets the captions.
+    """
     mx = (float(face[10]) + float(face[12])) * 0.5 * 2
     my = (float(face[11]) + float(face[13])) * 0.5 * 2
-    x0 = int(np.clip(mx - 160, 0, B.W - 40))
-    x1 = int(np.clip(mx + 180, x0 + 40, B.W))
-    y0 = int(np.clip(my + 280, 0, B.H - 80))
-    y1 = int(np.clip(my + 680, y0 + 40, B.H - 8))
-    gray = frame[y0:y1, x0:x1].mean(axis=2)
-    if gray.size == 0:
-        return (int(mx) - 18, int(np.clip(my + 500, 0, B.H - 50)), 40, 48)
-    mask = (gray <= 42).astype(np.uint8)
-    n, _labels, stats, cents = cv2_components(mask)
+    gray = frame.mean(axis=2)
+    # Stop above the hands. They are darker than the clip and sit lower.
+    y0 = int(np.clip(my + 460, 0, B.H - 48))
+    y1 = int(np.clip(my + 575, y0 + 48, B.H - 8))
+    x0 = int(np.clip(mx - 150, 0, B.W - 48))
+    x1 = int(np.clip(mx + 150, x0 + 48, B.W))
+    ww, hh = 32, 18
     best = None
-    for i in range(1, n):
-        x, y, w, h, area = stats[i]
-        if not (80 <= area <= 2200 and 12 <= w <= 90 and 14 <= h <= 110):
-            continue
-        cx, cy = cents[i]
-        if abs((x0 + cx) - mx) > 150:
-            continue
-        # Lowest blob on the placket, not a small shadow higher up.
-        score = cy
-        if best is None or score > best[0]:
-            best = (score, x, y, w, h)
+    for y in range(y0, y1 - hh, 3):
+        for x in range(x0, x1 - ww, 3):
+            g = float(gray[y:y + hh, x:x + ww].mean())
+            if best is None or g < best[0]:
+                best = (g, x, y)
     if best is None:
-        return _pad_pin(int(mx) - 20, int(np.clip(my + 520, 0, B.H - 50)), 48, 56)
-    _s, x, y, w, h = best
-    core = gray[y:y + h, x:x + w] <= 24
-    ys, xs = np.where(core)
-    if len(ys) >= 20:
-        x = x + int(xs.min())
-        y = y + int(ys.min())
-        w = int(xs.max() - xs.min() + 1)
-        h = int(ys.max() - ys.min() + 1)
-    return _pad_pin(x0 + int(x), y0 + int(y), max(8, int(w)), max(10, int(h)))
+        return _pad_pin(int(mx) - 28, int(np.clip(my + 500, 0, B.H - 80)), 56, 40)
+    g, x, y = best
+    cx, cy = x + ww // 2, y + hh // 2
+    above = gray[max(0, cy - 56):max(0, cy - 20), max(0, cx - 70):min(B.W, cx + 70)]
+    shirt = float(np.median(above)) if above.size else g + 18.0
+    thresh = min(shirt - 6.0, (g + shirt) * 0.5)
+    xa, xb = max(0, cx - 70), min(B.W, cx + 70)
+    ya, yb = max(0, cy - 36), min(B.H, cy + 52)
+    dark = gray[ya:yb, xa:xb] <= thresh
+    ys, xs = np.where(dark)
+    if len(ys) < 25:
+        return _pad_pin(cx - 28, cy - 16, 56, 40)
+    # Keep the clip. A long seam at the same gray would paint half the chest.
+    x_min = max(int(xs.min()), (cx - xa) - 50)
+    x_max = min(int(xs.max()), (cx - xa) + 50)
+    y_min = max(int(ys.min()), (cy - ya) - 24)
+    y_max = min(int(ys.max()), (cy - ya) + 36)
+    return _pad_pin(xa + x_min, ya + y_min, max(8, x_max - x_min + 1), max(8, y_max - y_min + 1))
+
+
+def _smooth_box(prev, box):
+    """Hold the mask on the clip when one frame locks onto a seam."""
+    if prev is None:
+        return box
+    px, py, pw, ph = prev
+    x, y, w, h = box
+    pcx, pcy = px + pw / 2.0, py + ph / 2.0
+    cx, cy = x + w / 2.0, y + h / 2.0
+    jump = abs(cx - pcx) + abs(cy - pcy)
+    if jump < 36:
+        cx = pcx * 0.35 + cx * 0.65
+        cy = pcy * 0.35 + cy * 0.65
+    elif jump > 110:
+        cx = pcx * 0.75 + cx * 0.25
+        cy = pcy * 0.75 + cy * 0.25
+    return (int(round(cx - w / 2.0)), int(round(cy - h / 2.0)), int(w), int(h))
 
 
 def _pad_pin(x, y, w, h):
-    """Cover the clip, including the part that sits under the caption line."""
-    pad_x, pad_top, pad_bot = 16, 12, 56
+    """Pad the dark core so the clip, not just its center, is covered."""
+    pad_x, pad_top, pad_bot = 22, 14, 28
     x = int(max(0, x - pad_x))
     y = int(max(0, y - pad_top))
-    w = int(min(B.W - x, max(w + pad_x * 2, 56)))
-    h = int(min(B.H - y, max(h + pad_top + pad_bot, 100)))
+    w = int(min(B.W - x, max(w + pad_x * 2, 88)))
+    h = int(min(B.H - y, max(h + pad_top + pad_bot, 78)))
     return (x, y, w, h)
 
 
@@ -2145,16 +2181,18 @@ def cv2_components(mask):
 
 
 def _feather(box):
+    """Solid fill over the pin, with a 6 px feather at the edge."""
     import cv2
     x, y, w, h = box
     mask = np.zeros((B.H, B.W), np.float32)
     cv2.ellipse(
         mask,
         (int(x + w / 2), int(y + h / 2)),
-        (max(8, int(w * 0.7)), max(10, int(h * 0.75))),
+        (max(14, int(w * 0.48)), max(18, int(h * 0.46))),
         0, 0, 360, 1.0, -1,
     )
-    return cv2.GaussianBlur(mask, (0, 0), 6)
+    soft = cv2.GaussianBlur(mask, (0, 0), 6)
+    return np.maximum(mask, soft)
 
 
 def _darken(frame, feather):
@@ -2179,7 +2217,10 @@ def _shirt_fill(frame, feather, box):
     inner = np.zeros(gray.shape, dtype=bool)
     ix0, iy0 = x - x0, y - y0
     inner[max(0, iy0):iy0 + h, max(0, ix0):ix0 + w] = True
-    keep = (gray > 50) & (gray < 200) & ~inner
+    # The shirt is whatever sits just outside the clip, light or charcoal.
+    core = gray[inner]
+    floor = float(np.median(core)) + 8.0 if core.size else 40.0
+    keep = (gray >= floor) & (gray < 210) & ~inner
     sample = region[keep]
     if len(sample) < 40:
         sample = region[(gray > 35) & ~inner]

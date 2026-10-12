@@ -2026,13 +2026,17 @@ def render_overlay(plan, work):
 
 def mux(base, overlay, wav, dest, seconds=None):
     # Hold the last picture frame and pad the audio to that same length so
-    # the AAC priming trim cannot end the voice before the picture.
-    whole = None if seconds is None else f"apad=whole_dur={seconds:.6f},"
+    # the file ends on one frame. AAC priming must not drop the voice early.
+    n = None if seconds is None else max(1, int(round(float(seconds) * FPS)))
+    whole = None if seconds is None else f"apad=whole_dur={n / FPS:.6f},"
     audio = f"[2:a]{whole or ''}aresample=48000[a]"
+    frames = [] if n is None else ["-frames:v", str(n)]
     ff("-y", "-i", str(base), "-i", str(overlay), "-i", str(wav),
        "-filter_complex",
-       "[0:v][1:v]overlay=format=auto:eof_action=repeat,format=yuv420p,fps=30[v];" + audio,
+       "[0:v]tpad=stop_mode=clone:stop_duration=0.5[v0];"
+       "[v0][1:v]overlay=format=auto:eof_action=repeat,format=yuv420p,fps=30[v];" + audio,
        "-map", "[v]", "-map", "[a]",
+       *frames,
        "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS),
        "-b:v", "20M", "-maxrate", "24M", "-bufsize", "40M",
        "-c:a", "aac", "-b:a", "256k", "-ar", str(SR), "-ac", "2",
@@ -2527,8 +2531,9 @@ def refresh_measured_levels(dest, voice, bed, gain_db):
         return
     gain = 10 ** (float(gain_db) / 20.0)
     voiced = np.asarray(voice, np.float32) * gain
+    bedd = np.asarray(bed, np.float32) * gain if bed is not None else None
     n = min(len(mix), len(voiced))
-    if n < SR:
+    if n < SR or bedd is None:
         return
     hop = int(0.01 * SR)
     # AAC delay: slide the voice across the open and take the best fit.
@@ -2547,30 +2552,47 @@ def refresh_measured_levels(dest, voice, bed, gain_db):
             best_score, best_off = score, off
     if best_score is None or best_score < 0.5:
         return
+    fit_n = min(len(mix) - best_off, len(voiced), int(2.0 * SR))
+    if fit_n < hop * 8:
+        return
+    opened = mix[best_off: best_off + fit_n]
+    opened_voice = voiced[:fit_n]
+    voice_scale = float(np.dot(opened, opened_voice) / (np.dot(opened_voice, opened_voice) + 1e-12))
+    if voice_scale < 0.2:
+        return
     for event in payload.get("events") or []:
         if event.get("sound") in (None, "NONE"):
             continue
         t = float(event["time"])
-        a = max(0, int((t - 0.04) * SR) + best_off)
-        b = min(len(mix), a + int(0.08 * SR))
+        half = int(0.08 * SR)
+        a = max(0, int(t * SR) - half)
+        b = min(len(bedd), int(t * SR) + half)
+        fw = bedd[a:b]
+        if len(fw) < hop or float(np.max(np.abs(fw))) < 1e-6:
+            continue
+        mv = mix[a + best_off: a + best_off + len(fw)]
+        vv = voiced[a: a + len(mv)]
+        n2 = min(len(mv), len(vv), len(fw))
+        if n2 < hop:
+            continue
+        mv, vv, fw = mv[:n2], vv[:n2], fw[:n2]
+        resid = mv - vv * voice_scale
+        scale = float(np.dot(resid, fw) / (np.dot(fw, fw) + 1e-12))
         va = max(0, int((t - 0.30) * SR))
         vb = min(len(voiced), int((t + 0.30) * SR))
-        if b <= a + 8 or vb <= va + 8:
+        vp = float(np.max(np.abs(voiced[va:vb])))
+        if vp <= 1e-6:
             continue
-        voice_piece = voiced[va:vb]
-        # The rendered window minus the aligned voice is the effect.
-        mv = mix[a:b]
-        vv = voiced[max(0, a - best_off): max(0, a - best_off) + len(mv)]
-        if len(vv) != len(mv):
-            vv = np.pad(vv, (0, max(0, len(mv) - len(vv))))[: len(mv)]
-        effect = mv - vv
-        bp = float(np.max(np.abs(effect)))
-        vp = float(np.max(np.abs(voice_piece)))
-        if vp <= 1e-5 or bp <= 1e-6:
-            continue
-        rel = float(20 * np.log10(bp / vp))
-        # A missed alignment leaves the voice in the residual and the ratio
-        # is no longer a level. Keep the row labeled target in that case.
+        ratio = scale / voice_scale
+        if 0.7 <= ratio <= 1.4:
+            ep = abs(ratio) * float(np.max(np.abs(fw)))
+            rel = float(20 * np.log10(ep / vp))
+        else:
+            rp = float(np.max(np.abs(resid)))
+            expected = float(np.max(np.abs(fw)))
+            if expected < 1e-6 or rp > expected * 2.0:
+                continue
+            rel = float(20 * np.log10(rp / vp))
         if not -30.0 <= rel <= -3.0:
             continue
         event["level"] = f"measured {round(rel, 1)} dB vs voice"
