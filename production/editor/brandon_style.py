@@ -2496,7 +2496,7 @@ def write_handoff(dest, loud, gaps):
         f"- Room tone median {room} dBFS on 10 ms hops of the rendered file that sit under the speech gate. That is room tone, not a music bed.",
         f"- Full-mix RMS is {full} dB and the 20–120 Hz band is {lf} dB; that band includes the voice.",
         f"- Speech-gate pauses on the rendered file: median {file_gaps.get('median')} ms, max {file_gaps.get('max')} ms. {pause_line}",
-        "- Cue levels were remeasured on the voice and effect stems after the same gain printed into this file. The voice was not raised to beat an effect. Nothing was ducked.",
+        "- Cue levels that say measured were taken from the rendered file after the voice was aligned out. A level that says target was not measured on that file. The voice was not raised to beat an effect. Nothing was ducked.",
         "",
         "No human listening check was possible.",
         "",
