@@ -836,6 +836,7 @@ def green_intervals(windows, cta_t, duration, title_off):
 # ---------------------------------------------------------------- plans
 SCREEN = {
     "07web": Path("/tmp/reel07/project-v20/assets/media-004.png"),
+    "07opt2": Path("/tmp/reel07/project-v20/assets/media-004.png"),
     "07dark": Path("/tmp/reel07/project-v20/assets/media-003.mp4"),
     "09ui": Path("/tmp/reel09/project-v20/assets/media-003.mp4"),
     "09code": Path("/tmp/reel09/project-v20/assets/media-004.mp4"),
@@ -1270,7 +1271,8 @@ def make_caption(text, emph=None):
     raw_lines = [line for line in str(text).split("\n")]
     emph = {norm_word(w) for w in (emph or [])}
     gap = 16
-    max_w = 870
+    # 840 keeps a centered line's right edge at x960: (1080 - 840) / 2 + 840.
+    max_w = 840
 
     def glyphs_for(line):
         words = [w for w in line.split() if w]
@@ -1548,6 +1550,82 @@ def _encode_source(source, src_t, n, scale, push, bw, dest):
     ff("-y", "-ss", f"{pre:.3f}", "-i", source, "-vf", ",".join(vf), "-frames:v", str(n), *ENC, str(dest))
 
 
+def _find_pin_top(gray):
+    """Top of the bright lav. It is a small bright blob with dark cloth on both sides.
+
+    A shirt edge is bright on one side only, so both sides have to be dark.
+    """
+    g = gray.astype(np.float32)
+    h, w = g.shape
+    best = None
+    y_hi = min(h - 80, 1680)
+    x_hi = min(w - 100, 740)
+    for y in range(1200, y_hi, 3):
+        for x in range(400, x_hi, 3):
+            core = float(g[y - 4:y + 4, x - 4:x + 4].mean())
+            if core < 180:
+                continue
+            left = float(g[y - 10:y + 10, x - 96:x - 52].mean())
+            right = float(g[y - 10:y + 10, x + 52:x + 96].mean())
+            below = float(g[y + 36:y + 70, x - 16:x + 16].mean()) if y + 70 < h else 255.0
+            above = float(g[max(0, y - 70):y - 36, x - 16:x + 16].mean())
+            if max(left, right) > 125 or below > 140 or above > 170:
+                continue
+            score = core - (left + right) / 2
+            if best is None or score > best[0]:
+                best = (score, x, y)
+    if best is None:
+        return None
+    x, y = best[1], best[2]
+    top = y
+    while top > y - 70 and float(g[top - 2:top, x - 8:x + 8].mean()) > 140:
+        top -= 2
+    return int(top)
+
+
+def _reframe_face(path, dest, n):
+    """Scale and shift one face shot so the lav sits below the caption box.
+
+    Shot.scale stays 1.0 or 1.12. This is a second crop on the encoded plate.
+    About 1.06x and about 100 px down when that clears the pin; more when the
+    pin starts higher. crop_y stays >= 0 so the shift never adds a black bar.
+    """
+    pin_top = None
+    for frac in (0.18, 0.50, 0.82):
+        raw = subprocess.check_output([
+            "ffmpeg", "-v", "error", "-ss", f"{max(0.0, (n / FPS) * frac - 0.02):.3f}",
+            "-i", str(path), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-",
+        ])
+        if len(raw) < H * W:
+            continue
+        gray = np.frombuffer(raw, np.uint8).reshape(H, W)
+        found = _find_pin_top(gray)
+        if found is None:
+            continue
+        pin_top = found if pin_top is None else min(pin_top, found)
+    target = 1490  # pin top, under the caption glyphs that end at y1462
+    if pin_top is None:
+        s = 1.11
+    else:
+        s = max(1.06, target / max(pin_top, 1))
+    sw = int(round(W * s / 2) * 2)
+    sh = int(round(H * s / 2) * 2)
+    s_y = sh / H
+    if pin_top is None:
+        crop_y = int(round((sh - H) / 2 - 100))
+    else:
+        crop_y = int(round(pin_top * s_y - target))
+    crop_y = max(0, min(crop_y, sh - H))
+    crop_y -= crop_y % 2
+    crop_x = (sw - W) // 2
+    crop_x -= crop_x % 2
+    landed = None if pin_top is None else round(pin_top * s_y - crop_y, 1)
+    print(f"    reframe s={sw / W:.3f} crop_y={crop_y} pin_top={pin_top} -> {landed}", flush=True)
+    ff("-y", "-i", str(path), "-vf", f"scale={sw}:{sh}:flags=bicubic,crop={W}:{H}:{crop_x}:{crop_y}",
+       "-frames:v", str(n), *ENC, str(dest))
+    return dest
+
+
 def _encode_still(png, n, dest):
     # A still plate. zoompan inserts a false cut near the end, so this is a held frame.
     ff("-y", "-loop", "1", "-i", str(png), "-frames:v", str(n), *ENC, str(dest))
@@ -1685,6 +1763,9 @@ def render_base(plan, work):
                 eased = work / f"ease_{i:02d}.mp4"
                 dest = _soften_jumps(dest, eased, spikes, work, frames_n=4)
                 dest = _ensure(dest, n, work)
+            reframed = work / f"reframe_{i:02d}.mp4"
+            dest = _reframe_face(dest, reframed, n)
+            dest = _ensure(dest, n, work)
             prev = dest
         else:
             _encode_still(plates[shot.plate], n, dest)
@@ -2156,6 +2237,7 @@ CAMERA = {
 }
 PLATE_FILES = {
     "07web": "media-004.png",
+    "07opt2": "media-004.png",
     "07dark": "media-003.mp4",
     "09ui": "media-003.mp4",
     "09code": "media-004.mp4",
@@ -2328,6 +2410,14 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
         prev = next((s for s in plan["shots"] if abs(s.t1 - shot.t0) < 0.02), None)
         punch = shot.kind == "face" and prev is not None and prev.kind == "face" and abs(shot.scale - prev.scale) > 0.01
         _silent(shot.t0, _purpose("cut", "punch" if punch else "cut"), "clean cut, no sound")
+        if shot.kind != "face":
+            continue
+        for jt in _jump_times(plan["spans"], shot.t0, shot.t1):
+            before = _source_at(plan["spans"], jt - 1 / FPS)
+            after = _source_at(plan["spans"], jt + 1 / FPS)
+            if before is None or after is None or after <= before + 0.12:
+                continue
+            _silent(jt, _purpose("cut", "cut"), "source jump inside the shot, no sound")
     for win in plan["windows"]:
         _silent(win["t0"], _purpose("emphasis", ""), "emphasis arrives with no sound")
     for ph in plan.get("phrases") or []:
@@ -2343,6 +2433,7 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
             "room tone kept; this hole is longer than the pause ceiling",
             f"Dead air {gap['ms']:.0f} ms {kind}. Ceiling is 0.7 s after a reveal and 0.6 s otherwise.",
         )
+    _partition_source_ranges(events, plan)
     events.sort(key=lambda e: (e["time"], e["sound"] == "NONE"))
     if pauses:
         pause_note = "Dead air over the ceiling is flagged on its own rows: " + ", ".join(
@@ -2357,6 +2448,10 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
         pause_note,
         "One sound per event. No stacked files.",
     ]
+    if plan["reel"] == "07":
+        notes.append(
+            "The open is one continuous take through Charging. The old 0.133 s source jump is not in this cut."
+        )
     payload = {"reel": plan["reel"], "notes": notes, "events": events}
     dest.with_name(dest.stem + "-cues.json").write_text(json.dumps(payload, indent=1))
     lines = [
@@ -2380,6 +2475,66 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
     lines += ["", "No human listening check was possible.", ""]
     dest.with_name(dest.stem + "-cues.md").write_text("\n".join(lines))
     return pauses
+
+
+def _partition_source_ranges(events, plan):
+    """Give each row its own in/out so ranges on one clip abut instead of stacking.
+
+    A plate row uses the timeline. A camera row uses source time and stops at
+    the next event, or at a source jump, whichever comes first.
+    """
+    shots = plan["shots"]
+    for shot in shots:
+        evs = [e for e in events if shot.t0 - 1e-3 <= float(e["time"]) < shot.t1 - 1e-4]
+        evs.sort(key=lambda e: float(e["time"]))
+        if not evs:
+            continue
+        for i, event in enumerate(evs):
+            t_next = float(evs[i + 1]["time"]) if i + 1 < len(evs) else float(shot.t1)
+            if shot.plate:
+                event["source_clip"] = PLATE_FILES.get(shot.plate, shot.plate)
+                event["source_in"] = round(float(event["time"]), 3)
+                event["source_out"] = round(max(t_next, float(event["time"]) + 1 / FPS), 3)
+                continue
+            src_in = _source_at(plan["spans"], float(event["time"]))
+            if src_in is None:
+                continue
+            src_out = src_in
+            prev = src_in
+            u = float(event["time"])
+            while u < t_next - 1e-4:
+                found = _source_at(plan["spans"], u)
+                if found is None:
+                    break
+                if prev is not None and found > prev + 0.12:
+                    break
+                src_out = found
+                prev = found
+                u += 1 / FPS
+            clip, local_in, _span = _clip_at(plan["reel"], src_in)
+            same, local_out, _span = _clip_at(plan["reel"], src_out)
+            if local_in is None:
+                continue
+            if same != clip or local_out is None or local_out <= local_in + 0.005:
+                local_out = round(local_in + max(t_next - float(event["time"]), 1 / FPS), 3)
+            event["source_clip"] = clip
+            event["source_in"] = round(float(local_in), 3)
+            event["source_out"] = round(float(local_out), 3)
+    by_clip = {}
+    for event in events:
+        clip = event.get("source_clip") or ""
+        if not clip or event.get("source_in") is None or event.get("source_out") is None:
+            continue
+        by_clip.setdefault(clip, []).append(event)
+    for group in by_clip.values():
+        group.sort(key=lambda e: (float(e["source_in"]), float(e["time"])))
+        for i, event in enumerate(group):
+            if i + 1 < len(group):
+                nxt = float(group[i + 1]["source_in"])
+                if float(event["source_out"]) > nxt:
+                    event["source_out"] = round(nxt, 3)
+            if float(event["source_out"]) <= float(event["source_in"]):
+                event["source_out"] = round(float(event["source_in"]) + 0.01, 3)
 
 
 def _band_rms_db(path, af):
@@ -2444,7 +2599,95 @@ def _room_and_gaps(y, sr=SR):
     return {"room_db": room, "gaps": gaps}
 
 
-def write_handoff(dest, loud, gaps):
+def _script_pieces(word):
+    """Spoken pieces one script token may become in a whisper transcript."""
+    key = norm_word(word).replace(",", "")
+    table = {
+        "$2000": [["two", "thousand"], ["2000"], ["2", "000"]],
+        "$300": [["300"], ["three", "hundred"]],
+        "$400": [["400"], ["four", "hundred"]],
+        "$500": [["500"], ["five", "hundred"]],
+        "7": [["7"], ["seven"]],
+        "10": [["10"], ["ten"]],
+        "i've": [["ive"], ["i", "have"], ["i"]],
+        "i'd": [["id"], ["i", "would"], ["i"]],
+        "don't": [["dont"], ["do", "not"]],
+        "they're": [["theyre"], ["they", "are"], ["they"]],
+        "that's": [["thats"], ["that", "is"], ["thats"]],
+        "here's": [["heres"], ["here", "is"], ["heres"]],
+        "it's": [["its"], ["it", "is"]],
+    }
+    return table.get(key, [[key.replace("'", "")]])
+
+
+def _heard_tokens(text):
+    raw = text.lower().replace("'", "")
+    out = []
+    for tok in raw.replace("-", " ").split():
+        tok = tok.strip(".,!?;:\"")
+        if tok:
+            out.append(tok)
+    return out
+
+
+def transcript_check(path, plan):
+    """Word-for-word check of the rendered audio against the script.
+
+    One script token may match several heard tokens ($2,000, 7). A miss is a
+    script word the transcript does not contain.
+    """
+    from faster_whisper import WhisperModel
+    model = WhisperModel("small.en", device="cpu", compute_type="int8")
+    segments, _info = model.transcribe(str(path), word_timestamps=True, vad_filter=False)
+    heard = []
+    for seg in segments:
+        for w in seg.words or []:
+            heard.extend(_heard_tokens(w.word))
+        if not seg.words:
+            heard.extend(_heard_tokens(seg.text))
+    script = [w["word"] for w in plan["words"]]
+    missing = []
+    i = 0
+    for word in script:
+        options = _script_pieces(word)
+        found = None
+        window = heard[i:i + 8]
+        for pieces in options:
+            for start in range(0, max(1, len(window) - len(pieces) + 1)):
+                chunk = window[start:start + len(pieces)]
+                same = len(chunk) == len(pieces) and all(
+                    a == b or (len(pieces) == 1 and len(a) >= 5 and len(b) >= 5 and (a.startswith(b) or b.startswith(a)))
+                    for a, b in zip(chunk, pieces)
+                )
+                if same:
+                    found = start + len(pieces)
+                    break
+            if found is not None:
+                break
+        if found is None:
+            missing.append(word)
+            continue
+        i += found
+    starts = heard[0] if heard else ""
+    if script and norm_word(script[0]) == "charging" and starts != "charging":
+        missing = ["Charging"] + [m for m in missing if norm_word(m) != "charging"]
+    lines = [
+        "## Transcript check",
+        "",
+        "faster-whisper small.en on the rendered file, compared word for word with the script.",
+        "A figure such as $2,000 may be heard as two words. Those still count as that script word.",
+        "",
+        f"- Script words: {len(script)}",
+        f"- Heard tokens: {' '.join(heard) if heard else '(none)'}",
+        f"- Missing script words: {', '.join(missing) if missing else 'none'}",
+        f"- Opens with: {starts or '(none)'}",
+        f"- Result: {'every script word is present' if not missing else 'MISSING WORDS'}",
+        "",
+    ]
+    return "\n".join(lines), missing
+
+
+def write_handoff(dest, loud, gaps, plan=None):
     """G14 statement. Listening and visual inspection are unavailable, each with a reason.
 
     Every number below is measured on the rendered file.
@@ -2501,6 +2744,13 @@ def write_handoff(dest, loud, gaps):
         "No human listening check was possible.",
         "",
     ]
+    if plan is not None:
+        section, missing = transcript_check(dest, plan)
+        lines.append(section)
+        if missing:
+            path = dest.with_name(dest.stem + "-handoff.md")
+            path.write_text("\n".join(lines))
+            raise SystemExit(f"transcript missing words: {missing}")
     path = dest.with_name(dest.stem + "-handoff.md")
     path.write_text("\n".join(lines))
     return path, file_gaps
@@ -2747,7 +2997,7 @@ def render(reel, dest, work=None):
     dest.with_name(dest.stem + "-receipt.json").write_text(json.dumps(receipt, indent=1))
     from brandon_v2 import write_diff
     write_diff(dest, plan)
-    write_handoff(dest, loud, gaps)
+    write_handoff(dest, loud, gaps, plan)
     print("wrote", dest, digest)
     return plan
 

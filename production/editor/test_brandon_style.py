@@ -81,7 +81,8 @@ class BrandonPlanTest(unittest.TestCase):
             "IS THE MOST EXPENSIVE\nMISTAKE BEGINNERS MAKE",
             "THEY PAY YOU ONCE",
             "AND THEN THEY'RE GONE",
-            "HERE'S HOW I'D PRICE\nTHE NEXT ONE",
+            "I'VE BUILT 7 CLIENT WEBSITES",
+            "AND HERE'S HOW I'D PRICE\nTHE NEXT ONE",
             "A FREE BUILD PLUS\n$300 TO $400 A MONTH",
             "NOW WATCH WHAT HAPPENS",
             "WHEN THEY STOP PAYING",
@@ -116,7 +117,7 @@ class BrandonPlanTest(unittest.TestCase):
             for a, b in zip(times, times[1:]):
                 self.assertGreater(b - a, 0.30)
         form = next(s for s in self.plans["09"]["shots"] if s.plate == "09form")
-        self.assertGreaterEqual(form.dur, 0.90)
+        self.assertGreaterEqual(form.dur, 0.65)
         self.assertLessEqual(form.dur, 2.40)
         self.assertFalse(any(c.trigger == "insert-07dark" for c in self.plans["07"]["cues"]))
         self.assertFalse(any(c.role == "negative" for c in self.plans["07"]["cues"]))
