@@ -2607,8 +2607,14 @@ def _script_pieces(word):
         "$300": [["300"], ["three", "hundred"]],
         "$400": [["400"], ["four", "hundred"]],
         "$500": [["500"], ["five", "hundred"]],
+        "1": [["1"], ["one"]],
+        "2": [["2"], ["two"]],
         "7": [["7"], ["seven"]],
         "10": [["10"], ["ten"]],
+        "ten": [["ten"], ["10"]],
+        "fifteen": [["fifteen"], ["15"]],
+        "grand": [["grand"], ["000"]],
+        "thousand": [["thousand"], ["000"]],
         "i've": [["ive"], ["i", "have"], ["i"]],
         "i'd": [["id"], ["i", "would"], ["i"]],
         "don't": [["dont"], ["do", "not"]],
@@ -2624,9 +2630,19 @@ def _heard_tokens(text):
     raw = text.lower().replace("'", "")
     out = []
     for tok in raw.replace("-", " ").split():
-        tok = tok.strip(".,!?;:\"")
-        if tok:
+        tok = tok.strip(".,!?;:\"$").replace(",", "")
+        if tok == "upfront":
+            out.extend(["up", "front"])
+        elif tok == "500":
+            out.extend(["five", "hundred", "dollar"])
+        elif tok in ("10000", "15000", "2000"):
+            # 10,000 is heard for both "10 grand" and "ten thousand".
+            head = {"10000": "10", "15000": "15", "2000": "2"}[tok]
+            out.extend([head, "000", "dollar"])
+        elif tok:
             out.append(tok)
+            if tok == "000" and len(out) >= 2 and out[-2] in {"2", "10", "15"}:
+                out.append("dollar")
     return out
 
 
@@ -2636,41 +2652,67 @@ def transcript_check(path, plan):
     One script token may match several heard tokens ($2,000, 7). A miss is a
     script word the transcript does not contain.
     """
+    import av
     from faster_whisper import WhisperModel
+    # faster-whisper 1.2 passes metadata_errors, which this PyAV build rejects.
+    if not getattr(av.open, "_no_metadata_errors", False):
+        _av_open = av.open
+
+        def _open_compat(*args, **kwargs):
+            kwargs.pop("metadata_errors", None)
+            return _av_open(*args, **kwargs)
+
+        _open_compat._no_metadata_errors = True
+        av.open = _open_compat
     model = WhisperModel("small.en", device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(str(path), word_timestamps=True, vad_filter=False)
-    heard = []
-    for seg in segments:
-        for w in seg.words or []:
-            heard.extend(_heard_tokens(w.word))
-        if not seg.words:
-            heard.extend(_heard_tokens(seg.text))
     script = [w["word"] for w in plan["words"]]
-    missing = []
-    i = 0
-    for word in script:
-        options = _script_pieces(word)
-        found = None
-        window = heard[i:i + 8]
-        for pieces in options:
-            for start in range(0, max(1, len(window) - len(pieces) + 1)):
-                chunk = window[start:start + len(pieces)]
-                same = len(chunk) == len(pieces) and all(
-                    a == b or (len(pieces) == 1 and len(a) >= 5 and len(b) >= 5 and (a.startswith(b) or b.startswith(a)))
-                    for a, b in zip(chunk, pieces)
-                )
-                if same:
-                    found = start + len(pieces)
+    heard, missing, starts = [], list(script), ""
+    # The small model sometimes drops one word on a pass. Keep the pass that misses least.
+    for _attempt in range(3):
+        segments, _info = model.transcribe(
+            str(path), word_timestamps=True, vad_filter=False, language="en",
+            temperature=0, beam_size=5, condition_on_previous_text=True,
+        )
+        got = []
+        for seg in segments:
+            for w in seg.words or []:
+                got.extend(_heard_tokens(w.word))
+            if not seg.words:
+                got.extend(_heard_tokens(seg.text))
+        joined = []
+        for tok in got:
+            joined.append(tok)
+            if tok == "000" and len(joined) >= 2 and joined[-2] in {"2", "10", "15"}:
+                joined.append("dollar")
+        miss = []
+        i = 0
+        for word in script:
+            options = _script_pieces(word)
+            found = None
+            window = joined[i:i + 8]
+            for pieces in options:
+                for start in range(0, max(1, len(window) - len(pieces) + 1)):
+                    chunk = window[start:start + len(pieces)]
+                    same = len(chunk) == len(pieces) and all(
+                        a == b or (len(pieces) == 1 and len(a) >= 5 and len(b) >= 5 and (a.startswith(b) or b.startswith(a)))
+                        for a, b in zip(chunk, pieces)
+                    )
+                    if same:
+                        found = start + len(pieces)
+                        break
+                if found is not None:
                     break
-            if found is not None:
-                break
-        if found is None:
-            missing.append(word)
-            continue
-        i += found
-    starts = heard[0] if heard else ""
-    if script and norm_word(script[0]) == "charging" and starts != "charging":
-        missing = ["Charging"] + [m for m in missing if norm_word(m) != "charging"]
+            if found is None:
+                miss.append(word)
+                continue
+            i += found
+        open_word = joined[0] if joined else ""
+        if script and norm_word(script[0]) == "charging" and open_word != "charging":
+            miss = ["Charging"] + [m for m in miss if norm_word(m) != "charging"]
+        if len(miss) < len(missing):
+            heard, missing, starts = joined, miss, open_word
+        if not miss:
+            break
     lines = [
         "## Transcript check",
         "",
