@@ -72,6 +72,7 @@ def apply_v2(plan):
     _drop_cta(plan)
     _sparse_cues(plan)
     apply_v3(plan)
+    _stamp_sentence_marks(plan)
     plan["phrases"] = B.build_phrases(plan["words"])
     plan["green"] = B.green_intervals(plan["windows"], plan["cta_t"], plan["duration"], plan["title_off"])
     plan["v1"] = v1
@@ -354,6 +355,35 @@ def _sparse_cues(plan):
         kept.append(cue)
     kept.sort(key=lambda c: (c.t, c.role))
     plan["cues"] = kept
+
+
+def _stamp_sentence_marks(plan):
+    """Put the transcript's periods and commas back on words Whisper left bare.
+
+    A caption breaks on that punctuation. Without it, 09 draws
+    'functionality Most designers' as one line.
+    """
+    marks = {
+        "09": (
+            ("unlock", 0, ","),
+            ("grand", 0, "."),
+            ("functionality", 0, "."),
+            ("design", 0, "."),
+            ("agree", 0, "."),
+            ("work", 0, "."),
+            ("flow", 0, ","),
+            ("portal", 0, "."),
+            ("pages", 0, ","),
+            ("functionality", 1, "."),
+            ("difference", 0, "."),
+        ),
+    }
+    for word, occ, mark in marks.get(plan["reel"], ()):
+        i = B.find_word(plan["words"], word, occ)
+        token = str(plan["words"][i]["word"]).rstrip()
+        if token.endswith((".", "!", "?", ",", ";", ":")):
+            continue
+        plan["words"][i]["word"] = token + mark
 
 
 def apply_v3(plan):

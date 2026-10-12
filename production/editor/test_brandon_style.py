@@ -59,6 +59,12 @@ class BrandonPlanTest(unittest.TestCase):
                 self.assertNotIn("! ", spoken)
                 self.assertNotIn("? ", spoken)
             self.assert_number_stays_with_unit(plan)
+        spoken = [ph["spoken"] for ph in self.plans["09"]["phrases"]]
+        blob = " | ".join(spoken)
+        self.assertNotIn("functionality Most", blob)
+        self.assertNotIn("design I", blob)
+        self.assertNotIn("work a booking", blob)
+        self.assertNotIn("portal Stop", blob)
         plan = self.plans["07"]
         frame = np.array(Overlay(plan).frame(30))
         band = frame[1200:1760, 80:1000]
