@@ -359,5 +359,861 @@
     "shot-11": 57.01
    }
   }
+ },
+ "brandon_v2":  {
+  "caption_baseline": 1462,
+  "caption_band": [
+   1450,
+   1475
+  ],
+  "note": "v1 cut list, gaps and caption baseline, plus the v2 edits QA asked for.",
+  "07": {
+   "v1": {
+    "duration": 30.067,
+    "shot_count": 16,
+    "cuts": [
+     2.033,
+     5.2,
+     6.067,
+     7.6,
+     9.267,
+     10.833,
+     12.9,
+     17.2,
+     18.333,
+     19.467,
+     22.867,
+     24.5,
+     25.567,
+     27.2,
+     28.967
+    ],
+    "shots": [
+     {
+      "t0": 0.0,
+      "t1": 2.033,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 2.033,
+      "t1": 5.2,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 5.2,
+      "t1": 6.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 6.067,
+      "t1": 7.6,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 7.6,
+      "t1": 9.267,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 9.267,
+      "t1": 10.833,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 10.833,
+      "t1": 12.9,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 12.9,
+      "t1": 17.2,
+      "kind": "phone",
+      "plate": "07web"
+     },
+     {
+      "t0": 17.2,
+      "t1": 18.333,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 18.333,
+      "t1": 19.467,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 19.467,
+      "t1": 22.867,
+      "kind": "bleed",
+      "plate": "07dark"
+     },
+     {
+      "t0": 22.867,
+      "t1": 24.5,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 24.5,
+      "t1": 25.567,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 25.567,
+      "t1": 27.2,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 27.2,
+      "t1": 28.967,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 28.967,
+      "t1": 30.067,
+      "kind": "face",
+      "plate": ""
+     }
+    ],
+    "cues": [
+     {
+      "t": 2.033,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 3.8,
+      "role": "impact",
+      "trigger": "hero-MISTAKE-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 3.8,
+      "role": "negative",
+      "trigger": "negative-mistake",
+      "gain": -9.8
+     },
+     {
+      "t": 3.8,
+      "role": "pop",
+      "trigger": "hero-MISTAKE",
+      "gain": -4.5
+     },
+     {
+      "t": 7.6,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 7.733,
+      "role": "impact",
+      "trigger": "hero-GONE-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 7.733,
+      "role": "negative",
+      "trigger": "negative-gone",
+      "gain": -9.8
+     },
+     {
+      "t": 7.733,
+      "role": "pop",
+      "trigger": "hero-GONE",
+      "gain": -4.5
+     },
+     {
+      "t": 8.9,
+      "role": "impact",
+      "trigger": "hero-7-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 8.9,
+      "role": "pop",
+      "trigger": "hero-7",
+      "gain": -4.5
+     },
+     {
+      "t": 12.9,
+      "role": "pop",
+      "trigger": "insert-07web",
+      "gain": -4.5
+     },
+     {
+      "t": 14.1,
+      "role": "impact",
+      "trigger": "hero-$2,000-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 14.1,
+      "role": "pop",
+      "trigger": "hero-$2,000",
+      "gain": -4.5
+     },
+     {
+      "t": 15.1,
+      "role": "negative",
+      "trigger": "negative-front",
+      "gain": -9.8
+     },
+     {
+      "t": 18.333,
+      "role": "pop",
+      "trigger": "hero-$400",
+      "gain": -4.5
+     },
+     {
+      "t": 18.333,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 18.333,
+      "role": "tick",
+      "trigger": "tick-300",
+      "gain": 4.8
+     },
+     {
+      "t": 19.033,
+      "role": "landing",
+      "trigger": "landing-$400",
+      "gain": -8.3
+     },
+     {
+      "t": 19.033,
+      "role": "tick",
+      "trigger": "tick-400",
+      "gain": 4.8
+     },
+     {
+      "t": 19.467,
+      "role": "pop",
+      "trigger": "insert-07dark",
+      "gain": -4.5
+     },
+     {
+      "t": 23.467,
+      "role": "pop",
+      "trigger": "cta-plan",
+      "gain": -4.5
+     },
+     {
+      "t": 27.2,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     }
+    ],
+    "caption_baseline": 1462,
+    "title_off": 5.2,
+    "cta_t": 23.467
+   },
+   "v2": {
+    "duration": 29.933,
+    "shot_count": 17,
+    "cuts": [
+     2.067,
+     5.2,
+     6.067,
+     7.6,
+     9.267,
+     10.833,
+     12.9,
+     15.667,
+     16.7,
+     17.867,
+     19.067,
+     22.4,
+     24.067,
+     25.133,
+     26.833,
+     28.533
+    ],
+    "shots": [
+     {
+      "t0": 0.0,
+      "t1": 2.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 2.067,
+      "t1": 5.2,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 5.2,
+      "t1": 6.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 6.067,
+      "t1": 7.6,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 7.6,
+      "t1": 9.267,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 9.267,
+      "t1": 10.833,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 10.833,
+      "t1": 12.9,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 12.9,
+      "t1": 15.667,
+      "kind": "phone",
+      "plate": "07web"
+     },
+     {
+      "t0": 15.667,
+      "t1": 16.7,
+      "kind": "phone",
+      "plate": "07opt2"
+     },
+     {
+      "t0": 16.7,
+      "t1": 17.867,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 17.867,
+      "t1": 19.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 19.067,
+      "t1": 22.4,
+      "kind": "bleed",
+      "plate": "07dark"
+     },
+     {
+      "t0": 22.4,
+      "t1": 24.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 24.067,
+      "t1": 25.133,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 25.133,
+      "t1": 26.833,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 26.833,
+      "t1": 28.533,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 28.533,
+      "t1": 29.933,
+      "kind": "face",
+      "plate": ""
+     }
+    ],
+    "cues": [
+     {
+      "t": 8.9,
+      "role": "pop",
+      "trigger": "hero-7",
+      "gain": -4.5
+     },
+     {
+      "t": 12.9,
+      "role": "pop",
+      "trigger": "insert-07web",
+      "gain": -4.5
+     },
+     {
+      "t": 13.867,
+      "role": "pop",
+      "trigger": "hero-$2,000",
+      "gain": -4.5
+     },
+     {
+      "t": 18.6,
+      "role": "impact",
+      "trigger": "hero-$400-impact",
+      "gain": -5.0
+     }
+    ],
+    "caption_baseline": 1462,
+    "title_off": 5.2,
+    "cta_t": null
+   }
+  },
+  "09": {
+   "v1": {
+    "duration": 32.1,
+    "shot_count": 19,
+    "cuts": [
+     2.167,
+     3.633,
+     5.167,
+     6.633,
+     8.067,
+     9.733,
+     11.133,
+     12.3,
+     15.767,
+     16.7,
+     20.1,
+     21.0,
+     24.4,
+     25.633,
+     26.667,
+     28.033,
+     29.3,
+     30.967
+    ],
+    "shots": [
+     {
+      "t0": 0.0,
+      "t1": 2.167,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 2.167,
+      "t1": 3.633,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 3.633,
+      "t1": 5.167,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 5.167,
+      "t1": 6.633,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 6.633,
+      "t1": 8.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 8.067,
+      "t1": 9.733,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 9.733,
+      "t1": 11.133,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 11.133,
+      "t1": 12.3,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 12.3,
+      "t1": 15.767,
+      "kind": "phone",
+      "plate": "09ui"
+     },
+     {
+      "t0": 15.767,
+      "t1": 16.7,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 16.7,
+      "t1": 20.1,
+      "kind": "bleed",
+      "plate": "09code"
+     },
+     {
+      "t0": 20.1,
+      "t1": 21.0,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 21.0,
+      "t1": 24.4,
+      "kind": "mg",
+      "plate": "features"
+     },
+     {
+      "t0": 24.4,
+      "t1": 25.633,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 25.633,
+      "t1": 26.667,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 26.667,
+      "t1": 28.033,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 28.033,
+      "t1": 29.3,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 29.3,
+      "t1": 30.967,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 30.967,
+      "t1": 32.1,
+      "kind": "face",
+      "plate": ""
+     }
+    ],
+    "cues": [
+     {
+      "t": 2.167,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 3.833,
+      "role": "impact",
+      "trigger": "hero-UNLOCK-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 3.833,
+      "role": "negative",
+      "trigger": "negative-unlock",
+      "gain": -9.8
+     },
+     {
+      "t": 3.833,
+      "role": "pop",
+      "trigger": "hero-UNLOCK",
+      "gain": -4.5
+     },
+     {
+      "t": 6.333,
+      "role": "impact",
+      "trigger": "hero-$10K-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 6.333,
+      "role": "pop",
+      "trigger": "hero-$10K",
+      "gain": -4.5
+     },
+     {
+      "t": 8.067,
+      "role": "impact",
+      "trigger": "hero-$15K-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 8.067,
+      "role": "pop",
+      "trigger": "hero-$15K",
+      "gain": -4.5
+     },
+     {
+      "t": 8.067,
+      "role": "tick",
+      "trigger": "tick-$500",
+      "gain": 4.8
+     },
+     {
+      "t": 9.733,
+      "role": "tick",
+      "trigger": "tick-$10K",
+      "gain": 4.8
+     },
+     {
+      "t": 10.167,
+      "role": "tick",
+      "trigger": "tick-$15K",
+      "gain": 4.8
+     },
+     {
+      "t": 11.133,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 12.3,
+      "role": "pop",
+      "trigger": "insert-09ui",
+      "gain": -4.5
+     },
+     {
+      "t": 13.467,
+      "role": "impact",
+      "trigger": "hero-FUNCTIONALITY-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 13.467,
+      "role": "pop",
+      "trigger": "hero-FUNCTIONALITY",
+      "gain": -4.5
+     },
+     {
+      "t": 16.7,
+      "role": "pop",
+      "trigger": "insert-09code",
+      "gain": -4.5
+     },
+     {
+      "t": 21.0,
+      "role": "pop",
+      "trigger": "insert-features",
+      "gain": -4.5
+     },
+     {
+      "t": 25.033,
+      "role": "pop",
+      "trigger": "cta-sites",
+      "gain": -4.5
+     },
+     {
+      "t": 28.033,
+      "role": "negative",
+      "trigger": "negative-pages",
+      "gain": -9.8
+     },
+     {
+      "t": 28.033,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     },
+     {
+      "t": 30.967,
+      "role": "thump",
+      "trigger": "punch",
+      "gain": -12.0
+     }
+    ],
+    "caption_baseline": 1462,
+    "title_off": 5.167,
+    "cta_t": 25.033
+   },
+   "v2": {
+    "duration": 30.033,
+    "shot_count": 18,
+    "cuts": [
+     2.167,
+     3.267,
+     4.8,
+     6.267,
+     7.4,
+     9.067,
+     11.633,
+     15.267,
+     16.033,
+     19.433,
+     21.333,
+     23.167,
+     23.9,
+     25.0,
+     25.733,
+     27.0,
+     28.733
+    ],
+    "shots": [
+     {
+      "t0": 0.0,
+      "t1": 2.167,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 2.167,
+      "t1": 3.267,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 3.267,
+      "t1": 4.8,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 4.8,
+      "t1": 6.267,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 6.267,
+      "t1": 7.4,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 7.4,
+      "t1": 9.067,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 9.067,
+      "t1": 11.633,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 11.633,
+      "t1": 15.267,
+      "kind": "phone",
+      "plate": "09ui"
+     },
+     {
+      "t0": 15.267,
+      "t1": 16.033,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 16.033,
+      "t1": 19.433,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 19.433,
+      "t1": 21.333,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 21.333,
+      "t1": 23.167,
+      "kind": "mg",
+      "plate": "features"
+     },
+     {
+      "t0": 23.167,
+      "t1": 23.9,
+      "kind": "bleed",
+      "plate": "09form"
+     },
+     {
+      "t0": 23.9,
+      "t1": 25.0,
+      "kind": "mg",
+      "plate": "features"
+     },
+     {
+      "t0": 25.0,
+      "t1": 25.733,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 25.733,
+      "t1": 27.0,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 27.0,
+      "t1": 28.733,
+      "kind": "face",
+      "plate": ""
+     },
+     {
+      "t0": 28.733,
+      "t1": 30.033,
+      "kind": "face",
+      "plate": ""
+     }
+    ],
+    "cues": [
+     {
+      "t": 9.5,
+      "role": "impact",
+      "trigger": "hero-$15K-impact",
+      "gain": -5.0
+     },
+     {
+      "t": 11.633,
+      "role": "pop",
+      "trigger": "insert-09ui",
+      "gain": -4.5
+     },
+     {
+      "t": 17.533,
+      "role": "negative",
+      "trigger": "negative-disagree",
+      "gain": -9.8
+     },
+     {
+      "t": 23.767,
+      "role": "pop",
+      "trigger": "insert-09form",
+      "gain": -4.5
+     }
+    ],
+    "caption_baseline": 1462,
+    "title_off": 4.8,
+    "cta_t": null
+   }
+  }
  }
 }
