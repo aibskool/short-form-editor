@@ -68,7 +68,7 @@ SFX = {
     "impact": "00 Viral Reels Essentials/Dark Impact.mp3",
 }
 # Seconds into the file where the transient peaks, so the hit can sit on the frame.
-PEAK_AT = {"pop": 0.036, "thump": 0.154, "tick": 0.001, "shutter": 0.128, "landing": 0.411, "impact": 0.251, "ding": 0.033, "negative": 0.0}
+PEAK_AT = {"pop": 0.036, "thump": 0.154, "tick": 0.001, "shutter": 0.128, "landing": 0.411, "impact": 0.251, "ding": 0.033, "negative": 0.259}
 TRIM_AT = {"thump": 0.40, "impact": 0.55}
 
 
@@ -996,15 +996,17 @@ def level_cues(voice, cues, words):
         vpeak = _nearby_peak(voice, c.t)
         nxt = next((w["out"] for w in words if w["out"] >= c.t + 0.08), None)
         peak = PEAK_AT.get(c.role, 0.0)
+        # File length includes the pre-roll before the transient, and the
+        # fade sits after the transient so it does not duck the hit.
         cap = None
         if nxt is not None:
-            cap = max(peak + 0.06, nxt - c.t - 0.03)
+            cap = max(peak + 0.14, peak + (nxt - c.t) - 0.03)
         base = TRIM_AT.get(c.role)
         trim = base
         if cap is not None:
-            trim = cap if base is None else min(base, cap)
-        if trim is not None and trim < peak + 0.05:
-            trim = peak + 0.05
+            trim = cap if base is None else min(max(base, peak + 0.14), cap)
+        if trim is not None and trim < peak + 0.14:
+            trim = peak + 0.14
         c.trim = trim
         y = _decode_sfx(c.path, trim)
         fpeak = float(np.max(np.abs(y))) or 1e-6
@@ -1983,7 +1985,7 @@ def render(reel, dest, work=None):
     mix, info = fit_loudness(voice, bed)
     mix = kill_dc(mix)
     # The high-pass can put a sample back over the ceiling.
-    ceil = 10 ** (-1.8 / 20)
+    ceil = 10 ** (-2.0 / 20)
     mix = np.clip(mix, -ceil, ceil).astype(np.float32)
     wav = work / "mix.wav"
     stereo = np.column_stack([mix, mix])
