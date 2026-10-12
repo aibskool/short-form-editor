@@ -1011,8 +1011,10 @@ def voice_from_spans(source, spans):
         jumps = nxt is None or nxt.src is None or s.src is None
         if not jumps and nxt is not None and nxt.src is not None:
             jumps = abs((s.src + s.dur) - nxt.src) > 0.03
-        fade = int(0.010 * SR)
-        if jumps and fade > 1 and a + n < out_n:
+        # 10 ms on an internal jump. The last word into silence gets 18 ms
+        # so the file ends under -50 dBFS instead of on the voiced tail.
+        fade = int((0.018 if nxt is None or nxt.src is None else 0.010) * SR)
+        if jumps and fade > 1 and len(piece) > fade + 8:
             piece = piece.copy()
             piece[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
         voice[a:a + len(piece)] += piece[: max(0, out_n - a)]
@@ -1262,31 +1264,43 @@ def make_caption(text, emph=None):
     """One or two centered lines. The white glyph bottom is what the placer locks.
 
     A highlighted word uses this same font and the same glyph height. Only
-    the color changes. The line stays inside x 90-960.
+    the color changes. The line stays inside x 90-960. A newline in the
+    text is the line break QA named.
     """
-    words = [w for w in str(text).split() if w]
-    if not words:
-        return Image.new("RGBA", (8, CAPTION_H), (0, 0, 0, 0))
+    raw_lines = [line for line in str(text).split("\n")]
     emph = {norm_word(w) for w in (emph or [])}
-    glyphs = []
-    for w in words:
-        fill = GREEN if norm_word(w) in emph and len(words) > 1 else (255, 255, 255, 255)
-        glyphs.append(_word_caption(w, fill))
     gap = 16
     max_w = 870
-    widths = [g.size[0] for g in glyphs]
-    total = sum(widths) + gap * (len(glyphs) - 1)
-    if total <= max_w or len(glyphs) == 1:
-        groups = [glyphs]
+
+    def glyphs_for(line):
+        words = [w for w in line.split() if w]
+        out = []
+        for w in words:
+            fill = GREEN if norm_word(w) in emph and (len(words) > 1 or len(raw_lines) > 1) else (255, 255, 255, 255)
+            out.append(_word_caption(w, fill))
+        return out
+
+    if len(raw_lines) > 1:
+        groups = [glyphs_for(line) for line in raw_lines if line.strip()]
+        if not groups:
+            return Image.new("RGBA", (8, CAPTION_H), (0, 0, 0, 0))
     else:
-        best_i, best = 1, None
-        for i in range(1, len(glyphs)):
-            left = sum(widths[:i]) + gap * max(0, i - 1)
-            right = sum(widths[i:]) + gap * max(0, len(glyphs) - i - 1)
-            score = abs(left - right)
-            if best is None or score < best:
-                best, best_i = score, i
-        groups = [glyphs[:best_i], glyphs[best_i:]]
+        glyphs = glyphs_for(raw_lines[0] if raw_lines else "")
+        if not glyphs:
+            return Image.new("RGBA", (8, CAPTION_H), (0, 0, 0, 0))
+        widths = [g.size[0] for g in glyphs]
+        total = sum(widths) + gap * (len(glyphs) - 1)
+        if total <= max_w or len(glyphs) == 1:
+            groups = [glyphs]
+        else:
+            best_i, best = 1, None
+            for i in range(1, len(glyphs)):
+                left = sum(widths[:i]) + gap * max(0, i - 1)
+                right = sum(widths[i:]) + gap * max(0, len(glyphs) - i - 1)
+                score = abs(left - right)
+                if best is None or score < best:
+                    best, best_i = score, i
+            groups = [glyphs[:best_i], glyphs[best_i:]]
     line_gap = 8
     lines = []
     for group in groups:
@@ -1454,10 +1468,8 @@ def mg_plate(name):
         d.line([300, 860, 780, 1180], fill=(255, 255, 255), width=8)
         d.line([780, 860, 300, 1180], fill=(255, 255, 255), width=8)
     elif name == "features":
-        # Three labeled cards, all ending above the caption. Icons pop in the overlay.
-        labels_y = (300, 540, 780)
-        for y in labels_y:
-            d.rounded_rectangle([180, y, 900, y + 200], radius=28, outline=(255, 255, 255), width=6)
+        # Boxes are drawn on the overlay when each word is spoken.
+        # An empty outline on the plate is the bug QA flagged.
         im = _stamp_example(im)
     else:
         d.rectangle([200, 560, 880, 1060], outline=(255, 255, 255), width=6)
@@ -1700,7 +1712,13 @@ OPEN_DISSOLVES = {
 
 
 def _harden_open(base, dest, plan, work):
-    """Replace blended double-face frames in the open with a hard cut."""
+    """The dissolve windows are cut out of the timeline in v4.
+
+    Holding the frame on either side made frozen duplicates while he was
+    speaking. A straight cut between the real frames is the picture now,
+    so this pass must not copy a frame forward.
+    """
+    return base
     windows = OPEN_DISSOLVES.get(plan["reel"]) or []
     spans = plan["spans"]
     repl = {}
@@ -1948,22 +1966,22 @@ class Overlay:
         pops = self.plan.get("feature_pops") or []
         font = _font("BebasNeue-Regular.ttf", 54)
         rows = (300, 540, 780)
-        # One highlight at a time. Earlier steps stay dim. Later steps stay hidden
-        # until their word, so a dense screen does not light up all at once.
-        # A features shot that resumes after the form still shows the boxes
-        # whose words have already been spoken, including the third.
+        # Draw a box only on the word that has been spoken. Empty outlines
+        # for the later steps stay off the plate.
         active = None
         shown = []
         for pop in pops:
             if t + 1 / FPS >= pop["t"] - 0.02:
                 shown.append(pop)
                 active = pop
+        draw = ImageDraw.Draw(fr)
         for row, pop in zip(rows, pops):
             if pop not in shown:
                 continue
             on = pop is active
-            fill = (255, 255, 255, 255) if on else (255, 255, 255, 110)
-            label = _text_image(pop["label"], font, fill)
+            ink = (255, 255, 255, 255) if on else (255, 255, 255, 110)
+            draw.rounded_rectangle([180, row, 900, row + 200], radius=28, outline=ink, width=6)
+            label = _text_image(pop["label"], font, ink)
             fr.alpha_composite(label, (340, row + 70))
             if on:
                 fr.alpha_composite(self._icon(pop["icon"]), (230, row + 50))
@@ -2006,13 +2024,19 @@ def render_overlay(plan, work):
     return dest
 
 
-def mux(base, overlay, wav, dest):
+def mux(base, overlay, wav, dest, seconds=None):
+    # Hold the last picture frame and pad the audio to that same length so
+    # the AAC priming trim cannot end the voice before the picture.
+    whole = None if seconds is None else f"apad=whole_dur={seconds:.6f},"
+    audio = f"[2:a]{whole or ''}aresample=48000[a]"
     ff("-y", "-i", str(base), "-i", str(overlay), "-i", str(wav),
-       "-filter_complex", "[0:v][1:v]overlay=format=auto:eof_action=pass,format=yuv420p,fps=30",
+       "-filter_complex",
+       "[0:v][1:v]overlay=format=auto:eof_action=repeat,format=yuv420p,fps=30[v];" + audio,
+       "-map", "[v]", "-map", "[a]",
        "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS),
        "-b:v", "20M", "-maxrate", "24M", "-bufsize", "40M",
        "-c:a", "aac", "-b:a", "256k", "-ar", str(SR), "-ac", "2",
-       "-movflags", "+faststart", "-shortest", str(dest))
+       "-movflags", "+faststart", str(dest))
 
 
 def loudness_file(path):
@@ -2136,6 +2160,40 @@ PLATE_FILES = {
 }
 
 
+def _shot_source_io(plan, shot, t, src):
+    """Clip-local in and out for one shot, both on the same camera file.
+
+    A shot that crosses the part boundary used to report the next file's
+    local time as the out point, so the out sat before the in.
+    """
+    if src is None:
+        return "", None, None
+    clip, src_in, _span = _clip_at(plan["reel"], src)
+    last = src
+    step = 1 / FPS
+    u = t
+    while u < shot.t1 - 1e-4:
+        found = _source_at(plan["spans"], u)
+        if found is not None:
+            last = found
+        u += step
+    same, src_out, _span = _clip_at(plan["reel"], last)
+    # A shot that ends on silence, or that crosses the camera-file boundary,
+    # used to report an out point that was missing or earlier than the in.
+    # Stay on the in-point's file and keep the out later than the in.
+    if src_in is not None and (same != clip or src_out is None or src_out <= src_in + 0.01):
+        cap = None
+        for name, a, b in CAMERA.get(plan["reel"], []):
+            if name == clip and b < 1000:
+                cap = round(b - a, 3)
+        src_out = round(src_in + max(shot.t1 - t, 1 / FPS), 3)
+        if cap is not None:
+            src_out = min(src_out, cap)
+        if src_out <= src_in + 0.01:
+            src_out = round(src_in + max(shot.t1 - t, 1 / FPS), 3)
+    return clip, src_in, src_out
+
+
 def _source_at(spans, t):
     """Source time on screen at timeline t. None when the frame is a hold."""
     for s in spans:
@@ -2197,22 +2255,12 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
     def _event(t, purpose, sound, row, notes, unresolved):
         shot = next((s for s in plan["shots"] if s.t0 - 1e-3 <= t < s.t1 - 1e-4), plan["shots"][-1])
         src = _source_at(plan["spans"], t)
-        src_end = _source_at(plan["spans"], max(t, shot.t1 - 1 / FPS))
         if shot.plate:
             clip, src_in, src_out = _clip_at(plan["reel"], None, shot.plate)
             # A plate has no camera in-point. The timeline in and out are the shot.
             src_in, src_out = round(shot.t0, 3), round(shot.t1, 3)
         else:
-            clip, src_in, _span = _clip_at(plan["reel"], src if src is not None else 0.0)
-            if src is None:
-                src_in = None
-                src_out = None
-            else:
-                # Clip-local in at this timeline frame, and the clip-local out
-                # at the end of the same shot, so the two clocks describe one cut.
-                _name, src_out, _span = _clip_at(plan["reel"], src_end if src_end is not None else src)
-                if src_out is None:
-                    src_out = src_in
+            clip, src_in, src_out = _shot_source_io(plan, shot, t, src)
         hit = 0.0 if row is None else row.get("hit_offset") or 0.0
         sync = round(float(t), 3)
         measured = None
@@ -2224,9 +2272,10 @@ def write_cue_sheet(dest, plan, voice, bed, placed):
         if sound == "NONE":
             level = "none"
         elif measured is None:
-            level = "unmeasured"
+            level = "target"
         else:
-            level = f"measured {measured} dB vs voice"
+            # The stem ratio is the aim. It is not a measurement of the file.
+            level = f"target {measured} dB vs voice"
         events.append({
             "time": sync,
             "source_clip": clip,
@@ -2453,44 +2502,99 @@ def write_handoff(dest, loud, gaps):
     return path, file_gaps
 
 
+def _decode_mix(path):
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-",
+    ])
+    return np.frombuffer(raw, np.float32).copy()
+
+
 def refresh_measured_levels(dest, voice, bed, gain_db):
-    """Rewrite cue levels from the stems after the gain that was printed into the file."""
+    """Replace target levels with the ratio measured on the rendered file.
+
+    The voice stem is aligned to the decoded mix, and the effect is what is
+    left after the voice is removed. A row stays 'target' if that alignment
+    cannot be made.
+    """
     dest = Path(dest)
     path = dest.with_name(dest.stem + "-cues.json")
     if not path.exists():
         return
     payload = json.loads(path.read_text())
+    try:
+        mix = _decode_mix(dest)
+    except (subprocess.CalledProcessError, OSError):
+        return
     gain = 10 ** (float(gain_db) / 20.0)
     voiced = np.asarray(voice, np.float32) * gain
-    bedded = np.asarray(bed, np.float32) * gain
+    n = min(len(mix), len(voiced))
+    if n < SR:
+        return
+    hop = int(0.01 * SR)
+    # AAC delay: slide the voice across the open and take the best fit.
+    window = mix[: int(0.8 * SR)]
+    ref = voiced[: int(0.8 * SR)]
+    best_off, best_score = 0, None
+    for off in range(0, int(0.08 * SR), hop):
+        m = window[off: off + len(ref)]
+        if len(m) < hop * 8:
+            m = window[off:]
+        r = ref[: len(m)]
+        if len(m) < hop * 8:
+            continue
+        score = float(np.dot(m, r) / (np.linalg.norm(m) * np.linalg.norm(r) + 1e-9))
+        if best_score is None or score > best_score:
+            best_score, best_off = score, off
+    if best_score is None or best_score < 0.5:
+        return
     for event in payload.get("events") or []:
         if event.get("sound") in (None, "NONE"):
             continue
         t = float(event["time"])
-        vp = _nearby_peak(voiced, t, half=0.35)
-        bp = _nearby_peak(bedded, t, half=0.05)
-        if vp > 0 and bp > 0:
-            event["level"] = f"measured {round(float(20 * np.log10(bp / vp)), 1)} dB vs voice"
+        a = max(0, int((t - 0.04) * SR) + best_off)
+        b = min(len(mix), a + int(0.08 * SR))
+        va = max(0, int((t - 0.30) * SR))
+        vb = min(len(voiced), int((t + 0.30) * SR))
+        if b <= a + 8 or vb <= va + 8:
+            continue
+        voice_piece = voiced[va:vb]
+        # The rendered window minus the aligned voice is the effect.
+        mv = mix[a:b]
+        vv = voiced[max(0, a - best_off): max(0, a - best_off) + len(mv)]
+        if len(vv) != len(mv):
+            vv = np.pad(vv, (0, max(0, len(mv) - len(vv))))[: len(mv)]
+        effect = mv - vv
+        bp = float(np.max(np.abs(effect)))
+        vp = float(np.max(np.abs(voice_piece)))
+        if vp <= 1e-5 or bp <= 1e-6:
+            continue
+        rel = float(20 * np.log10(bp / vp))
+        # A missed alignment leaves the voice in the residual and the ratio
+        # is no longer a level. Keep the row labeled target in that case.
+        if not -30.0 <= rel <= -3.0:
+            continue
+        event["level"] = f"measured {round(rel, 1)} dB vs voice"
     path.write_text(json.dumps(payload, indent=1))
     md = dest.with_name(dest.stem + "-cues.md")
-    lines = [
-        f"# Cue sheet — reel {payload.get('reel', '')}",
-        "",
-        "No human listening check was possible.",
-        "",
-        "Levels were measured on the stems after the gain used in the rendered file.",
-        "",
-        "| time | source clip | source in | source out | phrase | visual | purpose | sound | file | hit offset | sync time | trim/fade | level | unresolved |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for e in payload["events"]:
-        lines.append(
-            "| {time} | {source_clip} | {source_in} | {source_out} | {phrase} | {visual} | {purpose} | {sound} | {file} | {hit_offset} | {sync_time} | {trim_fade} | {level} | {unresolved} |".format(
-                **{k: "" if v is None else str(v).replace("|", "/") for k, v in e.items()}
+    if md.exists():
+        lines = [
+            f"# Cue sheet — reel {payload.get('reel', '')}",
+            "",
+            "No human listening check was possible.",
+            "",
+            "Written before the picture. Levels that say measured were taken from the rendered file after the voice was aligned out. Levels that say target were not.",
+            "",
+            "| time | source clip | source in | source out | phrase | visual | purpose | sound | file | hit offset | sync time | trim/fade | level | unresolved |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for e in payload["events"]:
+            lines.append(
+                "| {time} | {source_clip} | {source_in} | {source_out} | {phrase} | {visual} | {purpose} | {sound} | {file} | {hit_offset} | {sync_time} | {trim_fade} | {level} | {unresolved} |".format(
+                    **{k: "" if v is None else str(v).replace("|", "/") for k, v in e.items()}
+                )
             )
-        )
-    lines += ["", "No human listening check was possible.", ""]
-    md.write_text("\n".join(lines))
+        lines += ["", "No human listening check was possible.", ""]
+        md.write_text("\n".join(lines))
 
 
 def render(reel, dest, work=None):
@@ -2506,7 +2610,9 @@ def render(reel, dest, work=None):
     voice = voice_from_spans(plan["spec"]["source"], plan["spans"])
     gaps = measure_gaps(voice)
     print("  gaps", gaps, flush=True)
-    n = int(round(plan["duration"] * SR))
+    n_frames = max(1, int(round(plan["duration"] * FPS)))
+    seconds = n_frames / FPS
+    n = int(round(seconds * SR))
     if len(voice) < n:
         voice = np.pad(voice, (0, n - len(voice)))
     voice = voice[:n]
@@ -2563,7 +2669,7 @@ def render(reel, dest, work=None):
         f.setframerate(SR)
         f.writeframes(pcm.tobytes())
     print("mux", info, flush=True)
-    mux(base, overlay, wav, dest)
+    mux(base, overlay, wav, dest, seconds)
     loud = loudness_file(dest)
     print("loudness", loud, flush=True)
     # If the encode drifted, apply one more constant gain via a second pass.
@@ -2580,7 +2686,7 @@ def render(reel, dest, work=None):
             f.setsampwidth(2)
             f.setframerate(SR)
             f.writeframes(pcm.tobytes())
-        mux(base, overlay, tuned, dest)
+        mux(base, overlay, tuned, dest, seconds)
         loud = loudness_file(dest)
         info["gain_db"] = round(info.get("gain_db", 0.0) + shift, 3)
         print("reloud", loud, "shift", round(shift, 2), flush=True)

@@ -72,8 +72,10 @@ def apply_v2(plan):
     _drop_cta(plan)
     _sparse_cues(plan)
     apply_v3(plan)
+    apply_v4(plan)
     _stamp_sentence_marks(plan)
     plan["phrases"] = B.build_phrases(plan["words"])
+    _apply_caption_groups(plan)
     plan["green"] = B.green_intervals(plan["windows"], plan["cta_t"], plan["duration"], plan["title_off"])
     plan["v1"] = v1
     plan["v2"] = _snapshot(plan)
@@ -638,6 +640,382 @@ def _place_09_cues(plan):
     plan["cues"].sort(key=lambda c: (c.t, c.role))
 
 
+def apply_v4(plan):
+    """The v3 grade. Only the items QA named, on the v3 clock, then the open cut."""
+    if plan["reel"] == "07":
+        _v4_07(plan)
+    else:
+        _v4_09(plan)
+    _excise_dissolves(plan)
+    _seal_shots(plan)
+    if plan["reel"] == "07":
+        _lock_07_after_shift(plan)
+    else:
+        _lock_09_after_shift(plan)
+        _end_portal_before_stop(plan)
+        _rebuild_feature_pops(plan)
+    plan["cues"].sort(key=lambda c: (c.t, c.role))
+
+
+def _v4_07(plan):
+    _set_cut(plan, 2.033, 2.08)
+    _set_cut(plan, 17.133, 17.18)
+    _set_cut(plan, 27.200, 27.30)
+    for cue in plan["cues"]:
+        if cue.trigger == "hero-7":
+            cue.t = B.qframe(8.967)
+            cue.extra_db = float(getattr(cue, "extra_db", 0.0) or 0.0) + 6.0
+        elif cue.trigger == "hero-LEVERAGE":
+            cue.extra_db = -5.0
+    _close_word_gap(plan, "1", "about", 0.25)
+    _close_word_gap(plan, "2", "a", 0.25, right_near=17.0)
+    _extend_until(plan, "going", 41.80, 43.4)
+
+
+def _v4_09(plan):
+    _snap_word_edge(plan, 15.467, "think")
+    _snap_word_edge(plan, 20.700, "makes")
+    _snap_word_edge(plan, 23.533, "quote")
+    _snap_word_edge(plan, 25.367, "a")
+    _snap_word_edge(plan, 29.033, "sell")
+    _snap_word_edge(plan, 30.767, "that's")
+    for cue in plan["cues"]:
+        if cue.role == "negative":
+            cue.t = B.qframe(17.9)
+            cue.extra_db = -4.0
+        elif cue.trigger == "hero-$10K":
+            cue.extra_db = -4.0
+        elif cue.trigger == "hero-FUNCTIONALITY":
+            cue.extra_db = -4.0
+        elif cue.trigger == "insert-09ui":
+            cue.extra_db = float(getattr(cue, "extra_db", 0.0) or 0.0) + 6.0
+        elif cue.trigger == "insert-09form":
+            cue.extra_db = 0.0
+    _close_word_gap(plan, "calculator", "or", 0.25, voiced=True)
+    _close_word_gap(plan, "portal", "stop", 0.50, voiced=True)
+
+
+def _set_cut(plan, current, target):
+    """Move the picture cut nearest `current` onto `target`. Both shots stay readable."""
+    target = B.qframe(target)
+    best = None
+    for i, shot in enumerate(plan["shots"]):
+        if i == 0:
+            continue
+        dist = abs(shot.t0 - current)
+        if best is None or dist < best[0]:
+            best = (dist, i)
+    if best is None or best[0] > 0.45:
+        return
+    i = best[1]
+    prev, shot = plan["shots"][i - 1], plan["shots"][i]
+    if target - prev.t0 < 0.35 or shot.t1 - target < 0.35:
+        return
+    old = shot.t0
+    prev.t1 = target
+    shot.t0 = target
+    for ins in plan["inserts"]:
+        if abs(ins.get("t1", -9) - old) <= 0.06:
+            ins["t1"] = target
+        if abs(ins.get("t", -9) - old) <= 0.06:
+            ins["t"] = target
+    for cue in plan["cues"]:
+        if abs(cue.t - old) <= 0.06 and str(cue.trigger).startswith("insert-"):
+            cue.t = target
+
+
+def _word_near(plan, text, t):
+    best = None
+    want = B.norm_word(text)
+    for w in plan["words"]:
+        if B.norm_word(w["word"]) != want:
+            continue
+        dist = min(abs(w["out"] - t), abs(w["out_end"] - t), abs((w["out"] + w["out_end"]) / 2 - t))
+        if best is None or dist < best[0]:
+            best = (dist, w)
+    if best is None:
+        raise KeyError(text)
+    return best[1]
+
+
+def _snap_word_edge(plan, current, text):
+    w = _word_near(plan, text, current)
+    edges = [B.qframe(w["out"]), B.qframe(w["out_end"])]
+    edges.sort(key=lambda edge: abs(edge - current))
+    _set_cut(plan, current, edges[0])
+
+
+def _source_audio(plan):
+    cache = getattr(_source_audio, "_cache", {})
+    path = plan["spec"]["source"]
+    if path not in cache:
+        cache[path] = B.load_mono(path)
+        _source_audio._cache = cache
+    return cache[path]
+
+
+def _voiced_out(plan, word, thresh=-22.0):
+    """Output time of the first loud hop inside a word.
+
+    Whisper's start can sit on a handling thump. The gap is measured from
+    the previous word's end to this onset, not from the speech gate.
+    """
+    audio = _source_audio(plan)
+    hop = int(0.01 * B.SR)
+    t = float(word["start"])
+    limit = float(word["end"]) - 0.02
+    onset = t
+    while t < limit:
+        i = int(t * B.SR)
+        seg = audio[i:i + hop]
+        if len(seg) < hop // 2:
+            break
+        db = 20 * np.log10(float(np.sqrt(np.mean(seg ** 2))) + 1e-9)
+        if db >= thresh:
+            onset = t
+            break
+        t += 0.01
+    return _map_src(plan["spans"], onset)
+
+
+def _hop_db(audio, src_t):
+    hop = int(0.01 * B.SR)
+    i = int(src_t * B.SR)
+    seg = audio[i:i + hop]
+    if len(seg) < hop // 2:
+        return -90.0
+    return 20 * np.log10(float(np.sqrt(np.mean(seg ** 2))) + 1e-9)
+
+
+def _drop_thumps(plan, start, end):
+    """Cut handling hits inside a hole. They fooled the speech gate into keeping it."""
+    if end - start < 0.12:
+        return
+    audio = _source_audio(plan)
+    loud = []
+    t = start
+    while t < end - 0.06:
+        src = B._source_at(plan["spans"], t)
+        if src is not None and _hop_db(audio, src) >= -26.0:
+            loud.append(t)
+        t += 0.01
+    if not loud:
+        return
+    ranges = []
+    a = loud[0]
+    prev = loud[0]
+    for t in loud[1:]:
+        if t - prev > 0.04:
+            ranges.append((round(a - 0.02, 3), round(prev + 0.03, 3)))
+            a = t
+        prev = t
+    ranges.append((round(max(start, a - 0.02), 3), round(min(end - 0.02, prev + 0.03), 3)))
+    ranges = [(a, b) for a, b in ranges if b - a >= 0.04]
+    if ranges:
+        _excise(plan, ranges)
+
+
+def _close_word_gap(plan, left, right, keep, right_near=None, voiced=False):
+    if right_near is not None:
+        lw = _word_near(plan, left, right_near)
+        rw = _word_near(plan, right, right_near)
+    elif left in {"1", "2"}:
+        lw = _word_near(plan, left, 14.0 if left == "1" else 16.5)
+        rw = _word_near(plan, right, lw["out_end"] + 0.8)
+    else:
+        lw = _word(plan, left)
+        rw = _word(plan, right)
+    start = float(lw["out_end"])
+    end = _voiced_out(plan, rw) if voiced else float(rw["out"])
+    if voiced and end > start:
+        _drop_thumps(plan, start, end)
+        start = float(lw["out_end"])
+        end = _voiced_out(plan, rw)
+    if end - start <= keep + 0.04:
+        return
+    cut_a = round(start + keep, 3)
+    cut_b = round(end, 3)
+    if cut_b - cut_a >= 0.04:
+        _excise(plan, [(cut_a, cut_b)])
+
+
+def _lock_07_after_shift(plan):
+    """Put the three named cuts, and the pop on 7, back on the words after the open cut."""
+    web = _word(plan, "website")
+    _set_cut(plan, web["out"] + 0.04, web["out"] + 0.033)
+    free = _word(plan, "free")
+    _set_cut(plan, free["out"] + 0.05, free["out"] + 0.033)
+    pay = _word(plan, "payment")
+    _set_cut(plan, pay["out_end"] + 0.05, pay["out_end"] + 0.107)
+    seven = _word(plan, "7")
+    for cue in plan["cues"]:
+        if cue.trigger == "hero-7":
+            cue.t = B.qframe(seven["out"])
+
+
+def _lock_09_after_shift(plan):
+    """Snap the named cuts back onto the word edge once the gap closes have moved them."""
+    for text, hint in (
+        ("think", 15.0),
+        ("makes", 20.0),
+        ("quote", 23.0),
+        ("a", 24.0),
+        ("sell", 27.0),
+        ("that's", 29.0),
+    ):
+        w = _word_near(plan, text, hint)
+        edges = [B.qframe(w["out"]), B.qframe(w["out_end"])]
+        # The cut that belongs to this word is the one already nearest it.
+        current = min(edges, key=lambda edge: min(abs(s.t0 - edge) for s in plan["shots"][1:]))
+        nearest_cut = min((s.t0 for s in plan["shots"][1:]), key=lambda t: abs(t - current))
+        target = min(edges, key=lambda edge: abs(edge - nearest_cut))
+        _set_cut(plan, nearest_cut, target)
+
+
+def _extend_until(plan, text, src_end, src_len):
+    w = _word(plan, text)
+    for s in plan["spans"]:
+        if s.src is None:
+            continue
+        if s.src - 0.03 <= w["end"] <= s.src + s.dur + 0.08:
+            have = s.src + s.dur
+            extra = min(max(0.0, src_len - have), max(0.0, src_end - have))
+            if extra >= 0.02:
+                _extend_word(plan, text, 0, extra, src_len)
+            return
+
+
+def _source_interval(plan, a, b):
+    hits = []
+    for s in plan["spans"]:
+        if s.src is None:
+            continue
+        lo = max(a, s.src)
+        hi = min(b, s.src + s.dur)
+        if hi - lo >= 1 / B.FPS:
+            hits.append((s.out + (lo - s.src), s.out + (hi - s.src)))
+    if not hits:
+        return None
+    return hits[0][0], hits[-1][1]
+
+
+def _excise_dissolves(plan):
+    """Cut the baked dissolve windows. Holding those frames froze the open."""
+    removals = []
+    for a, b in B.OPEN_DISSOLVES.get(plan["reel"]) or []:
+        hit = _source_interval(plan, a, b)
+        if hit is None:
+            continue
+        lo, hi = hit
+        if hi - lo >= 1 / B.FPS:
+            removals.append((lo, hi))
+    if removals:
+        _excise(plan, removals)
+
+
+def _end_portal_before_stop(plan):
+    stop = _try_word(plan, "stop")
+    if stop is None:
+        return
+    edge = B.qframe(max(0.0, stop["out"] - 0.04))
+    for win in plan["windows"]:
+        if win.get("hero") == "PORTAL" and win["t1"] > edge:
+            win["t1"] = max(win["t0"] + 0.35, edge)
+
+
+def _rebuild_feature_pops(plan):
+    booking = _try_word(plan, "booking")
+    quote = _try_word(plan, "quote")
+    portal = _try_word(plan, "portal")
+    if not (booking and quote and portal):
+        return
+    plan["feature_pops"] = [
+        {"t": B.qframe(booking["out"]), "label": "Booking flow", "icon": "book"},
+        {"t": B.qframe(quote["out"]), "label": "Quote calculator", "icon": "calc"},
+        {"t": B.qframe(portal["out"]), "label": "Client portal", "icon": "portal"},
+    ]
+
+
+def _apply_caption_groups(plan):
+    groups = _CAPTION_GROUPS.get(plan["reel"])
+    if not groups:
+        return
+    words = plan["words"]
+    i = 0
+    phrases = []
+    for norms, text in groups:
+        chunk = words[i:i + len(norms)]
+        got = [B.norm_word(w["word"]) for w in chunk]
+        if got != list(norms):
+            raise SystemExit(f"reel {plan['reel']} caption align at {i}: {got} != {list(norms)}")
+        i += len(norms)
+        phrases.append({
+            "words": chunk,
+            "t0": chunk[0]["out"],
+            "t1": chunk[-1]["out_end"],
+            "text": text,
+            "spoken": " ".join(str(w["word"]).strip() for w in chunk),
+        })
+    if i != len(words):
+        raise SystemExit(
+            f"reel {plan['reel']} captions left {words[i]['word']!r} and {len(words) - i} more"
+        )
+    plan["phrases"] = phrases
+
+
+_CAPTION_GROUPS = {
+    "07": (
+        (("charging", "$2,000", "up", "front", "for", "a", "website"),
+         "CHARGING $2,000 UP FRONT\nFOR A WEBSITE"),
+        (("is", "the", "most", "expensive", "mistake", "beginners", "make"),
+         "IS THE MOST EXPENSIVE\nMISTAKE BEGINNERS MAKE"),
+        (("they", "pay", "you", "once"), "THEY PAY YOU ONCE"),
+        (("and", "then", "they're", "gone"), "AND THEN THEY'RE GONE"),
+        (("i've", "built", "7", "client", "websites", "and"),
+         "I'VE BUILT 7 CLIENT WEBSITES AND"),
+        (("here's", "how", "i'd", "price", "the", "next", "one"),
+         "HERE'S HOW I'D PRICE\nTHE NEXT ONE"),
+        (("option", "1"), "OPTION 1"),
+        (("about", "$2,000", "up", "front"), "ABOUT $2,000 UP FRONT"),
+        (("option", "2"), "OPTION 2"),
+        (("a", "free", "build", "plus", "$300", "to", "$400", "a", "month"),
+         "A FREE BUILD PLUS\n$300 TO $400 A MONTH"),
+        (("now", "watch", "what", "happens"), "NOW WATCH WHAT HAPPENS"),
+        (("when", "they", "stop", "paying"), "WHEN THEY STOP PAYING"),
+        (("they", "don't", "own", "it"), "THEY DON'T OWN IT"),
+        (("so", "the", "site", "comes", "down"), "SO THE SITE COMES DOWN"),
+        (("that's", "leverage"), "THAT'S LEVERAGE"),
+        (("one", "payment", "ends", "it"), "ONE PAYMENT ENDS IT"),
+        (("a", "monthly", "plan", "keeps", "it", "going"),
+         "A MONTHLY PLAN\nKEEPS IT GOING"),
+    ),
+    "09": (
+        (("if", "your", "website", "builder", "has", "ever"),
+         "IF YOUR WEBSITE BUILDER HAS EVER"),
+        (("told", "you", "upgrade", "to", "unlock"), "TOLD YOU UPGRADE TO UNLOCK"),
+        (("this", "is", "how", "you"), "THIS IS HOW YOU"),
+        (("start", "charging", "10", "grand"), "START CHARGING 10 GRAND"),
+        (("i", "went", "from", "five", "hundred", "dollar", "sites"),
+         "I WENT FROM\n$500 SITES"),
+        (("to", "ten", "to", "fifteen", "thousand", "dollar", "builds"),
+         "TO $10K TO $15K BUILDS"),
+        (("using", "claude", "code", "for", "custom", "functionality"),
+         "USING CLAUDE CODE FOR CUSTOM FUNCTIONALITY"),
+        (("most", "designers", "think"), "MOST DESIGNERS THINK"),
+        (("more", "money", "means", "better", "design"), "MORE MONEY MEANS BETTER DESIGN"),
+        (("i", "don't", "agree"), "I DON'T AGREE"),
+        (("owners", "pay", "for", "what"), "OWNERS PAY FOR WHAT"),
+        (("makes", "their", "business", "work"), "MAKES THEIR BUSINESS WORK"),
+        (("a", "booking", "flow"), "A BOOKING FLOW"),
+        (("a", "quote", "calculator"), "A QUOTE CALCULATOR"),
+        (("or", "a", "client", "portal"), "OR A CLIENT PORTAL"),
+        (("stop", "selling", "pages"), "STOP SELLING PAGES"),
+        (("sell", "functionality"), "SELL FUNCTIONALITY"),
+        (("that's", "the", "ten", "grand", "difference"), "THAT'S THE TEN GRAND DIFFERENCE"),
+    ),
+}
+
+
 def _snapshot(plan):
     return {
         "duration": round(float(plan["duration"]), 3),
@@ -743,6 +1121,15 @@ def _excise(plan, removals):
         ins["t1"] = _map_out(ins["t1"], removals)
     if plan.get("cta_t") is not None:
         plan["cta_t"] = _map_out(plan["cta_t"], removals)
+    pops = []
+    for pop in plan.get("feature_pops") or []:
+        if any(a < pop["t"] < b for a, b in removals):
+            pop["t"] = _map_out(pop["t"], removals)
+        else:
+            pop["t"] = _map_out(pop["t"], removals)
+        pops.append(pop)
+    if pops:
+        plan["feature_pops"] = pops
     plan["title_off"] = _map_out(plan["title_off"], removals)
     plan["duration"] = plan["spans"][-1].out_end
     if plan["shots"]:
@@ -779,6 +1166,9 @@ def _shift_after(plan, t, delta):
             ins["t1"] = ins.get("t1", 0) + delta
     if plan.get("cta_t") is not None and plan["cta_t"] >= t:
         plan["cta_t"] = B.qframe(plan["cta_t"] + delta)
+    for pop in plan.get("feature_pops") or []:
+        if pop["t"] >= t - 1e-4:
+            pop["t"] = B.qframe(pop["t"] + delta)
     if plan["title_off"] >= t:
         plan["title_off"] = B.qframe(plan["title_off"] + delta)
     plan["duration"] = plan["spans"][-1].out_end
@@ -1385,21 +1775,60 @@ def write_diff(dest, plan):
                 for c in plan["cues"]
             ],
         }
+    v3_receipts = {
+        "07": Path("/opt/cursor/artifacts/2026-10-11_07_never-sell-a-website-for-2000_new_v3-receipt.json"),
+        "09": Path("/opt/cursor/artifacts/2026-10-11_09_sell-functionality_new_v3-receipt.json"),
+    }
+    v3_path = v3_receipts.get(plan["reel"])
+    if v3_path is not None and v3_path.exists():
+        old = json.loads(v3_path.read_text())
+        sfx_path = Path(str(v3_path).replace("-receipt.json", "-sfx-log.json"))
+        old_cues = []
+        if sfx_path.exists():
+            logged = json.loads(sfx_path.read_text())
+            old_cues = [
+                {"t": c.get("peak_on", c.get("start")), "role": c.get("role"), "trigger": c.get("trigger")}
+                for c in logged.get("cues") or []
+            ]
+        payload["against_new_v3"] = {
+            "v3_file": old.get("file"),
+            "v3_sha256": old.get("sha256"),
+            "duration": {"new_v3": old.get("duration"), "new_v4": round(float(plan["duration"]), 3)},
+            "loudness_new_v3": old.get("loudness"),
+            "shots_new_v3": old.get("shots"),
+            "shots_new_v4": [
+                {"t0": round(s.t0, 3), "t1": round(s.t1, 3), "kind": s.kind, "plate": s.plate}
+                for s in plan["shots"]
+            ],
+            "cues_new_v3": old_cues,
+            "cues_new_v4": [
+                {"t": round(c.t, 3), "role": c.role, "trigger": c.trigger, "extra_db": getattr(c, "extra_db", 0.0)}
+                for c in plan["cues"]
+            ],
+        }
     dest.with_name(dest.stem + "-diff.json").write_text(json.dumps(payload, indent=1))
 
 
 def prepare_plate(plate, img, fit, phone_plate, bleed_plate):
+    highlight = None
     if plate == "07web":
         img = _relabel_light(img)
+        # The Option 2 block, wide enough to land near 80% of the frame.
+        img = img.crop((50, 820, 1030, 1360))
+        highlight = (20, 130, 730, 235)
     elif plate == "07dark":
         img = _relabel_dark(img)
+        img = img.crop((540, 560, 1060, 1200))
+        highlight = (10, 105, 500, 290)
     if plate in ("09code", "09form"):
         img = _crop_progress(img)
     elif plate == "09ui":
         img = _crop_margins(img, 0.07, 0.16, 0.03)
+    if plate == "09ui":
+        img = _place_wide(img, 0.75, top=200, limit=1380)
     elif plate in ("07web", "07dark"):
-        img = _crop_margins(img, 0.04, 0.05, 0.03)
-    if fit == "phone":
+        img = _place_wide(img, 0.80, top=240, limit=1380, highlight=highlight)
+    elif fit == "phone":
         img = phone_plate(img, bottom=CARD_BOTTOM)
     elif fit == "card":
         img = _fit_card(img, CARD_BOTTOM)
@@ -1410,6 +1839,34 @@ def prepare_plate(plate, img, fit, phone_plate, bleed_plate):
     if plate in ("07web", "07dark"):
         img = B._stamp_example(img)
     return img
+
+
+def _place_wide(img, frac, top, limit, highlight=None):
+    """Scale a cropped card to a fraction of the frame width, above the captions."""
+    im = img.convert("RGB")
+    target_w = int(B.W * frac)
+    scale = target_w / max(1, im.size[0])
+    target_h = max(1, int(round(im.size[1] * scale)))
+    if top + target_h > limit:
+        scale = (limit - top) / max(1, im.size[1])
+        target_w = max(1, int(round(im.size[0] * scale)))
+        target_h = max(1, int(round(im.size[1] * scale)))
+    im = im.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    plate = Image.new("RGB", (B.W, B.H), (0, 0, 0))
+    x = (B.W - target_w) // 2
+    plate.paste(im, (x, top))
+    draw = ImageDraw.Draw(plate)
+    draw.rounded_rectangle([x - 6, top - 6, x + target_w + 6, top + target_h + 6], radius=28, outline=(255, 255, 255), width=6)
+    if highlight is not None:
+        hx0, hy0, hx1, hy1 = highlight
+        box = [
+            x + int(round(hx0 * scale)),
+            top + int(round(hy0 * scale)),
+            x + int(round(hx1 * scale)),
+            top + int(round(hy1 * scale)),
+        ]
+        draw.rounded_rectangle(box, radius=16, outline=(0x42, 0xFF, 0x40), width=8)
+    return plate
 
 
 def _fit_card(image, bottom):
@@ -1603,7 +2060,10 @@ def freeze_spikes(path, dest, times, work, frames_n=2):
 
 
 def mask_pins(path, dest, face_ranges, work):
-    """Darken the lav pin on face shots: about -60%, desaturated, 6 px feather."""
+    """Fill the lav pin with the surrounding shirt color. Feather is 6 px.
+
+    The mask is re-fit on every face frame so it follows the pin.
+    """
     import cv2
     if not YUNET.exists():
         return path
@@ -1618,15 +2078,14 @@ def mask_pins(path, dest, face_ranges, work):
         if not any(a - 0.02 <= t < b for a, b in face_ranges):
             return chunk
         frame = np.frombuffer(chunk, np.uint8).reshape(B.H, B.W, 3).copy()
-        if index % 3 == 0 or box is None:
-            small = cv2.resize(frame, (540, 960))
-            _n, faces = net.detect(small)
-            if faces is not None and len(faces):
-                box = _pin_box(frame, faces[0])
-                feather = _feather(box)
-        if feather is None:
+        small = cv2.resize(frame, (540, 960))
+        _n, faces = net.detect(small)
+        if faces is not None and len(faces):
+            box = _pin_box(frame, faces[0])
+            feather = _feather(box)
+        if feather is None or box is None:
             return chunk
-        _darken(frame, feather)
+        _shirt_fill(frame, feather, box)
         return np.ascontiguousarray(frame).tobytes()
 
     return _stream_frames(path, dest, edit, work)
@@ -1671,12 +2130,12 @@ def _pin_box(frame, face):
 
 
 def _pad_pin(x, y, w, h):
-    """The core of the lav is smaller than the clip. Pad it so the mask covers the pin."""
-    pad_x, pad_y = 16, 20
+    """Cover the clip, including the part that sits under the caption line."""
+    pad_x, pad_top, pad_bot = 16, 12, 56
     x = int(max(0, x - pad_x))
-    y = int(max(0, y - pad_y))
-    w = int(min(B.W - x, max(w + pad_x * 2, 52)))
-    h = int(min(B.H - y, max(h + pad_y * 2, 64)))
+    y = int(max(0, y - pad_top))
+    w = int(min(B.W - x, max(w + pad_x * 2, 56)))
+    h = int(min(B.H - y, max(h + pad_top + pad_bot, 100)))
     return (x, y, w, h)
 
 
@@ -1704,4 +2163,31 @@ def _darken(frame, feather):
     m = feather[:, :, None]
     darkened = gray * 0.40
     pix[:] = pix * (1 - m) + darkened * m
+    frame[:] = np.clip(pix, 0, 255).astype(np.uint8)
+
+
+def _shirt_fill(frame, feather, box):
+    """Sample the shirt around the pin and fill the mask with that color."""
+    x, y, w, h = box
+    pad = 36
+    x0, y0 = max(0, x - pad), max(0, y - pad)
+    x1, y1 = min(B.W, x + w + pad), min(B.H, y + h + pad)
+    region = frame[y0:y1, x0:x1]
+    if region.size == 0:
+        return
+    gray = region.astype(np.float32).mean(axis=2)
+    inner = np.zeros(gray.shape, dtype=bool)
+    ix0, iy0 = x - x0, y - y0
+    inner[max(0, iy0):iy0 + h, max(0, ix0):ix0 + w] = True
+    keep = (gray > 50) & (gray < 200) & ~inner
+    sample = region[keep]
+    if len(sample) < 40:
+        sample = region[(gray > 35) & ~inner]
+    if len(sample) < 10:
+        color = np.array([128.0, 118.0, 112.0], np.float32)
+    else:
+        color = np.median(sample.astype(np.float32), axis=0)
+    pix = frame.astype(np.float32)
+    m = feather[:, :, None]
+    pix[:] = pix * (1.0 - m) + color * m
     frame[:] = np.clip(pix, 0, 255).astype(np.uint8)
