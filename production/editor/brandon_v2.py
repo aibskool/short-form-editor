@@ -1405,11 +1405,10 @@ def prepare_plate(plate, img, fit, phone_plate, bleed_plate):
         img = _fit_card(img, CARD_BOTTOM)
     else:
         img = bleed_plate(img)
-    # Relabeled pricing cards are illustrative. A real screen recording is not.
+    # Relabeled pricing cards are illustrative. Northpoint Roofing is a real
+    # client, so those screen recordings stay unlabeled.
     if plate in ("07web", "07dark"):
         img = B._stamp_example(img)
-    if plate in ("09ui", "09code", "09form"):
-        img = _stamp_demo(img)
     return img
 
 
@@ -1493,15 +1492,6 @@ def _crop_margins(img, top, bottom, side):
     if box[2] - box[0] < 40 or box[3] - box[1] < 40:
         return im
     return im.crop(box)
-
-
-def _stamp_demo(img):
-    """Northpoint Roofing screens are a demo, not a paid client build."""
-    im = img.convert("RGBA")
-    font = B._font("IBMPlexMono-Medium.ttf", 28)
-    label = B._text_image("DEMO SITE", font, (255, 255, 255, 235))
-    im.alpha_composite(label, (64, 176))
-    return im.convert("RGB")
 
 
 def _ffmpeg_af(y, af):
