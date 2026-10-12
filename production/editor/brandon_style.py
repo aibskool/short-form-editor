@@ -1089,13 +1089,13 @@ def fit_loudness(voice, bed):
     """One gain on the whole mix, aimed at -15 LUFS on the dual-mono file.
 
     A mono measurement reads about 3 LU quieter than the stereo delivery, so
-    the mono target is -18. Only samples that would pass -1.8 dBFS are
+    the mono target is -18. Only samples that would pass -2 dBFS are
     trimmed, which keeps a stray peak legal without turning the voice down.
     """
     mix = np.asarray(voice, np.float64) + np.asarray(bed, np.float64)
     I, _TP = _measure_pcm(mix)
     mix = mix * 10 ** ((-18.0 - I) / 20)
-    ceil = 10 ** (-1.8 / 20)
+    ceil = 10 ** (-2.0 / 20)
     mix = np.clip(mix, -ceil, ceil)
     I3, _TP3 = _measure_pcm(mix)
     return mix.astype(np.float32), {
